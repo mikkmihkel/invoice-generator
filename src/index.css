@@ -258,7 +258,7 @@ ol {
   color: var(--text);
   border-color: var(--border-strong);
 }
-.menu-toggle {
+.topbar .menu-toggle {
   display: none;
 }
 .new-invoice {
@@ -1866,7 +1866,7 @@ button.summary-card:hover {
     gap: 10px;
     padding: 10px 16px;
   }
-  .menu-toggle {
+  .topbar .menu-toggle {
     display: inline-grid;
     order: 3;
   }
@@ -1906,6 +1906,25 @@ button.summary-card:hover {
   }
   .grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .summary {
+    gap: 8px;
+  }
+  .summary-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    column-gap: 12px;
+    padding: 10px 14px;
+  }
+  .summary-value {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    font-size: 1.15rem;
+  }
+  .summary-label {
+    font-size: 0.75rem;
   }
 
   /* Lines become cards */

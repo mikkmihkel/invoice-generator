@@ -345,7 +345,7 @@ export const et = {
 
   'pdf.failed': 'PDF-i koostamine ebaõnnestus.',
   'einvoice.title': 'Masinloetav e-arve (XML)',
-  'einvoice.explain': 'Masinloetav e-arve standardis EN 16931 (Peppol BIS 3, UBL). Alates 1.07.2025 võib e-arve saajaks registreeritud ostja nõuda e-arvet (RPS § 7¹). E-arve edastatakse tavaliselt e-arvete operaatori kaudu – laadi XML-fail oma operaatori keskkonda üles. Sobib ka raamatupidamistarkvarasse importimiseks.',
+  'einvoice.explain': 'Lae alla e-arve XML (EN 16931 / Peppol BIS 3, PDF on manusena sees) ja lae see üles oma e-arvete operaatori keskkonda või raamatupidamistarkvarasse või saada ostjale, kes seda küsib. Alates 1.07.2025 võib e-arve saajaks registreeritud ostja nõuda e-arvet (RPS § 7¹); e-arve liigub tavaliselt e-arvete operaatori kaudu.',
   'einvoice.downloaded': 'E-arve XML alla laaditud',
   'drive.saved': 'PDF salvestatud Google Drive’i kausta "{folder}"',
   'drive.open': 'Ava',

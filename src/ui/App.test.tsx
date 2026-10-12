@@ -79,7 +79,7 @@ describe('onboarding', () => {
 
     expect(await screen.findByLabelText(/^Nimi/)).toHaveValue('Päikese Tarkvara OÜ')
     expect(screen.getByLabelText(/^Registrikood/)).toHaveValue('16543210')
-    expect(screen.getByLabelText(/^KMKR number/)).toHaveValue('EE102345678')
+    expect(screen.getByLabelText(/^KMKR number/)).toHaveValue('EE102345676')
     expect(screen.getByLabelText(/^Linn/)).toHaveValue('Tallinn')
     expect(screen.getByLabelText('Olen käibemaksukohustuslane (KMKR)')).toBeChecked()
   })
@@ -103,7 +103,7 @@ describe('invoice editor', () => {
     fireEvent.change(prices[1], { target: { value: '10' } })
     fireEvent.change(screen.getAllByLabelText('KM')[1], { target: { value: '9' } })
 
-    await waitFor(() => expect(screen.getByTestId('total-gross')).toHaveTextContent('259,14'))
+    await waitFor(() => expect(screen.getByTestId('total-gross')).toHaveTextContent('260,14'))
     expect(screen.getByText(/Käibemaks 9%/)).toBeInTheDocument()
 
     // Remove the first line → only the 10 € + 9% line is left.
@@ -132,7 +132,7 @@ describe('invoice editor', () => {
   it('lists legal problems, blocks issuing until fixed, then issues and locks the invoice', async () => {
     const client = newClient({
       name: 'Ostja AS',
-      registryCode: '10000000',
+      registryCode: '10000001',
       address: { street: 'Rüütli 1', city: 'Pärnu', postalCode: '80010', country: 'EE' },
       email: 'arved@ostja.ee',
     })

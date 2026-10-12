@@ -71,7 +71,7 @@ export function sampleProfile(patch: Partial<CompanyProfile> = {}): CompanyProfi
     ...base,
     name: 'Näidis OÜ',
     registryCode: '12345678',
-    vatNumber: 'EE101234567',
+    vatNumber: 'EE101234568',
     vatRegistered: true,
     email: 'info@naidis.ee',
     address: { street: 'Narva mnt 5', city: 'Tallinn', postalCode: '10117', country: 'EE' },

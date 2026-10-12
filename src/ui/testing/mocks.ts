@@ -7,7 +7,7 @@ export const REGISTRY_FIXTURE: RegistryCompany[] = [
   {
     registryCode: '16543210',
     name: 'Päikese Tarkvara OÜ',
-    vatNumber: 'EE102345678',
+    vatNumber: 'EE102345676',
     legalForm: 'OÜ',
     status: 'Registrisse kantud',
     address: { street: 'Tartu mnt 10', city: 'Tallinn', postalCode: '10115', country: 'EE' },
@@ -28,6 +28,8 @@ export function pdfMock() {
   return {
     TEMPLATES: [],
     renderInvoicePdf: vi.fn(async () => new Blob(['%PDF-1.7'], { type: 'application/pdf' })),
+    renderInvoicePdfBase64: vi.fn(async () => 'JVBERi0xLjc='),
+    preloadPdfMake: vi.fn(),
     invoiceFileName: vi.fn((inv: { number: string }, ext = 'pdf') => `Arve_${inv.number || 'mustand'}.${ext}`),
   }
 }
@@ -49,5 +51,5 @@ export function integrationsMock() {
 }
 
 export function einvoiceMock() {
-  return { buildUblXml: vi.fn(() => '<Invoice/>') }
+  return { buildUblXml: vi.fn(() => '<Invoice/>'), eInvoiceIssues: vi.fn(() => []) }
 }

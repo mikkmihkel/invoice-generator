@@ -10,12 +10,13 @@ import {
   type InvoiceType,
   type ValidationIssue,
 } from '../../domain'
-import { buildUblXml } from '../../einvoice'
+import { buildUblXml, eInvoiceIssues } from '../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../integrations'
-import { invoiceFileName, renderInvoicePdf } from '../../pdf'
+import { invoiceFileName, preloadPdfMake, renderInvoicePdf, renderInvoicePdfBase64 } from '../../pdf'
 import { useApp } from '../AppContext'
 import { AccentPicker, TemplatePicker } from '../components/Appearance'
 import { useConfirm } from '../components/Dialog'
+import { pick } from '../i18n'
 import { FieldShell, fieldId, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
 import { Section, StatusChip } from '../components/misc'
 import { formatDate, formatDateTime, formatIban } from '../format'
@@ -51,6 +52,14 @@ function safeNote(inv: Invoice): string | null {
   }
 }
 
+function safeEInvoiceIssues(inv: Invoice): { field: string; message: { et: string; en: string } }[] {
+  try {
+    return eInvoiceIssues(inv)
+  } catch {
+    return []
+  }
+}
+
 function safeFileName(inv: Invoice, ext: 'pdf' | 'xml'): string {
   try {
     return invoiceFileName(inv, ext)
@@ -70,7 +79,7 @@ export default function InvoiceEditorRoute() {
 
 function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const app = useApp()
-  const { t, profile, clients, settings } = app
+  const { t, lang, profile, clients, settings } = app
   const toast = useToast()
   const confirm = useConfirm()
   const navigate = useNavigate()
@@ -89,6 +98,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const saveRef = useRef(app.saveInvoice)
   saveRef.current = app.saveInvoice
   invoiceRef.current = invoice
+
+  useEffect(() => {
+    try {
+      preloadPdfMake()
+    } catch {
+      /* preview will report problems */
+    }
+  }, [])
 
   // Load (or create in memory) once per editor instance.
   useEffect(() => {
@@ -203,6 +220,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const term = daysBetween(invoice.issueDate, invoice.dueDate)
   const note = safeNote(invoice)
   const accounts = ro ? invoice.seller.bankAccounts : profile.bankAccounts
+  const xmlIssues = ro ? safeEInvoiceIssues(invoice) : []
   const buyerFieldIssue = !!invoice.buyer.name && issues.some((i) => i.field.startsWith('buyer.'))
 
   const title = invoice.number
@@ -239,16 +257,31 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
   const print = () =>
     act('print', async () => {
-      const blob = await renderPdf()
+      // Open the window synchronously (inside the click) so popup blockers allow it, then load the PDF.
+      const w = window.open('', '_blank')
+      const blob = await renderPdf().catch((e) => {
+        w?.close()
+        throw e
+      })
+      if (!w) {
+        downloadBlob(blob, safeFileName(effective, 'pdf'))
+        return
+      }
       const url = URL.createObjectURL(blob)
-      const w = window.open(url, '_blank')
-      if (!w) downloadBlob(blob, safeFileName(effective, 'pdf'))
+      w.location.href = url
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
     })
 
   const downloadXml = () =>
     act('xml', async () => {
-      const xml = buildUblXml(invoice)
+      // Embed the human-readable PDF so the receiver gets both in one file.
+      let pdf: { base64: string; fileName: string } | undefined
+      try {
+        pdf = { base64: await renderInvoicePdfBase64(invoice), fileName: safeFileName(invoice, 'pdf') }
+      } catch (e) {
+        console.warn('PDF embedding failed', e)
+      }
+      const xml = buildUblXml(invoice, pdf ? { pdf } : {})
       downloadBlob(new Blob([xml], { type: 'application/xml' }), safeFileName(invoice, 'xml'))
       toast.success(t('einvoice.downloaded'))
     })
@@ -560,6 +593,13 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 <div>
                   <strong>{t('einvoice.title')}</strong>
                   <p className="muted small">{t('einvoice.explain')}</p>
+                  {xmlIssues.length > 0 && (
+                    <ul className="notice notice-warn small xml-issues">
+                      {xmlIssues.map((i) => (
+                        <li key={i.field + i.message.et}>{pick(i.message, lang)}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <button type="button" className="btn" onClick={() => void downloadXml()} disabled={busyAny}>
                   {t('actions.downloadXml')}

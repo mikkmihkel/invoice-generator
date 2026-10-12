@@ -347,7 +347,7 @@ export const en: Record<keyof typeof et, string> = {
 
   'pdf.failed': 'Could not create the PDF.',
   'einvoice.title': 'Machine-readable e-invoice (XML)',
-  'einvoice.explain': 'Machine-readable e-invoice in the EN 16931 standard (Peppol BIS 3, UBL). Since 1 July 2025 a buyer registered as an e-invoice recipient can require an e-invoice (RPS § 7¹). E-invoices are usually delivered via an e-invoice operator – upload the XML file to your operator. It can also be imported into accounting software.',
+  'einvoice.explain': 'Download the e-invoice XML (EN 16931 / Peppol BIS 3, with the PDF embedded) and upload it to your e-invoice operator or accounting software, or send it to a buyer who asks for it. Since 1 July 2025 a buyer registered as an e-invoice recipient can require an e-invoice (RPS § 7¹); e-invoices normally travel via an e-invoice operator.',
   'einvoice.downloaded': 'E-invoice XML downloaded',
   'drive.saved': 'PDF saved to Google Drive folder "{folder}"',
   'drive.open': 'Open',

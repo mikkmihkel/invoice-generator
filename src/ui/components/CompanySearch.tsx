@@ -163,12 +163,11 @@ export function RegistryAttribution({ lang }: { lang: 'et' | 'en' }) {
     <p className="attribution">
       <a href={REGISTRY_ATTRIBUTION.sourceUrl} target="_blank" rel="noreferrer">
         {REGISTRY_ATTRIBUTION[lang]}
-      </a>{' '}
-      (
-      <a href={REGISTRY_ATTRIBUTION.licenceUrl} target="_blank" rel="noreferrer">
-        CC BY 4.0
       </a>
-      )
+      {' · '}
+      <a href={REGISTRY_ATTRIBUTION.licenceUrl} target="_blank" rel="noreferrer">
+        {lang === 'et' ? 'litsents' : 'licence'}
+      </a>
     </p>
   )
 }

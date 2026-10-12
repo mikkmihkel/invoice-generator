@@ -47,10 +47,12 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
   if (disabled) {
     return (
       <div className="buyer-summary">
-        <strong>{buyer.name}</strong>
-        <div className="muted small">{[buyer.registryCode || buyer.personalCode, buyer.vatNumber].filter(Boolean).join(' · ')}</div>
-        <div className="muted small">{formatAddress(buyer.address)}</div>
-        {buyer.email && <div className="muted small">{buyer.email}</div>}
+        <div>
+          <strong>{buyer.name}</strong>
+          <div className="muted small">{[buyer.registryCode || buyer.personalCode, buyer.vatNumber].filter(Boolean).join(' · ')}</div>
+          <div className="muted small">{formatAddress(buyer.address)}</div>
+          {(buyer.contactPerson || buyer.email) && <div className="muted small">{[buyer.contactPerson, buyer.email].filter(Boolean).join(' · ')}</div>}
+        </div>
       </div>
     )
   }
