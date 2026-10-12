@@ -140,9 +140,43 @@ export function structuredCloneSafe<T>(v: T): T {
   return typeof structuredClone === 'function' ? structuredClone(v) : JSON.parse(JSON.stringify(v))
 }
 
+let errorLanguage: 'et' | 'en' = 'et'
+/** Set by AppProvider so error texts follow the UI language. */
+export function setErrorLanguage(lang: 'et' | 'en') {
+  errorLanguage = lang
+}
+
+/**
+ * User-facing text for an error. Understands the bilingual errors of other modules
+ * (RepositoryError / GoogleApiError `.messages`, InvoiceValidationError `.issues`).
+ */
 export function errorMessage(e: unknown): string {
+  const x = e as { messages?: { et?: string; en?: string }; issues?: { severity: string; message: { et: string; en: string } }[] } | null
+  if (x && Array.isArray(x.issues)) {
+    const errs = x.issues.filter((i) => i.severity === 'error')
+    if (errs.length) return errs.map((i) => i.message[errorLanguage] || i.message.et).join(' ')
+  }
+  if (x && x.messages && typeof x.messages[errorLanguage] === 'string') return x.messages[errorLanguage] as string
   if (e instanceof Error) return e.message
   return String(e)
+}
+
+const LAST_BACKUP_KEY = 'invoice-generator:lastBackupAt'
+
+export function getLastBackupAt(): string | null {
+  try {
+    return localStorage.getItem(LAST_BACKUP_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function markBackupDone(at = new Date().toISOString()) {
+  try {
+    localStorage.setItem(LAST_BACKUP_KEY, at)
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 /** Resize an image file to at most `maxWidth` px wide and return a PNG data URL. */

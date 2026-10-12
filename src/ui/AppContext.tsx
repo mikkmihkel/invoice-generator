@@ -1,9 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createDefaultSettings, type AppSettings, type Client, type CompanyProfile, type Invoice, type UiLanguage } from '../domain'
-import * as storage from '../storage'
-import type { Repository } from '../storage'
+import { getRepository, subscribe, type Repository } from '../storage'
 import { makeT, type Translate } from './i18n'
-import { errorMessage, nowISO, sortInvoices } from './util'
+import { errorMessage, nowISO, setErrorLanguage, sortInvoices } from './util'
 
 export interface AppData {
   ready: boolean
@@ -28,6 +27,14 @@ export interface AppData {
 
 const AppContext = createContext<AppData | null>(null)
 
+function same<T>(prev: T, next: T): T {
+  try {
+    return JSON.stringify(prev) === JSON.stringify(next) ? prev : next
+  } catch {
+    return next
+  }
+}
+
 function fallbackSettings(): AppSettings {
   try {
     return createDefaultSettings()
@@ -36,14 +43,12 @@ function fallbackSettings(): AppSettings {
   }
 }
 
-type Subscribe = (listener: () => void) => () => void
-
 /** Holds repository-backed app data, settings and the UI language. */
 export function AppProvider({ children, repository }: { children: ReactNode; repository?: Repository }) {
   const repo = useMemo<Repository>(() => {
     if (repository) return repository
     try {
-      return storage.getRepository()
+      return getRepository()
     } catch (e) {
       return new Proxy({} as Repository, {
         get: () => () => Promise.reject(e),
@@ -63,10 +68,11 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
   const reload = useCallback(async () => {
     try {
       const [p, s, c, i] = await Promise.all([repo.getProfile(), repo.getSettings(), repo.listClients(), repo.listInvoices()])
-      setProfile(p)
-      if (s) setSettings(s)
-      setClients([...c].sort((a, b) => a.name.localeCompare(b.name, 'et')))
-      setInvoices(i)
+      // Keep object identity when nothing changed, so dependants (e.g. the PDF preview) don't re-render.
+      setProfile((prev) => same(prev, p))
+      if (s) setSettings((prev) => same(prev, s))
+      setClients((prev) => same(prev, [...c].sort((a, b) => a.name.localeCompare(b.name, 'et'))))
+      setInvoices((prev) => same(prev, i))
       setLoadError(null)
     } catch (e) {
       console.error(e)
@@ -80,18 +86,26 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
     void reload()
   }, [reload])
 
-  // Refresh when another tab (or a backup import) changes the database, if storage offers a change feed.
+  // Refresh after writes (backup import, other tabs). Coalesce bursts such as autosaves.
   useEffect(() => {
-    const subscribe = (storage as unknown as { subscribe?: Subscribe }).subscribe
-    if (typeof subscribe !== 'function') return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let unsub: (() => void) | undefined
     try {
-      return subscribe(() => void reload())
+      unsub = subscribe(() => {
+        clearTimeout(timer)
+        timer = setTimeout(() => void reload(), 150)
+      })
     } catch {
-      return
+      /* no change feed */
+    }
+    return () => {
+      clearTimeout(timer)
+      unsub?.()
     }
   }, [reload])
 
   const lang: UiLanguage = settings.uiLanguage === 'en' ? 'en' : 'et'
+  setErrorLanguage(lang)
   useEffect(() => {
     document.documentElement.lang = lang
   }, [lang])

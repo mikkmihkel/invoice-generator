@@ -10,7 +10,7 @@ export interface XmlElement {
 export type XmlChild = XmlElement | null | undefined | false | '' | XmlChild[]
 
 /** Characters not allowed in XML 1.0 (C0 controls except tab/LF/CR, lone surrogates, U+FFFE/FFFF). */
-const INVALID_XML_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g
+const INVALID_XML_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g
 
 export function escapeXml(value: string): string {
   return value

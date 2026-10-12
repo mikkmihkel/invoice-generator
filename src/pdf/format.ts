@@ -1,7 +1,7 @@
 // Deterministic number/date formatting for invoice documents (no Intl, so output is identical everywhere).
 import type { InvoiceLanguage, ISODate } from '../domain/types'
 
-const NBSP = ' '
+const NBSP = '\u00a0'
 const EN_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** Estonian conventions for `et` and `et-en`; English conventions for `en`. */
@@ -102,7 +102,7 @@ const TRANSLIT: Record<string, string> = {
 /** Transliterate to ASCII: Estonian letters explicitly, other accents via Unicode decomposition. */
 export function toAscii(input: string): string {
   return input
-    .replace(/[^\u0000-\u007f]/g, (ch) => TRANSLIT[ch] ?? ch.normalize('NFD').replace(/[̀-ͯ]/g, ''))
+    .replace(/[^\u0000-\u007f]/g, (ch) => TRANSLIT[ch] ?? ch.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
     .replace(/[^\u0000-\u007f]/g, '')
 }
 

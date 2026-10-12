@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  generateReferenceNumber,
   isValidReferenceNumber,
   validateInvoice,
   vatSchemeNote,
@@ -36,7 +35,8 @@ type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
 function safeValidate(inv: Invoice): ValidationIssue[] {
   try {
-    return validateInvoice(inv)
+    // Drafts get their number when issued.
+    return validateInvoice(inv, { requireNumber: inv.status !== 'draft' })
   } catch (e) {
     console.error('validateInvoice failed', e)
     return []
@@ -260,8 +260,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         navigate('/settings')
         return
       }
-      const blob = await renderPdf()
+      // Sign in first: the consent popup must open directly from the click.
       await googleSignIn(settings.googleClientId, ['drive'])
+      const blob = await renderPdf()
       const res = await uploadToDrive(settings.googleClientId, blob, safeFileName(effective, 'pdf'), settings.driveFolderName)
       toast.success(t('drive.saved', { folder: settings.driveFolderName }), res.webViewLink ? { label: t('drive.open'), href: res.webViewLink } : undefined)
     })
@@ -269,16 +270,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const issue = async () => {
     try {
       await flush()
-      let inv = invoiceRef.current ?? invoice
-      if (!inv.referenceNumber) {
-        try {
-          const digits = predicted.replace(/\D/g, '') || String(Date.now()).slice(-8)
-          inv = { ...inv, referenceNumber: generateReferenceNumber(digits.slice(-19)) }
-        } catch {
-          /* reference stays empty */
-        }
-      }
-      if (inv !== invoiceRef.current || !persistedRef.current) {
+      // The repository allocates the number and, if empty, the reference number.
+      const inv = invoiceRef.current ?? invoice
+      if (!persistedRef.current) {
         await app.saveInvoice(inv)
         persistedRef.current = true
       }
@@ -503,7 +497,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 hint={invoice.referenceNumber ? undefined : t('field.referenceNumberHint')}
                 error={invoice.referenceNumber && !safeRefValid(invoice.referenceNumber) ? t('field.referenceNumberInvalid') : undefined}
               >
-                <div className="input-with-btn">
+                <div>
                   <input
                     id={fieldId('referenceNumber')}
                     type="text"
@@ -511,21 +505,6 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                     value={invoice.referenceNumber ?? ''}
                     onChange={(e) => set({ referenceNumber: e.target.value.replace(/\s+/g, '') || undefined })}
                   />
-                  {!ro && (
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => {
-                        try {
-                          set({ referenceNumber: generateReferenceNumber(predicted.replace(/\D/g, '') || String(Date.now()).slice(-8)) })
-                        } catch (e) {
-                          toast.error(errorMessage(e))
-                        }
-                      }}
-                    >
-                      {t('field.generate')}
-                    </button>
-                  )}
                 </div>
               </FieldShell>
               <TextField label={t('field.orderReference')} path="orderReference" value={invoice.orderReference} onChange={(v) => set({ orderReference: v || undefined })} />
