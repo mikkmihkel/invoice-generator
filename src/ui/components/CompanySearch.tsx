@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { RegistryCompany } from '../../domain'
 import { getCompanyByCode, REGISTRY_ATTRIBUTION, searchCompanies } from '../../registry'
 import { useApp } from '../AppContext'
+import { useToast } from '../Toasts'
 import { formatAddress, addressFromRegistry } from '../util'
 
 interface Props {
@@ -11,9 +12,19 @@ interface Props {
   placeholder?: string
 }
 
+const STATUS_EN: Record<string, string> = { likvideerimisel: 'in liquidation', pankrotis: 'bankrupt', kustutatud: 'deleted' }
+
+/** A register status other than "Registrisse kantud" (entered in the register), e.g. in liquidation or bankrupt. */
+function inactiveStatus(c: Pick<RegistryCompany, 'status'>, lang: 'et' | 'en'): string | null {
+  const s = c.status?.trim()
+  if (!s || /registrisse kantud/i.test(s)) return null
+  return lang === 'en' ? (STATUS_EN[s.toLowerCase()] ?? s) : s
+}
+
 /** Debounced autocomplete over the e-Business Register (bundled index + optional live API). */
 export function CompanySearch({ onPick, label, autoFocus, placeholder }: Props) {
   const { t, settings, lang } = useApp()
+  const toast = useToast()
   const id = useId()
   const listId = id + '-list'
   const [query, setQuery] = useState('')
@@ -94,6 +105,8 @@ export function CompanySearch({ onPick, label, autoFocus, placeholder }: Props) 
     setResults([])
     setSearched(false)
     onPick(full)
+    const inactive = inactiveStatus(full, lang)
+    if (inactive) toast.warning(t('registry.inactiveWarning', { name: full.name, status: inactive }))
   }
 
   const open = results.length > 0
@@ -162,7 +175,7 @@ export function CompanySearch({ onPick, label, autoFocus, placeholder }: Props) 
         ))}
       </ul>
       <div className="field-hint" aria-live="polite">
-        {failed ? t('registry.failed') : searched && !loading && results.length === 0 ? t('registry.noResults') : t('registry.hint')}
+        {failed ? t('registry.failed') : searched && !loading && results.length === 0 ? t('registry.noResults') : query.trim().length < 2 ? t('registry.hint') : null}
       </div>
       <RegistryAttribution lang={lang} />
     </div>

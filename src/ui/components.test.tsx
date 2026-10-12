@@ -51,7 +51,10 @@ describe('ValidationPanel', () => {
 
 describe('formatting and helpers', () => {
   it('formats amounts and dates Estonian style', () => {
-    expect(formatMoney(1234.5).replace(/\s/g, ' ')).toBe('1234,50 €')
+    expect(formatMoney(1234.5).replace(/\s/g, ' ')).toBe('1 234,50 €')
+    expect(formatMoney(7470.93)).toBe('7\u00a0470,93\u00a0€')
+    expect(formatMoney(7470.93, 'EUR', 'en')).toBe('€7,470.93')
+    expect(formatMoney(-1234.5, 'USD', 'en')).toBe('-$1,234.50')
     expect(formatMoney(12345.5).replace(/\s/g, ' ')).toBe('12 345,50 €')
     expect(formatDate('2026-10-12')).toBe('12.10.2026')
   })
@@ -68,6 +71,7 @@ describe('formatting and helpers', () => {
     expect(displayStatus({ status: 'issued', dueDate: '2026-01-01' }, '2026-01-02')).toBe('overdue')
     expect(displayStatus({ status: 'issued', dueDate: '2026-01-02' }, '2026-01-02')).toBe('issued')
     expect(displayStatus({ status: 'paid', dueDate: '2020-01-01' }, '2026-01-02')).toBe('paid')
+    expect(displayStatus({ status: 'issued', type: 'credit-note', dueDate: '2026-01-01' }, '2026-01-02')).toBe('issued')
   })
 
   it('fills email placeholders and keeps unknown ones', () => {

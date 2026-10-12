@@ -226,4 +226,20 @@ describe('buildDocDefinition — variants', () => {
     expect(all).toContain('Estonia')
     expect(all).toContain('38001010000')
   })
+  it('uses each language\'s decimal separator in the bilingual late-interest text', () => {
+    const all = joined(buildDocDefinition(sampleInvoice({ language: 'et-en', lateInterestPercentPerDay: 0.05 })))
+    expect(all).toContain('viivist 0,05% päevas')
+    expect(all).toContain('interest of 0.05% per day')
+  })
+
+  it('keeps the bilingual VAT-rate column header on one line per language', () => {
+    const def = buildDocDefinition(sampleInvoice({ language: 'et-en' }))
+    const found: Record<string, unknown>[] = []
+    JSON.stringify(def.content, (_k, v) => {
+      if (v && typeof v === 'object' && (v.text === 'KM %' || v.text === 'VAT %')) found.push(v)
+      return v
+    })
+    expect(found.length).toBeGreaterThan(0)
+    for (const f of found) expect(f.noWrap).toBe(true)
+  })
 })

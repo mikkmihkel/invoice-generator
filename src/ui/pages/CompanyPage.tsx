@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { CompanyProfile, RegistryCompany } from '../../domain'
 import { useApp } from '../AppContext'
 import { CompanySearch } from '../components/CompanySearch'
 import { Dialog } from '../components/Dialog'
 import { useToast } from '../Toasts'
 import { errorMessage, partyFromRegistry } from '../util'
+import { focusField } from './editor/ValidationPanel'
 import { ProfileForm, profileProblems } from './ProfileForm'
 
 export default function CompanyPage() {
@@ -14,6 +16,18 @@ export default function CompanyPage() {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lookup, setLookup] = useState(false)
+  const [search] = useSearchParams()
+  const focus = search.get('focus')
+  const ready = !!draft
+
+  // Arriving from an invoice's validation panel (#/company?focus=vatNumber): focus the field to fix.
+  useEffect(() => {
+    if (!focus || !ready) return
+    const h = setTimeout(() => {
+      if (!focusField(focus) && focus.startsWith('bankAccounts')) document.getElementById('sec-bank')?.scrollIntoView?.({ block: 'start' })
+    }, 0)
+    return () => clearTimeout(h)
+  }, [focus, ready])
 
   useEffect(() => {
     if (!dirty) setDraft(profile)

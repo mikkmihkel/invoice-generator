@@ -58,6 +58,13 @@ export function addDays(date: string, days: number): string {
   return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`
 }
 
+export const DEFAULT_EMAIL_SUBJECT_ET = 'Arve {number} – {company}'
+export const DEFAULT_EMAIL_BODY_ET =
+  'Tere!\n\n' + 'Manuses on arve nr {number} summas {total}. Palume arve tasuda hiljemalt {dueDate}.\n\n' + 'Lugupidamisega\n{company}'
+export const DEFAULT_EMAIL_SUBJECT_EN = 'Invoice {number} from {company}'
+export const DEFAULT_EMAIL_BODY_EN =
+  'Hello,\n\n' + 'Please find attached invoice no. {number} for {total}. Kindly pay by {dueDate}.\n\n' + 'Best regards,\n{company}'
+
 export function createDefaultProfile(): CompanyProfile {
   return {
     name: '',
@@ -77,11 +84,10 @@ export function createDefaultProfile(): CompanyProfile {
       vatScheme: 'not-registered',
       defaultVatRate: STANDARD_VAT_RATE,
       defaultUnit: 'tk',
-      emailSubject: 'Arve {number} – {company}',
-      emailBody:
-        'Tere!\n\n' +
-        'Manuses on arve nr {number} summas {total}. Palume arve tasuda hiljemalt {dueDate}.\n\n' +
-        'Lugupidamisega\n{company}',
+      emailSubject: DEFAULT_EMAIL_SUBJECT_ET,
+      emailBody: DEFAULT_EMAIL_BODY_ET,
+      emailSubjectEn: DEFAULT_EMAIL_SUBJECT_EN,
+      emailBodyEn: DEFAULT_EMAIL_BODY_EN,
     },
     numbering: { prefix: '{YYYY}-', nextNumber: 1, padding: 4 },
     updatedAt: new Date().toISOString(),

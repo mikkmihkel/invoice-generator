@@ -1,9 +1,9 @@
-import { formatInvoiceNumber, type CompanyProfile, type InvoiceDefaults, type NumberingSettings } from '../../domain'
+import { DEFAULT_EMAIL_BODY_EN, DEFAULT_EMAIL_SUBJECT_EN, formatInvoiceNumber, type CompanyProfile, type InvoiceDefaults, type NumberingSettings } from '../../domain'
 import { useApp } from '../AppContext'
 import { AccentPicker, TemplatePicker } from '../components/Appearance'
 import { CheckboxField, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
 import { BankAccountsEditor, LogoInput, Section } from '../components/misc'
-import { PartyFields } from '../components/PartyFields'
+import { PartyFields, registryCodeError, vatNumberError } from '../components/PartyFields'
 import { CURRENCIES, languageOptions, vatRates, vatSchemeOptions, UNIT_SUGGESTIONS } from '../options'
 import { localTodayISO } from '../util'
 
@@ -17,10 +17,18 @@ export function numberingPreview(n: NumberingSettings, year = Number(localTodayI
 
 export type ProfileSection = 'company' | 'vat' | 'bank' | 'logo' | 'defaults' | 'numbering' | 'email'
 
-/** Problems that must be fixed before the profile can be saved. */
-export function profileProblems(p: CompanyProfile, t: (k: 'profile.needName' | 'profile.needIban') => string): string[] {
+type ProblemKey = 'profile.needName' | 'profile.needIban' | 'profile.registryCodeInvalid' | 'profile.vatNumberInvalid' | 'profile.vatNumberRequired'
+
+/**
+ * Problems that must be fixed before the profile can be saved (they would make every invoice invalid).
+ * A missing registry code is only warned about in the form (see `profile.registryCodeMissing`).
+ */
+export function profileProblems(p: CompanyProfile, t: (k: ProblemKey) => string): string[] {
   const out: string[] = []
   if (!p.name.trim()) out.push(t('profile.needName'))
+  if (registryCodeError(p.registryCode, p.address?.country, 'x')) out.push(t('profile.registryCodeInvalid'))
+  if (p.vatNumber && vatNumberError(p.vatNumber, 'x')) out.push(t('profile.vatNumberInvalid'))
+  else if (p.vatRegistered && !p.vatNumber?.trim()) out.push(t('profile.vatNumberRequired'))
   if (!p.bankAccounts.some((a) => a.iban.trim())) out.push(t('profile.needIban'))
   return out
 }
@@ -38,6 +46,7 @@ export function ProfileForm({ value, onChange, sections }: { value: CompanyProfi
       {has('company') && (
         <Section id="sec-company" title={t('profile.company')} description={t('profile.companyHint')}>
           <PartyFields value={value} onChange={onChange} pathPrefix="" />
+          {!value.registryCode?.trim() && <p className="notice notice-warn">{t('profile.registryCodeMissing')}</p>}
           <div className="grid">
             <TextField label={t('field.website')} type="url" value={value.website} onChange={(v) => set({ website: v || undefined })} placeholder="https://" />
           </div>
@@ -134,8 +143,12 @@ export function ProfileForm({ value, onChange, sections }: { value: CompanyProfi
 
       {has('email') && (
         <Section id="sec-email" title={t('profile.emailTemplates')} description={t('profile.emailTemplatesHint')}>
+          <h3 className="subhead">{t('profile.emailEt')}</h3>
           <TextField label={t('email.subject')} value={d.emailSubject} onChange={(emailSubject) => setDefaults({ emailSubject })} />
           <TextAreaField label={t('email.body')} value={d.emailBody} onChange={(emailBody) => setDefaults({ emailBody })} rows={6} />
+          <h3 className="subhead">{t('profile.emailEn')}</h3>
+          <TextField label={t('email.subject')} value={d.emailSubjectEn ?? DEFAULT_EMAIL_SUBJECT_EN} onChange={(emailSubjectEn) => setDefaults({ emailSubjectEn })} lang="en" />
+          <TextAreaField label={t('email.body')} value={d.emailBodyEn ?? DEFAULT_EMAIL_BODY_EN} onChange={(emailBodyEn) => setDefaults({ emailBodyEn })} rows={6} lang="en" />
           <p className="field-hint">{t('profile.placeholders')}</p>
         </Section>
       )}

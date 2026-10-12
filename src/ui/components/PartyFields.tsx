@@ -1,4 +1,4 @@
-import { isValidEstonianRegistryCode, isValidVatNumber, type Address, type Party } from '../../domain'
+import { isValidEstonianRegistryCode, isValidVatNumber, normalizeVatNumber, type Address, type Party } from '../../domain'
 import { useApp } from '../AppContext'
 import { TextField } from './fields'
 
@@ -15,9 +15,11 @@ export function registryCodeError(code: string | undefined, country: string | un
   return safeCheck(() => isValidEstonianRegistryCode(code)) ? undefined : msg
 }
 
-export function vatNumberError(vat: string | undefined, msg: string): string | undefined {
+/** `formatMsg` for a wrong prefix/length, `checksumMsg` for a well-formed Estonian number whose check digit is wrong. */
+export function vatNumberError(vat: string | undefined, formatMsg: string, checksumMsg: string = formatMsg): string | undefined {
   if (!vat) return undefined
-  return safeCheck(() => isValidVatNumber(vat)) ? undefined : msg
+  if (safeCheck(() => isValidVatNumber(vat))) return undefined
+  return /^EE\d{9}$/.test(normalizeVatNumber(vat)) ? checksumMsg : formatMsg
 }
 
 export function AddressFields({ value, onChange, pathPrefix, disabled }: { value: Address; onChange: (a: Address) => void; pathPrefix: string; disabled?: boolean }) {
@@ -84,7 +86,7 @@ export function PartyFields<T extends Party>({
           value={value.vatNumber}
           onChange={(v) => set({ vatNumber: v.replace(/\s+/g, '').toUpperCase() || undefined })}
           placeholder="EE123456789"
-          error={vatNumberError(value.vatNumber, t('field.vatNumberInvalid'))}
+          error={vatNumberError(value.vatNumber, t('field.vatNumberInvalid'), t('field.vatNumberChecksum'))}
           disabled={disabled}
         />
       </div>

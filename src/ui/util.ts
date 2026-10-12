@@ -26,10 +26,15 @@ export function nowISO(): string {
   return new Date().toISOString()
 }
 
-/** 'overdue' is derived: issued, unpaid and past due date. */
-export function displayStatus(inv: Pick<Invoice, 'status' | 'dueDate'>, today = localTodayISO()): DisplayStatus {
-  if (inv.status === 'issued' && inv.dueDate && inv.dueDate < today) return 'overdue'
+/** 'overdue' is derived: issued, unpaid and past due date. Credit notes are never overdue (nothing is owed to us). */
+export function displayStatus(inv: Pick<Invoice, 'status' | 'dueDate'> & Partial<Pick<Invoice, 'type'>>, today = localTodayISO()): DisplayStatus {
+  if (inv.status === 'issued' && inv.type !== 'credit-note' && inv.dueDate && inv.dueDate < today) return 'overdue'
   return inv.status
+}
+
+/** Issued invoice still awaiting payment (credit notes are settled by offsetting, not paid). */
+export function isUnpaid(inv: Pick<Invoice, 'status' | 'type'>): boolean {
+  return inv.status === 'issued' && inv.type !== 'credit-note'
 }
 
 export function daysBetween(fromISO: string, toISO: string): number {

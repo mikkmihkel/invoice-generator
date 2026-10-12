@@ -28,13 +28,15 @@ export interface LabelOptions {
   uppercase?: boolean
   characterSpacing?: number
   alignment?: 'left' | 'right' | 'center'
+  /** Keep each line on one row (e.g. "KM %" must not break into "KM" / "%"). */
+  noWrap?: boolean
 }
 
 /** A label; bilingual documents get the English part on a second, smaller line. */
 export function label(ctx: DocContext, key: LabelKey, o: LabelOptions): ContentText | ContentStack {
   const [primary, secondary] = ctx.t.parts(key)
   const up = (s: string) => (o.uppercase ? s.toUpperCase() : s)
-  const base = { color: o.color, bold: o.bold ?? false, characterSpacing: o.characterSpacing, alignment: o.alignment }
+  const base = { color: o.color, bold: o.bold ?? false, characterSpacing: o.characterSpacing, alignment: o.alignment, ...(o.noWrap ? { noWrap: true } : {}) }
   if (!secondary) return { text: up(primary), fontSize: o.fontSize, ...base }
   return {
     stack: [
@@ -130,6 +132,9 @@ export function logo(ctx: DocContext, fit: [number, number], alignment: 'left' |
   return { image: url, fit, alignment }
 }
 
+/** Short numeric-column headers that would otherwise break mid-label when the description column takes the space. */
+const NO_WRAP_HEADERS = new Set<LabelKey>(['lineNo', 'quantity', 'vatRate', 'lineTotal'])
+
 /** Invoice lines table. VAT column only when VAT is shown; discount column only when used. */
 export function linesTable(ctx: DocContext, s: TableStyle): ContentTable {
   const { totals, invoice } = ctx
@@ -156,6 +161,7 @@ export function linesTable(ctx: DocContext, s: TableStyle): ContentTable {
         bold: true,
         uppercase: s.headerUppercase,
         alignment: c.align,
+        noWrap: NO_WRAP_HEADERS.has(c.key),
       }),
       { fillColor: s.headerFill },
     ),
@@ -195,7 +201,7 @@ export function linesTable(ctx: DocContext, s: TableStyle): ContentTable {
 export function vatBreakdownTable(ctx: DocContext, s: TableStyle): ContentTable | null {
   if (!ctx.totals.showVat || ctx.totals.vatBreakdown.length < 2) return null
   const head = (key: LabelKey, alignment: 'left' | 'right'): TableCell =>
-    withProps(label(ctx, key, { fontSize: s.headerFontSize, color: s.headerColor, secondaryColor: s.headerSecondaryColor, bold: true, uppercase: s.headerUppercase, alignment }), {
+    withProps(label(ctx, key, { fontSize: s.headerFontSize, color: s.headerColor, secondaryColor: s.headerSecondaryColor, bold: true, uppercase: s.headerUppercase, alignment, noWrap: NO_WRAP_HEADERS.has(key) }), {
       fillColor: s.headerFill,
     })
   return {

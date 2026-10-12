@@ -25,7 +25,7 @@ import { Section, StatusChip } from '../components/misc'
 import { formatDate, formatDateTime, formatIban } from '../format'
 import { CURRENCIES, languageOptions, vatSchemeOptions } from '../options'
 import { useToast } from '../Toasts'
-import { addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, nowISO, safeTotals, buyerFromClient } from '../util'
+import { addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isUnpaid, nowISO, safeTotals, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
 import { creditNoteFor, duplicateInvoice, newDraft } from './editor/builders'
 import { EmailDialog } from './editor/EmailDialog'
@@ -242,6 +242,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const accounts = ro ? invoice.seller.bankAccounts : profile.bankAccounts
   const xmlIssues = ro ? safeEInvoiceIssues(invoice) : []
   const buyerFieldIssue = !!invoice.buyer.name && issues.some((i) => i.field.startsWith('buyer.'))
+  const creditedBy =
+    ro && invoice.type !== 'credit-note' && invoice.number
+      ? app.invoices.filter((i) => i.type === 'credit-note' && i.id !== invoice.id && i.status !== 'cancelled' && i.creditedInvoiceNumber?.trim() === invoice.number)
+      : []
 
   const title = invoice.number
     ? t(invoice.type === 'credit-note' ? 'editor.titleCredit' : 'editor.title', { number: invoice.number })
@@ -409,7 +413,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         <div className="editor-actions" role="toolbar" aria-label={t('editor.actions')}>
           {!ro && (
             <>
-              <button type="button" className="btn btn-primary" onClick={() => setDialog('issue')} disabled={errors.length > 0 || busyAny} title={errors.length ? t('issue.blocked') : undefined}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setDialog('issue')}
+                disabled={errors.length > 0 || busyAny}
+                title={errors.length ? t('issue.blocked') : undefined}
+                aria-describedby={errors.length ? 'issue-summary' : undefined}
+              >
                 {t('actions.issue')}
               </button>
               <button type="button" className="btn" onClick={() => void downloadPdf()} disabled={busyAny}>
@@ -418,6 +429,20 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               <button type="button" className="btn btn-ghost" onClick={() => void deleteDraft()} disabled={busyAny}>
                 {t('actions.deleteDraft')}
               </button>
+              {errors.length > 0 && (
+                <button
+                  type="button"
+                  id="issue-summary"
+                  className="link-btn issue-summary"
+                  onClick={() => {
+                    const panel = document.getElementById('validation-panel')
+                    panel?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+                    panel?.focus({ preventScroll: true })
+                  }}
+                >
+                  {t('issue.errorsSummary', { count: errors.length })}
+                </button>
+              )}
             </>
           )}
           {ro && (
@@ -444,8 +469,19 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       {ro && (
         <div className={`notice ${invoice.status === 'cancelled' ? 'notice-warn' : 'notice-info'} locked-banner`}>
           <p>{invoice.status === 'cancelled' ? t('editor.cancelledBanner') : t('editor.lockedBanner')}</p>
+          {creditedBy.length > 0 && (
+            <p className="credited-by">
+              {t('editor.creditedBy')}{' '}
+              {creditedBy.map((cn, i) => (
+                <span key={cn.id}>
+                  {i > 0 && ', '}
+                  <Link to={`/invoices/${cn.id}`}>{cn.number || t('list.draftNumber')}</Link>
+                </span>
+              ))}
+            </p>
+          )}
           <div className="btn-row">
-            {invoice.status === 'issued' && (
+            {isUnpaid(invoice) && (
               <button type="button" className="btn btn-sm btn-primary" onClick={() => setDialog('paid')} disabled={busyAny}>
                 {t('actions.markPaid')}
               </button>

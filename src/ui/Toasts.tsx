@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { errorMessage } from './util'
 
-type ToastKind = 'success' | 'error' | 'info'
+type ToastKind = 'success' | 'error' | 'info' | 'warning'
 interface Toast {
   id: number
   kind: ToastKind
@@ -13,6 +13,7 @@ export interface ToastApi {
   success(message: string, action?: Toast['action']): void
   error(message: string | unknown): void
   info(message: string, action?: Toast['action']): void
+  warning(message: string): void
 }
 
 const ToastContext = createContext<ToastApi | null>(null)
@@ -27,7 +28,7 @@ export function ToastProvider({ children, closeLabel = 'Close' }: { children: Re
     (kind: ToastKind, message: string, action?: Toast['action']) => {
       const id = ++seq.current
       setToasts((ts) => [...ts.slice(-4), { id, kind, message, action }])
-      setTimeout(() => dismiss(id), kind === 'error' ? 8000 : 4500)
+      setTimeout(() => dismiss(id), kind === 'error' || kind === 'warning' ? 8000 : 4500)
     },
     [dismiss],
   )
@@ -36,6 +37,7 @@ export function ToastProvider({ children, closeLabel = 'Close' }: { children: Re
     () => ({
       success: (m, a) => push('success', m, a),
       info: (m, a) => push('info', m, a),
+      warning: (m) => push('warning', m),
       error: (m) => push('error', typeof m === 'string' ? m : errorMessage(m)),
     }),
     [push],

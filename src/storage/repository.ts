@@ -11,7 +11,10 @@ import type {
   BackupFile,
   Client,
   CompanyProfile,
+  ISODate,
   Invoice,
+  InvoiceStatus,
+  NumberingSettings,
   SellerSnapshot,
   ValidationIssue,
 } from '../domain/types'
@@ -40,6 +43,11 @@ export interface Repository {
   /** Sorted newest first by issueDate, then createdAt. */
   listInvoices(): Promise<Invoice[]>
   getInvoice(id: string): Promise<Invoice | null>
+  /**
+   * Create / update an invoice. Drafts may change freely. For an already issued (issued / paid / cancelled)
+   * record only `status` (issued ↔ paid, → cancelled), `paidAt` and `updatedAt` may differ from the stored
+   * copy; anything else throws RepositoryError 'immutable'. Prefer the explicit status methods below.
+   */
   saveInvoice(invoice: Invoice): Promise<void>
   /** Only drafts may be deleted; issued invoices must be cancelled/credited instead (RPS requires keeping documents). */
   deleteInvoice(id: string): Promise<void>
@@ -50,17 +58,31 @@ export interface Repository {
    */
   issueInvoice(id: string): Promise<Invoice>
 
+  /**
+   * Mark an issued (or paid, to correct the date) invoice as paid on `paidAt` (YYYY-MM-DD). Applied to the
+   * stored record, so a stale copy in the UI cannot overwrite other fields. Throws 'invalid-transition'
+   * for drafts and cancelled invoices, 'invalid-input' for a malformed date, 'not-found'.
+   */
+  markInvoicePaid(id: string, paidAt: ISODate): Promise<Invoice>
+  /** Paid → issued (clears paidAt). No-op for an issued invoice. Throws 'invalid-transition' for drafts / cancelled. */
+  markInvoiceUnpaid(id: string): Promise<Invoice>
+  /** Issued / paid → cancelled (paidAt is kept). No-op if already cancelled. Throws 'invalid-transition' for drafts (delete them instead). */
+  cancelInvoice(id: string): Promise<Invoice>
+
   getSettings(): Promise<AppSettings>
   saveSettings(settings: AppSettings): Promise<void>
 
   exportBackup(): Promise<BackupFile>
-  /** 'replace' wipes existing data; 'merge' upserts by id (newer updatedAt wins). */
+  /**
+   * 'replace' wipes existing data; 'merge' upserts by id (newer updatedAt wins, but an issued invoice is never
+   * reverted to a draft). The numbering counter never moves backwards — see importBackup for details.
+   */
   importBackup(backup: BackupFile, mode: 'replace' | 'merge'): Promise<ImportResult>
 }
 
 /** Bilingual error raised by repository operations. `code` is stable for UI handling. */
 export class RepositoryError extends Error {
-  readonly code: 'not-found' | 'not-draft' | 'no-profile' | 'immutable' | 'numbering'
+  readonly code: 'not-found' | 'not-draft' | 'no-profile' | 'immutable' | 'numbering' | 'invalid-transition' | 'invalid-input'
   readonly messages: { et: string; en: string }
   constructor(code: RepositoryError['code'], et: string, en: string) {
     super(en)
@@ -104,6 +126,79 @@ function compareInvoices(a: Invoice, b: Invoice): number {
   return d !== 0 ? d : (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
 }
 
+/** Structural equality of JSON-like values; properties set to `undefined` count as absent. */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+  if (Array.isArray(a)) {
+    const bb = b as unknown[]
+    return a.length === bb.length && a.every((v, i) => deepEqual(v, bb[i]))
+  }
+  const ra = a as Record<string, unknown>
+  const rb = b as Record<string, unknown>
+  const keys = new Set([...Object.keys(ra), ...Object.keys(rb)])
+  for (const k of keys) if (!deepEqual(ra[k], rb[k])) return false
+  return true
+}
+
+/** Fields of an issued invoice that may still change (payment / cancellation bookkeeping). */
+const MUTABLE_AFTER_ISSUE = ['status', 'paidAt', 'updatedAt'] as const
+
+function lockedPart(invoice: Invoice): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...invoice }
+  for (const k of MUTABLE_AFTER_ISSUE) delete rest[k]
+  return rest
+}
+
+/** Status changes allowed for an invoice that has been issued. Drafts only leave 'draft' via issueInvoice. */
+function isAllowedIssuedTransition(from: InvoiceStatus, to: InvoiceStatus): boolean {
+  if (from === to) return true
+  if (from === 'cancelled' || to === 'draft') return false
+  return to === 'issued' || to === 'paid' || to === 'cancelled'
+}
+
+function isValidIsoDate(v: unknown): v is ISODate {
+  if (typeof v !== 'string') return false
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v)
+  if (!m) return false
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  return d.toISOString().slice(0, 10) === v
+}
+
+/**
+ * Merge rule for one invoice from a backup. Returns the record to write, or null to keep the local one.
+ * - a non-draft (issued / paid / cancelled) always beats a draft with the same id, whatever the timestamps
+ *   (an issued document must never be reverted to an editable draft);
+ * - between two drafts or two non-drafts the newer updatedAt wins, but an issued invoice keeps its number.
+ */
+function mergeInvoice(existing: Invoice | undefined, incoming: Invoice): Invoice | null {
+  if (!existing) return incoming
+  const existingDraft = existing.status === 'draft'
+  const incomingDraft = incoming.status === 'draft'
+  if (existingDraft !== incomingDraft) return incomingDraft ? null : incoming
+  if (!isNewer(incoming.updatedAt, existing.updatedAt)) return null
+  return existingDraft ? incoming : { ...incoming, number: existing.number }
+}
+
+/**
+ * Highest sequence number among issued invoices whose number matches the numbering prefix pattern
+ * ({YYYY} / {YY} match any year), e.g. prefix "{YYYY}-" and "2025-0042" → 42. 0 if none match.
+ */
+export function highestUsedNumber(invoices: Invoice[], numbering: NumberingSettings): number {
+  const escaped = (numbering.prefix ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = escaped.replace(/\\\{YYYY\\\}/g, '\\d{4}').replace(/\\\{YY\\\}/g, '\\d{2}')
+  const re = new RegExp(`^${pattern}(\\d+)$`)
+  let max = 0
+  for (const inv of invoices) {
+    if (inv.status === 'draft' || !inv.number) continue
+    const m = re.exec(inv.number)
+    const n = m ? Number(m[1]) : NaN
+    if (Number.isSafeInteger(n) && n > max) max = n
+  }
+  return max
+}
+
 export interface RepositoryOptions {
   /** IndexedDB database name (tests use unique names). */
   dbName?: string
@@ -115,6 +210,40 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
   const dbName = options.dbName ?? DB_NAME
   const clock = options.now ?? now
   const db = () => getDb(dbName)
+
+  /**
+   * Apply a status change to the STORED invoice in one readwrite transaction. `apply` returns the new
+   * record, null for "nothing to change", or throws a RepositoryError (the transaction is aborted).
+   */
+  async function changeStatus(id: string, apply: (stored: Invoice) => Invoice | null): Promise<Invoice> {
+    const tx = (await db()).transaction('invoices', 'readwrite')
+    const fail = async (err: unknown): Promise<never> => {
+      try {
+        tx.abort()
+      } catch {
+        // already finished
+      }
+      await tx.done.catch(() => {})
+      throw err
+    }
+    const stored = await tx.store.get(id)
+    if (!stored) return fail(new RepositoryError('not-found', 'Arvet ei leitud.', 'Invoice not found.'))
+    let next: Invoice | null
+    try {
+      next = apply(stored)
+    } catch (e) {
+      return fail(e)
+    }
+    if (!next) {
+      await tx.done
+      return stored
+    }
+    const updated: Invoice = { ...next, updatedAt: clock() }
+    await tx.store.put(updated)
+    await tx.done
+    notifyChange('invoices', id)
+    return updated
+  }
 
   return {
     async getProfile() {
@@ -160,14 +289,31 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       const tx = (await db()).transaction('invoices', 'readwrite')
       const existing = await tx.store.get(invoice.id)
       if (existing && existing.status !== 'draft') {
-        if (invoice.status === 'draft' || invoice.number !== existing.number) {
+        let error: RepositoryError | null = null
+        if (!isAllowedIssuedTransition(existing.status, invoice.status)) {
+          error =
+            invoice.status === 'draft'
+              ? new RepositoryError(
+                  'immutable',
+                  'Väljastatud arvet ei saa mustandiks tagasi muuta.',
+                  'An issued invoice cannot go back to draft.',
+                )
+              : new RepositoryError(
+                  'immutable',
+                  'Tühistatud arve olekut ei saa enam muuta.',
+                  'The status of a cancelled invoice can no longer be changed.',
+                )
+        } else if (!deepEqual(lockedPart(existing), lockedPart(invoice))) {
+          error = new RepositoryError(
+            'immutable',
+            'Väljastatud arvet ei saa muuta – muuta saab ainult tasumise olekut. Vea parandamiseks tühista arve või koosta kreeditarve.',
+            'An issued invoice cannot be edited – only its payment status can change. To correct it, cancel it or issue a credit note.',
+          )
+        }
+        if (error) {
           tx.abort()
           await tx.done.catch(() => {})
-          throw new RepositoryError(
-            'immutable',
-            'Väljastatud arve numbrit ei saa muuta ega arvet mustandiks tagasi muuta.',
-            'An issued invoice cannot get a new number or go back to draft.',
-          )
+          throw error
         }
       }
       const ts = clock()
@@ -258,6 +404,54 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       return issued
     },
 
+    markInvoicePaid(id, paidAt) {
+      return changeStatus(id, (inv) => {
+        if (!isValidIsoDate(paidAt)) {
+          throw new RepositoryError('invalid-input', 'Tasumise kuupäev on vigane.', 'The payment date is invalid.')
+        }
+        if (inv.status === 'draft') {
+          throw new RepositoryError(
+            'invalid-transition',
+            'Mustandit ei saa tasutuks märkida. Väljasta arve enne.',
+            'A draft cannot be marked as paid. Issue it first.',
+          )
+        }
+        if (inv.status === 'cancelled') {
+          throw new RepositoryError('invalid-transition', 'Tühistatud arvet ei saa tasutuks märkida.', 'A cancelled invoice cannot be marked as paid.')
+        }
+        return inv.status === 'paid' && inv.paidAt === paidAt ? null : { ...inv, status: 'paid', paidAt }
+      })
+    },
+
+    markInvoiceUnpaid(id) {
+      return changeStatus(id, (inv) => {
+        if (inv.status === 'draft' || inv.status === 'cancelled') {
+          throw new RepositoryError(
+            'invalid-transition',
+            inv.status === 'draft' ? 'Mustand ei ole tasutud.' : 'Tühistatud arve olekut ei saa enam muuta.',
+            inv.status === 'draft' ? 'A draft is not paid.' : 'The status of a cancelled invoice can no longer be changed.',
+          )
+        }
+        if (inv.status === 'issued' && inv.paidAt === undefined) return null
+        const next: Invoice = { ...inv, status: 'issued' }
+        delete next.paidAt
+        return next
+      })
+    },
+
+    cancelInvoice(id) {
+      return changeStatus(id, (inv) => {
+        if (inv.status === 'draft') {
+          throw new RepositoryError(
+            'invalid-transition',
+            'Mustandit ei saa tühistada – kustuta see.',
+            'A draft cannot be cancelled – delete it instead.',
+          )
+        }
+        return inv.status === 'cancelled' ? null : { ...inv, status: 'cancelled' }
+      })
+    },
+
     async getSettings() {
       const stored = await (await db()).get('settings', SETTINGS_KEY)
       // Merge over defaults so settings added in later versions get a value.
@@ -300,6 +494,9 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         duplicateNumbers: [],
       }
 
+      // Read before anything is cleared / overwritten: the numbering counter must never go below this.
+      const previousProfile = await tx.objectStore('profile').get(PROFILE_KEY)
+
       if (mode === 'replace') {
         await Promise.all(['profile', 'clients', 'invoices', 'settings'].map((s) => tx.objectStore(s as 'clients').clear()))
         for (const c of backup.clients) await tx.objectStore('clients').put(c)
@@ -323,18 +520,15 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
           } else result.clients.skipped++
         }
         for (const i of backup.invoices) {
-          const existing = await tx.objectStore('invoices').get(i.id)
-          if (!existing || isNewer(i.updatedAt, existing.updatedAt)) {
-            await tx.objectStore('invoices').put(i)
+          const chosen = mergeInvoice(await tx.objectStore('invoices').get(i.id), i)
+          if (chosen) {
+            await tx.objectStore('invoices').put(chosen)
             result.invoices.written++
           } else result.invoices.skipped++
         }
         if (backup.profile) {
-          const existing = await tx.objectStore('profile').get(PROFILE_KEY)
-          if (!existing || isNewer(backup.profile.updatedAt, existing.updatedAt)) {
-            // Never move the counter backwards: keep the higher nextNumber.
-            const nextNumber = Math.max(backup.profile.numbering.nextNumber, existing?.numbering.nextNumber ?? 0)
-            await tx.objectStore('profile').put({ ...backup.profile, numbering: { ...backup.profile.numbering, nextNumber } }, PROFILE_KEY)
+          if (!previousProfile || isNewer(backup.profile.updatedAt, previousProfile.updatedAt)) {
+            await tx.objectStore('profile').put(backup.profile, PROFILE_KEY)
             result.profile = 'written'
           } else result.profile = 'skipped'
         }
@@ -348,6 +542,28 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       }
 
       const all = await tx.objectStore('invoices').getAll()
+
+      /*
+       * Numbering counter (both modes), independent of which profile record won by timestamp:
+       *   nextNumber = max(counter before the import, counter in the backup, highest used number + 1)
+       * where "highest used" is the largest sequence of a non-draft invoice now in the database whose number
+       * matches the profile's prefix pattern. So restoring an older backup or merging an older profile can
+       * never make the app hand out a number again. Only the counter is touched; profile.updatedAt is kept.
+       * (Replace with a backup that has no profile still clears the profile.)
+       */
+      const profile = await tx.objectStore('profile').get(PROFILE_KEY)
+      if (profile) {
+        const nextNumber = Math.max(
+          profile.numbering.nextNumber,
+          previousProfile?.numbering.nextNumber ?? 0,
+          backup.profile?.numbering.nextNumber ?? 0,
+          highestUsedNumber(all, profile.numbering) + 1,
+        )
+        if (nextNumber !== profile.numbering.nextNumber) {
+          await tx.objectStore('profile').put({ ...profile, numbering: { ...profile.numbering, nextNumber } }, PROFILE_KEY)
+        }
+      }
+
       const counts = new Map<string, number>()
       for (const i of all) if (i.number) counts.set(i.number, (counts.get(i.number) ?? 0) + 1)
       result.duplicateNumbers = [...counts].filter(([, c]) => c > 1).map(([n]) => n)

@@ -27,8 +27,9 @@ export type InvoiceDb = IDBPDatabase<InvoiceDbSchema>
  * so a user jumping several versions gets every intermediate step. Add new steps as
  * `if (oldVersion < N) { ... }` and bump DB_VERSION.
  */
-export function openInvoiceDb(name: string = DB_NAME): Promise<InvoiceDb> {
-  return openDB<InvoiceDbSchema>(name, DB_VERSION, {
+export function openInvoiceDb(name: string = DB_NAME, onLost?: () => void): Promise<InvoiceDb> {
+  let db: InvoiceDb | undefined
+  const p = openDB<InvoiceDbSchema>(name, DB_VERSION, {
     upgrade(db, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         db.createObjectStore('profile')
@@ -45,21 +46,35 @@ export function openInvoiceDb(name: string = DB_NAME): Promise<InvoiceDb> {
       void tx.objectStore('meta').put(DB_VERSION, 'schemaVersion')
     },
     blocking() {
-      // A newer version was opened in another tab: let it upgrade.
-      void dbPromises.get(name)?.then((db) => db.close())
-      dbPromises.delete(name)
+      // A newer version was opened in another tab: close so it can upgrade; the next call re-opens.
+      db?.close()
+      onLost?.()
     },
+    terminated() {
+      // The browser closed the connection abnormally (storage cleared, disk error, eviction…).
+      onLost?.()
+    },
+  })
+  return p.then((opened) => {
+    db = opened
+    return opened
   })
 }
 
 const dbPromises = new Map<string, Promise<InvoiceDb>>()
 
-/** Shared connection per database name (re-opened lazily after a version-change close). */
+/**
+ * Shared connection per database name. The cached connection is dropped when it is lost
+ * (version change from another tab or abnormal termination), so the next call re-opens it.
+ */
 export function getDb(name: string = DB_NAME): Promise<InvoiceDb> {
   let p = dbPromises.get(name)
   if (!p) {
-    p = openInvoiceDb(name)
-    p.catch(() => dbPromises.delete(name))
+    const forget = () => {
+      if (dbPromises.get(name) === p) dbPromises.delete(name)
+    }
+    p = openInvoiceDb(name, forget)
+    p.catch(forget)
     dbPromises.set(name, p)
   }
   return p

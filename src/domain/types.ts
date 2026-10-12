@@ -94,6 +94,9 @@ export interface InvoiceDefaults {
   /** Default email subject/body templates. Placeholders: {number} {company} {client} {total} {dueDate} */
   emailSubject: string
   emailBody: string
+  /** English templates for invoices in English (and the English half of bilingual emails). Same placeholders. */
+  emailSubjectEn?: string
+  emailBodyEn?: string
 }
 
 export interface NumberingSettings {

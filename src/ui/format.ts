@@ -1,19 +1,14 @@
-// Estonian-style formatting for the UI (amounts "1234,50 €", dates "12.10.2026").
+// Estonian-style formatting for the UI (amounts "1 234,50 €", dates "12.10.2026").
+import type { InvoiceLanguage } from '../domain'
+import { formatMoney as formatDocumentMoney } from '../pdf/format'
 
-const moneyFormatters = new Map<string, Intl.NumberFormat>()
-
-export function formatMoney(value: number, currency = 'EUR'): string {
+/**
+ * Money exactly as printed on the PDF: ET/bilingual "7 470,93 €" (non-breaking space groups, comma decimal),
+ * EN "€7,470.93". The UI itself uses the Estonian style (inputs accept comma decimals).
+ */
+export function formatMoney(value: number, currency = 'EUR', lang: InvoiceLanguage = 'et'): string {
   if (!Number.isFinite(value)) return '—'
-  let f = moneyFormatters.get(currency)
-  if (!f) {
-    try {
-      f = new Intl.NumberFormat('et-EE', { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    } catch {
-      f = new Intl.NumberFormat('et-EE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    }
-    moneyFormatters.set(currency, f)
-  }
-  return f.format(value)
+  return formatDocumentMoney(value, currency || 'EUR', lang)
 }
 
 const numberFormatter = new Intl.NumberFormat('et-EE', { maximumFractionDigits: 4 })

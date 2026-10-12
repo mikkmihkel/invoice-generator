@@ -7,7 +7,7 @@ import { useApp } from '../AppContext'
 import { StatusChip } from '../components/misc'
 import { formatDate, formatMoney } from '../format'
 import { useToast } from '../Toasts'
-import { daysBetween, displayStatus, errorMessage, getLastBackupAt, localTodayISO, safeTotals, sumByCurrency, type DisplayStatus } from '../util'
+import { daysBetween, displayStatus, errorMessage, getLastBackupAt, isUnpaid, localTodayISO, safeTotals, sumByCurrency, type DisplayStatus } from '../util'
 import { MarkPaidDialog } from './editor/StatusDialogs'
 
 type StatusFilter = 'all' | 'unpaid' | DisplayStatus
@@ -49,7 +49,7 @@ export default function InvoiceList() {
   const years = useMemo(() => [...new Set(invoices.map((i) => i.issueDate.slice(0, 4)))].sort().reverse(), [invoices])
 
   const summary = useMemo(() => {
-    const unpaid = rows.filter((r) => r.status === 'issued' || r.status === 'overdue')
+    const unpaid = rows.filter((r) => isUnpaid(r.inv))
     const overdue = rows.filter((r) => r.status === 'overdue')
     const year = rows.filter((r) => (r.status === 'issued' || r.status === 'overdue' || r.status === 'paid') && r.inv.issueDate.startsWith(thisYear))
     const sum = (rs: Row[]) => sumByCurrency(rs.map((r) => ({ amount: r.gross, currency: r.inv.currency })))
@@ -58,7 +58,7 @@ export default function InvoiceList() {
 
   const q = query.trim().toLowerCase()
   const filtered = rows.filter((r) => {
-    if (status === 'unpaid' ? !(r.status === 'issued' || r.status === 'overdue') : status !== 'all' && r.status !== status) return false
+    if (status === 'unpaid' ? !isUnpaid(r.inv) : status !== 'all' && r.status !== status) return false
     if (year !== 'all' && !r.inv.issueDate.startsWith(year)) return false
     if (q && ![r.inv.number, r.inv.buyer.name, r.inv.orderReference, r.inv.buyer.registryCode].some((s) => s?.toLowerCase().includes(q))) return false
     return true
@@ -200,7 +200,7 @@ export default function InvoiceList() {
                         PDF
                       </button>
                     )}
-                    {inv.status === 'issued' && (
+                    {isUnpaid(inv) && (
                       <button type="button" className="btn btn-sm" onClick={() => setPaying(inv)}>
                         {t('actions.markPaid')}
                       </button>

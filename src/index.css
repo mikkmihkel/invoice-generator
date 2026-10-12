@@ -845,6 +845,9 @@ h1 .chip {
 .toast-error {
   border-left-color: var(--danger);
 }
+.toast-warning {
+  border-left-color: var(--warning);
+}
 .toast-msg {
   flex: 1;
   white-space: pre-line;
@@ -1599,6 +1602,26 @@ button.summary-card:hover {
 .issue-hint {
   padding: 0 4px;
 }
+/* Shown under the disabled issue button only when the validation panel sits below the form. */
+.issue-summary {
+  display: none;
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+.issue-fix-link {
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--primary);
+}
+.subhead {
+  font-size: 0.95rem;
+  margin-top: 8px;
+}
+.credited-by {
+  margin: 0;
+  flex-basis: 100%;
+}
 
 .buyer {
   display: flex;
@@ -1852,6 +1875,9 @@ button.summary-card:hover {
 @media (max-width: 1180px) {
   .editor-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .issue-summary {
+    display: inline;
   }
   .editor-side {
     position: static;

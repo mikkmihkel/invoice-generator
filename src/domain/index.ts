@@ -33,6 +33,10 @@ export {
 export {
   createEmptyInvoice,
   createDefaultProfile,
+  DEFAULT_EMAIL_SUBJECT_ET,
+  DEFAULT_EMAIL_BODY_ET,
+  DEFAULT_EMAIL_SUBJECT_EN,
+  DEFAULT_EMAIL_BODY_EN,
   createDefaultSettings,
   newId,
   todayISO,

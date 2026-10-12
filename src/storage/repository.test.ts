@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BackupFormatError, parseBackup, serializeBackup } from './backup'
 import { subscribe, type StorageChange } from './events'
-import { createRepository, InvoiceValidationError, RepositoryError, requestPersistentStorage, type Repository } from './repository'
+import type { BackupFile, Invoice } from '../domain/types'
+import { createRepository, highestUsedNumber, InvoiceValidationError, RepositoryError, requestPersistentStorage, type Repository } from './repository'
 import { makeClient, makeInvoice, makeProfile } from './testFixtures'
 
 let dbCounter = 0
@@ -255,7 +256,7 @@ describe('backup', () => {
     expect(() => parseBackup(JSON.stringify({ app: 'invoice-generator', version: 2, clients: [], invoices: [] }))).toThrow(/version/)
     expect(() => parseBackup(JSON.stringify({ app: 'invoice-generator', version: 1, clients: {}, invoices: [] }))).toThrow(BackupFormatError)
     expect(() =>
-      parseBackup(JSON.stringify({ app: 'invoice-generator', version: 1, clients: [], invoices: [{ id: 'x', updatedAt: '', number: '', status: 'weird', lines: [], buyer: {} }] })),
+      parseBackup(JSON.stringify({ app: 'invoice-generator', version: 1, clients: [], invoices: [{ ...makeInvoice('x'), status: 'weird' }] })),
     ).toThrow(/status/)
     await expect(repo.importBackup({ app: 'nope' } as never, 'replace')).rejects.toBeInstanceOf(BackupFormatError)
     expect(await repo.getClient('keep')).not.toBeNull()
@@ -294,5 +295,218 @@ describe('requestPersistentStorage', () => {
     Object.defineProperty(navigator, 'storage', { value: { persisted: vi.fn().mockResolvedValue(false), persist }, configurable: true })
     expect(await requestPersistentStorage()).toBe(true)
     expect(persist).toHaveBeenCalled()
+  })
+})
+
+const backupOf = (over: Partial<BackupFile> = {}): BackupFile => ({
+  app: 'invoice-generator',
+  version: 1,
+  exportedAt: '2026-06-01T00:00:00.000Z',
+  profile: null,
+  settings: null,
+  clients: [],
+  invoices: [],
+  ...over,
+})
+
+describe('issued invoices are locked', () => {
+  async function issued(r: Repository = repo) {
+    await r.saveProfile(makeProfile())
+    await r.saveInvoice(makeInvoice('x'))
+    return r.issueInvoice('x')
+  }
+
+  it('rejects any edit other than status / paidAt', async () => {
+    const inv = await issued()
+    const attempts: Partial<Invoice>[] = [
+      { lines: [{ ...inv.lines[0], unitPrice: 999 }] },
+      { buyer: { ...inv.buyer, name: 'Teine AS' } },
+      { seller: { ...inv.seller, name: 'Muu OÜ' } },
+      { dueDate: '2026-12-31' },
+      { notes: 'lisatud märkus' },
+      { issuedAt: '2020-01-01T00:00:00.000Z' },
+      { createdAt: '2020-01-01T00:00:00.000Z' },
+    ]
+    for (const change of attempts) {
+      const err = await repo.saveInvoice({ ...inv, ...change }).catch((e: unknown) => e)
+      expect(err, JSON.stringify(change)).toBeInstanceOf(RepositoryError)
+      expect((err as RepositoryError).code).toBe('immutable')
+      expect((err as RepositoryError).messages.et).toMatch(/Väljastatud arvet ei saa muuta/)
+    }
+    expect(await repo.getInvoice('x')).toEqual(inv)
+  })
+
+  it('allows re-saving an unchanged copy (undefined props count as absent) and payment status changes', async () => {
+    const inv = await issued()
+    await repo.saveInvoice({ ...inv, notes: undefined, updatedAt: 'whatever' })
+    await repo.saveInvoice({ ...inv, status: 'paid', paidAt: '2026-03-20' })
+    await repo.saveInvoice({ ...inv, status: 'issued', paidAt: undefined })
+    expect((await repo.getInvoice('x'))?.status).toBe('issued')
+    await repo.saveInvoice({ ...inv, status: 'cancelled' })
+    expect((await repo.getInvoice('x'))?.status).toBe('cancelled')
+  })
+
+  it('never lets a cancelled invoice change status again', async () => {
+    const inv = await issued()
+    await repo.saveInvoice({ ...inv, status: 'cancelled' })
+    for (const status of ['issued', 'paid', 'draft'] as const) {
+      await expect(repo.saveInvoice({ ...inv, status })).rejects.toMatchObject({ code: 'immutable' })
+    }
+  })
+
+  it('keeps drafts freely editable', async () => {
+    await repo.saveInvoice(makeInvoice('d'))
+    await repo.saveInvoice(makeInvoice('d', { notes: 'muudetud', lines: [] }))
+    expect((await repo.getInvoice('d'))?.notes).toBe('muudetud')
+  })
+
+  it('importBackup (restore) bypasses the lock', async () => {
+    const inv = await issued()
+    await repo.importBackup(backupOf({ invoices: [{ ...inv, notes: 'taastatud' }] }), 'replace')
+    expect((await repo.getInvoice('x'))?.notes).toBe('taastatud')
+  })
+})
+
+describe('invoice status methods', () => {
+  async function issued() {
+    await repo.saveProfile(makeProfile())
+    await repo.saveInvoice(makeInvoice('x'))
+    return repo.issueInvoice('x')
+  }
+
+  it('markInvoicePaid / markInvoiceUnpaid / cancelInvoice update the stored record and emit changes', async () => {
+    await issued()
+    const changes: StorageChange[] = []
+    const unsubscribe = subscribe((c) => changes.push(c))
+    const paid = await repo.markInvoicePaid('x', '2026-03-20')
+    expect(paid).toMatchObject({ status: 'paid', paidAt: '2026-03-20' })
+    expect(await repo.getInvoice('x')).toEqual(paid)
+    // correcting the payment date is allowed
+    expect((await repo.markInvoicePaid('x', '2026-03-21')).paidAt).toBe('2026-03-21')
+
+    const unpaid = await repo.markInvoiceUnpaid('x')
+    expect(unpaid.status).toBe('issued')
+    expect(unpaid).not.toHaveProperty('paidAt')
+    expect(await repo.getInvoice('x')).toEqual(unpaid)
+
+    await repo.markInvoicePaid('x', '2026-03-22')
+    const cancelled = await repo.cancelInvoice('x')
+    expect(cancelled).toMatchObject({ status: 'cancelled', paidAt: '2026-03-22' })
+    unsubscribe()
+    expect(changes.filter((c) => c.area === 'invoices' && c.id === 'x')).toHaveLength(5)
+  })
+
+  it('a stale UI copy cannot overwrite fields or lose paidAt', async () => {
+    const stale = await issued()
+    await repo.markInvoicePaid('x', '2026-03-20')
+    // UI still holds the pre-payment copy and tries to save it with an edit
+    await expect(repo.saveInvoice({ ...stale, notes: 'muudetud' })).rejects.toMatchObject({ code: 'immutable' })
+    const cancelled = await repo.cancelInvoice('x')
+    expect(cancelled.paidAt).toBe('2026-03-20')
+    expect(cancelled.lines).toEqual(stale.lines)
+  })
+
+  it('validates transitions', async () => {
+    await repo.saveInvoice(makeInvoice('d'))
+    await expect(repo.markInvoicePaid('d', '2026-03-20')).rejects.toMatchObject({ code: 'invalid-transition' })
+    await expect(repo.markInvoiceUnpaid('d')).rejects.toMatchObject({ code: 'invalid-transition' })
+    await expect(repo.cancelInvoice('d')).rejects.toMatchObject({ code: 'invalid-transition' })
+    expect((await repo.getInvoice('d'))?.status).toBe('draft')
+
+    await issued()
+    await expect(repo.markInvoicePaid('x', '2026-02-30')).rejects.toMatchObject({ code: 'invalid-input' })
+    await repo.cancelInvoice('x')
+    await expect(repo.markInvoicePaid('x', '2026-03-20')).rejects.toMatchObject({ code: 'invalid-transition' })
+    await expect(repo.markInvoiceUnpaid('x')).rejects.toMatchObject({ code: 'invalid-transition' })
+    // idempotent
+    expect((await repo.cancelInvoice('x')).status).toBe('cancelled')
+    await expect(repo.cancelInvoice('missing')).rejects.toMatchObject({ code: 'not-found' })
+  })
+
+  it('markInvoiceUnpaid on an issued invoice is a no-op', async () => {
+    const inv = await issued()
+    expect(await repo.markInvoiceUnpaid('x')).toEqual(inv)
+  })
+})
+
+describe('import: merge rules and numbering', () => {
+  const T = (d: string) => `2026-${d}T00:00:00.000Z`
+
+  it('an issued invoice always beats a draft with the same id, regardless of timestamps', async () => {
+    await repo.saveInvoice(makeInvoice('local-issued', { number: 'A1', status: 'issued', updatedAt: T('01-01') }))
+    await repo.saveInvoice(makeInvoice('local-draft', { notes: 'local' }))
+    const result = await repo.importBackup(
+      backupOf({
+        invoices: [
+          makeInvoice('local-issued', { status: 'draft', notes: 'newer draft', updatedAt: T('12-01') }),
+          makeInvoice('local-draft', { number: 'A2', status: 'paid', updatedAt: T('01-01') }),
+        ],
+      }),
+      'merge',
+    )
+    expect(await repo.getInvoice('local-issued')).toMatchObject({ status: 'issued', number: 'A1' })
+    expect(await repo.getInvoice('local-draft')).toMatchObject({ status: 'paid', number: 'A2' })
+    expect(result.invoices).toEqual({ written: 1, skipped: 1 })
+  })
+
+  it('between two non-drafts the newer wins but the number never changes', async () => {
+    await repo.saveInvoice(makeInvoice('i', { number: 'A1', status: 'issued' }))
+    await repo.importBackup(
+      backupOf({ invoices: [makeInvoice('i', { number: 'A9', status: 'paid', paidAt: '2026-11-01', updatedAt: '2099-01-01T00:00:00.000Z' })] }),
+      'merge',
+    )
+    expect(await repo.getInvoice('i')).toMatchObject({ status: 'paid', number: 'A1', paidAt: '2026-11-01' })
+    await repo.importBackup(backupOf({ invoices: [makeInvoice('i', { number: 'A1', status: 'issued', updatedAt: T('01-01') })] }), 'merge')
+    expect((await repo.getInvoice('i'))?.status).toBe('paid')
+  })
+
+  it('keeps both invoices when different ids share a number and reports it', async () => {
+    await repo.saveInvoice(makeInvoice('a', { number: 'A1', status: 'issued' }))
+    const result = await repo.importBackup(backupOf({ invoices: [makeInvoice('b', { number: 'A1', status: 'paid' })] }), 'merge')
+    expect(await repo.getInvoice('a')).not.toBeNull()
+    expect(await repo.getInvoice('b')).not.toBeNull()
+    expect(result.duplicateNumbers).toEqual(['A1'])
+  })
+
+  it('merge keeps the higher nextNumber even when the local profile wins by timestamp', async () => {
+    const r = createRepository({ dbName: `num-${Math.random()}`, now: () => T('09-01') })
+    await r.saveProfile(makeProfile({ name: 'Local', numbering: { prefix: 'A', nextNumber: 3, padding: 1 } }))
+    const result = await r.importBackup(
+      backupOf({ profile: makeProfile({ name: 'Old', numbering: { prefix: 'A', nextNumber: 40, padding: 1 }, updatedAt: T('01-01') }) }),
+      'merge',
+    )
+    expect(result.profile).toBe('skipped')
+    expect(await r.getProfile()).toMatchObject({ name: 'Local', numbering: { nextNumber: 40 }, updatedAt: T('09-01') })
+  })
+
+  it('replace never moves the counter below the pre-import value', async () => {
+    await repo.saveProfile(makeProfile({ numbering: { prefix: 'A', nextNumber: 25, padding: 1 } }))
+    await repo.importBackup(backupOf({ profile: makeProfile({ numbering: { prefix: 'A', nextNumber: 5, padding: 1 } }) }), 'replace')
+    expect((await repo.getProfile())?.numbering.nextNumber).toBe(25)
+  })
+
+  it('replace raises the counter above the highest issued number matching the prefix', async () => {
+    await repo.importBackup(
+      backupOf({
+        profile: makeProfile({ numbering: { prefix: '{YYYY}-', nextNumber: 2, padding: 4 } }),
+        invoices: [
+          makeInvoice('a', { number: '2025-0041', status: 'paid' }),
+          makeInvoice('b', { number: '2026-0007', status: 'issued' }),
+          makeInvoice('c', { number: 'OTHER-0999', status: 'issued' }),
+          makeInvoice('d', { number: '2026-0500', status: 'draft' }),
+        ],
+      }),
+      'replace',
+    )
+    expect((await repo.getProfile())?.numbering.nextNumber).toBe(42)
+  })
+})
+
+describe('highestUsedNumber', () => {
+  it('matches prefixes with placeholders and regex characters', () => {
+    const inv = (number: string) => makeInvoice(number, { number, status: 'issued' })
+    expect(highestUsedNumber([inv('ARVE-26/007'), inv('ARVE-25/010'), inv('ARVE-2026/999')], { prefix: 'ARVE-{YY}/', nextNumber: 1, padding: 3 })).toBe(10)
+    expect(highestUsedNumber([inv('A.1'), inv('AX2')], { prefix: 'A.', nextNumber: 1, padding: 0 })).toBe(1)
+    expect(highestUsedNumber([], { prefix: '', nextNumber: 1, padding: 0 })).toBe(0)
   })
 })
