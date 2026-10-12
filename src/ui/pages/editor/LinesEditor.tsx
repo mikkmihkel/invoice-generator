@@ -45,7 +45,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
     requestAnimationFrame(() => document.getElementById(`line-${dir < 0 ? 'up' : 'down'}-${next[j].id}`)?.focus())
   }
   const add = () => {
-    const l = newLine(defaultUnit, showRates ? defaultVatRate : lines[lines.length - 1]?.vatRate ?? defaultVatRate)
+    const l = newLine(defaultUnit, showRates ? defaultVatRate : 0)
     onChange([...lines, l])
     requestAnimationFrame(() => document.getElementById(fieldId(`lines.${lines.length}.description`))?.focus())
   }

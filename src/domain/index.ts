@@ -44,3 +44,4 @@ export {
   sellerSnapshot,
   buyerSnapshot,
 } from './factory'
+export { withVatScheme } from './scheme'

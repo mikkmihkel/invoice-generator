@@ -1,16 +1,15 @@
-import { createEmptyInvoice, newId, type Client, type CompanyProfile, type Invoice } from '../../../domain'
+import { createEmptyInvoice, effectiveVatScheme, newId, withVatScheme, type Client, type CompanyProfile, type Invoice } from '../../../domain'
 import { addDaysISO, buyerFromClient, daysBetween, nowISO } from '../../util'
 
 /** New in-memory draft for the profile (and optional client). */
 export function newDraft(profile: CompanyProfile, client?: Client): Invoice {
   let inv = createEmptyInvoice(profile, client)
   if (client && inv.buyer.clientId !== client.id) {
-    inv = {
-      ...inv,
-      buyer: buyerFromClient(client),
-      language: client.defaultLanguage ?? inv.language,
-      vatScheme: client.defaultVatScheme ?? inv.vatScheme,
-    }
+    inv = withVatScheme(
+      { ...inv, buyer: buyerFromClient(client), language: client.defaultLanguage ?? inv.language },
+      effectiveVatScheme(profile, client.defaultVatScheme ?? inv.vatScheme),
+      profile.defaults.defaultVatRate,
+    )
   }
   return inv
 }

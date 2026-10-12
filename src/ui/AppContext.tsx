@@ -39,7 +39,7 @@ function fallbackSettings(): AppSettings {
   try {
     return createDefaultSettings()
   } catch {
-    return { uiLanguage: 'et', driveFolderName: 'Arved', registryLiveLookup: false, updatedAt: nowISO() }
+    return { uiLanguage: 'et', driveFolderName: 'Arved', registryLiveLookup: true, updatedAt: nowISO() }
   }
 }
 

@@ -3,6 +3,7 @@ import type { Content, ContentStack, ContentTable, ContentText, CustomTableLayou
 import { addressLines, COLORS, type DocContext } from './context'
 import { formatIban, formatQuantity, formatUnitPrice } from './format'
 import { creditNoteText, lateInterestText, referenceHint, type LabelKey } from './labels'
+import { vatSchemeAllowsRates } from '../domain/law'
 
 export interface TableStyle {
   layout: CustomTableLayout
@@ -141,7 +142,8 @@ export function linesTable(ctx: DocContext, s: TableStyle): ContentTable {
     { key: 'unitPrice', width: 'auto', align: 'right' },
   ]
   if (ctx.showDiscount) cols.push({ key: 'discount', width: 'auto', align: 'right' })
-  if (totals.showVat) cols.push({ key: 'vatRate', width: 'auto', align: 'right' })
+  // Per-line rates only mean something for domestic VAT; other schemes are explained by the scheme note.
+  if (totals.showVat && vatSchemeAllowsRates(invoice.vatScheme)) cols.push({ key: 'vatRate', width: 'auto', align: 'right' })
   cols.push({ key: 'lineTotal', width: 'auto', align: 'right' })
 
   const header: TableCell[] = cols.map((c) =>

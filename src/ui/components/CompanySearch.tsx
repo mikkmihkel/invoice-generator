@@ -36,14 +36,25 @@ export function CompanySearch({ onPick, label, autoFocus, placeholder }: Props) 
       return
     }
     const ctrl = new AbortController()
+    // Never leave the previous query's results pickable while the new search runs.
+    setResults([])
+    setActive(-1)
     setLoading(true)
+    const show = (r: RegistryCompany[]) => {
+      if (ctrl.signal.aborted) return
+      setResults(r)
+      setFailed(false)
+      setActive(r.length ? 0 : -1)
+    }
     const handle = setTimeout(() => {
-      searchCompanies(q, { limit: 10, live, signal: ctrl.signal })
-        .then((r) => {
-          if (ctrl.signal.aborted) return
-          setResults(r)
-          setFailed(false)
-          setActive(r.length ? 0 : -1)
+      // Bundled index first (fast), then refine with the live API when enabled.
+      searchCompanies(q, { limit: 10, live: false, signal: ctrl.signal })
+        .then(async (r) => {
+          show(r)
+          if (live && !ctrl.signal.aborted) {
+            const withLive = await searchCompanies(q, { limit: 10, live: true, signal: ctrl.signal })
+            if (withLive.length) show(withLive)
+          }
         })
         .catch((e) => {
           if (ctrl.signal.aborted) return

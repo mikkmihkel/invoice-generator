@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  newId,
   isValidReferenceNumber,
   validateInvoice,
   vatSchemeNote,
+  withVatScheme,
+  effectiveVatScheme,
   type BuyerSnapshot,
   type Client,
   type Invoice,
@@ -73,7 +76,10 @@ export default function InvoiceEditorRoute() {
   const { id = 'new' } = useParams()
   const location = useLocation()
   const stateKey = (location.state as { editorKey?: string } | null)?.editorKey
-  const key = stateKey ?? (id === 'new' ? 'new-' + location.key : id)
+  // Each navigation yields a new location object; typed/bookmarked URLs all share location.key 'default',
+  // so derive a fresh key per navigation to always start a new draft on /invoices/new.
+  const navKey = useMemo(() => 'new-' + newId(), [location]) // eslint-disable-line react-hooks/exhaustive-deps
+  const key = stateKey ?? (id === 'new' ? navKey : id)
   return <InvoiceEditor key={key} id={id} editorKey={key} />
 }
 
@@ -178,9 +184,23 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   useEffect(() => {
     mountedRef.current = true
     const onHide = () => void flushRef.current()
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') void flushRef.current()
+    }
+    // IndexedDB writes may not finish during unload: flush early and ask the browser to confirm leaving.
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return
+      void flushRef.current()
+      e.preventDefault()
+      e.returnValue = ''
+    }
     window.addEventListener('pagehide', onHide)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.removeEventListener('pagehide', onHide)
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      document.removeEventListener('visibilitychange', onVisibility)
       mountedRef.current = false
       void flushRef.current()
     }
@@ -354,12 +374,13 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   }
 
   const onPickClient = (c: Client) =>
-    edit((inv) => ({
-      ...inv,
-      buyer: buyerFromClient(c),
-      language: c.defaultLanguage ?? inv.language,
-      vatScheme: c.defaultVatScheme ?? inv.vatScheme,
-    }))
+    edit((inv) =>
+      withVatScheme(
+        { ...inv, buyer: buyerFromClient(c), language: c.defaultLanguage ?? inv.language },
+        effectiveVatScheme(profile, c.defaultVatScheme ?? inv.vatScheme),
+        profile.defaults.defaultVatRate,
+      ),
+    )
 
   const busyAny = busy !== null
 
@@ -485,7 +506,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
           <Section id="sec-vat" title={t('editor.vat')}>
             <div className="grid">
-              <SelectField className="span-2" label={t('field.vatScheme')} path="vatScheme" value={invoice.vatScheme} onChange={(vatScheme) => set({ vatScheme })} options={vatSchemeOptions(t)} />
+              <SelectField className="span-2" label={t('field.vatScheme')} path="vatScheme" value={invoice.vatScheme} onChange={(vatScheme) => edit((inv) => withVatScheme(inv, vatScheme, profile.defaults.defaultVatRate))} options={vatSchemeOptions(t)} />
               <SelectField<InvoiceType>
                 label={t('field.invoiceType')}
                 path="type"
