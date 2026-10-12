@@ -151,7 +151,8 @@ async function matchesForToken(meta: IndexMeta, token: string, signal?: AbortSig
   let complete = true
   if (loc.viaStar) {
     complete = false
-    for (const p of shard.t[token] ?? []) out.push(toCandidate(p))
+    // Own keys only: a token like "constructor" must not resolve to an inherited property.
+    if (Object.hasOwn(shard.t, token)) for (const p of shard.t[token]) out.push(toCandidate(p))
     for (const p of shard.s ?? []) out.push(toCandidate(p))
   } else {
     for (const [tok, postings] of Object.entries(shard.t)) {

@@ -250,3 +250,24 @@ export function logoImageSrc(value: string | undefined): string | undefined {
 export function accentColor(value: string | undefined): string {
   return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : DEFAULT_ACCENT
 }
+
+type Versioned = { id: string; updatedAt?: string }
+
+/**
+ * Next list from storage, keeping the previous array and unchanged items (same id + updatedAt) so dependants
+ * (e.g. the PDF preview) don't re-render. The repository stamps `updatedAt` on every write.
+ */
+export function reconcileList<T extends Versioned>(prev: T[], next: T[]): T[] {
+  const byId = new Map(prev.map((x) => [x.id, x]))
+  let changed = prev.length !== next.length
+  const out = next.map((x, i) => {
+    const old = byId.get(x.id)
+    if (old && old.updatedAt === x.updatedAt) {
+      if (prev[i] !== old) changed = true
+      return old
+    }
+    changed = true
+    return x
+  })
+  return changed ? out : prev
+}

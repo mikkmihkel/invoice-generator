@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createDefaultSettings, type AppSettings, type Client, type CompanyProfile, type Invoice, type UiLanguage } from '../domain'
 import { getRepository, subscribe, type Repository, type StorageArea } from '../storage'
 import { makeT, type Translate } from './i18n'
-import { errorMessage, nowISO, setErrorLanguage, sortInvoices } from './util'
+import { errorMessage, nowISO, reconcileList, setErrorLanguage, sortInvoices } from './util'
 
 export interface AppData {
   ready: boolean
@@ -30,27 +30,6 @@ export interface AppData {
 }
 
 const AppContext = createContext<AppData | null>(null)
-
-type Versioned = { id: string; updatedAt?: string }
-
-/**
- * Next list from storage, keeping the previous array and unchanged items (same id + updatedAt) so dependants
- * (e.g. the PDF preview) don't re-render. The repository stamps `updatedAt` on every write.
- */
-export function reconcileList<T extends Versioned>(prev: T[], next: T[]): T[] {
-  const byId = new Map(prev.map((x) => [x.id, x]))
-  let changed = prev.length !== next.length
-  const out = next.map((x, i) => {
-    const old = byId.get(x.id)
-    if (old && old.updatedAt === x.updatedAt) {
-      if (prev[i] !== old) changed = true
-      return old
-    }
-    changed = true
-    return x
-  })
-  return changed ? out : prev
-}
 
 function reconcileOne<T extends { updatedAt?: string }>(prev: T | null, next: T | null): T | null {
   return prev && next && prev.updatedAt === next.updatedAt ? prev : next

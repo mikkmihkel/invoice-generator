@@ -4,6 +4,12 @@ import { useApp } from '../../AppContext'
 import { DecimalInput, fieldId } from '../../components/fields'
 import { formatMoney } from '../../format'
 import { vatRates } from '../../options'
+import { roundTo } from '../../util'
+
+// Same precision as the PDF prints (quantity 3, unit price 4 decimals), so printed qty × price matches the line total.
+const QTY_DECIMALS = 3
+const PRICE_DECIMALS = 4
+const DISCOUNT_DECIMALS = 2
 
 export function newLine(unit: string, vatRate: number): InvoiceLine {
   return { id: newId(), description: '', quantity: 1, unit, unitPrice: 0, vatRate }
@@ -80,7 +86,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                 <label className="line-label" htmlFor={fieldId(`${p}.quantity`)}>
                   {t('lines.quantity')}
                 </label>
-                <DecimalInput id={fieldId(`${p}.quantity`)} value={l.quantity} onChange={(v) => update(i, { quantity: v ?? 0 })} disabled={disabled} />
+                <DecimalInput id={fieldId(`${p}.quantity`)} value={l.quantity} onChange={(v) => update(i, { quantity: roundTo(v ?? 0, QTY_DECIMALS) })} disabled={disabled} />
               </div>
               <div className="c-unit">
                 <label className="line-label" htmlFor={fieldId(`${p}.unit`)}>
@@ -92,7 +98,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                 <label className="line-label" htmlFor={fieldId(`${p}.unitPrice`)}>
                   {t('lines.unitPrice')}
                 </label>
-                <DecimalInput id={fieldId(`${p}.unitPrice`)} value={l.unitPrice} onChange={(v) => update(i, { unitPrice: v ?? 0 })} disabled={disabled} />
+                <DecimalInput id={fieldId(`${p}.unitPrice`)} value={l.unitPrice} onChange={(v) => update(i, { unitPrice: roundTo(v ?? 0, PRICE_DECIMALS) })} disabled={disabled} />
               </div>
               {discountCol && (
                 <div className="c-disc">
@@ -103,7 +109,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                     id={fieldId(`${p}.discountPercent`)}
                     value={l.discountPercent}
                     allowEmpty
-                    onChange={(v) => update(i, { discountPercent: v == null || v === 0 ? undefined : Math.min(100, Math.max(0, v)) })}
+                    onChange={(v) => update(i, { discountPercent: v == null || v === 0 ? undefined : roundTo(Math.min(100, Math.max(0, v)), DISCOUNT_DECIMALS) })}
                     disabled={disabled}
                     placeholder="0"
                   />

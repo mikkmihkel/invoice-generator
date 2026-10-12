@@ -2158,3 +2158,27 @@ button.summary-card:hover {
   overflow-wrap: anywhere;
   margin-top: 6px;
 }
+
+.save-error {
+  color: var(--danger);
+}
+.backup-changes {
+  margin-top: 12px;
+}
+.change-list {
+  margin: 8px 0;
+}
+.change-list > div {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.change-list dt {
+  font-weight: 600;
+}
+.change-list dd {
+  overflow-wrap: anywhere;
+}
+.change-from {
+  text-decoration: line-through;
+}

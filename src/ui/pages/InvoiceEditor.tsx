@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  computeTotals,
   newId,
+  formatInvoiceNumber,
   isValidReferenceNumber,
+  selectedBankAccounts,
   validateInvoice,
+  vatNoteMode,
+  vatNoteRelevant,
   vatSchemeNote,
   withVatScheme,
   effectiveVatScheme,
@@ -11,7 +16,6 @@ import {
   type Client,
   type Invoice,
   type InvoiceType,
-  type ValidationIssue,
 } from '../../domain'
 import { buildUblXml, eInvoiceIssues } from '../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../integrations'
@@ -25,51 +29,16 @@ import { Section, StatusChip } from '../components/misc'
 import { formatDate, formatDateTime, formatIban } from '../format'
 import { CURRENCIES, languageOptions, vatSchemeOptions } from '../options'
 import { useToast } from '../Toasts'
-import { addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isUnpaid, nowISO, safeTotals, buyerFromClient } from '../util'
+import { addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
-import { creditNoteFor, duplicateInvoice, newDraft } from './editor/builders'
+import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './editor/builders'
 import { EmailDialog } from './editor/EmailDialog'
 import { LinesEditor } from './editor/LinesEditor'
 import { PdfPreview } from './editor/PdfPreview'
-import { IssueDialog, MarkPaidDialog } from './editor/StatusDialogs'
+import { IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
+import { useAutosave } from './editor/useAutosave'
 import { ValidationPanel } from './editor/ValidationPanel'
 import { numberingPreview } from './ProfileForm'
-
-type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
-
-function safeValidate(inv: Invoice): ValidationIssue[] {
-  try {
-    // Drafts get their number when issued.
-    return validateInvoice(inv, { requireNumber: inv.status !== 'draft' })
-  } catch (e) {
-    console.error('validateInvoice failed', e)
-    return []
-  }
-}
-
-function safeNote(inv: Invoice): string | null {
-  try {
-    return vatSchemeNote(inv.vatScheme, inv.language, inv.vatExemptionNote)
-  } catch {
-    return null
-  }
-}
-
-function safeEInvoiceIssues(inv: Invoice): { field: string; message: { et: string; en: string } }[] {
-  try {
-    return eInvoiceIssues(inv)
-  } catch {
-    return []
-  }
-}
-
-function safeFileName(inv: Invoice, ext: 'pdf' | 'xml'): string {
-  try {
-    return invoiceFileName(inv, ext)
-  } catch {
-    return `invoice-${(inv.number || 'draft').replace(/[^\w-]+/g, '_')}.${ext}`
-  }
-}
 
 /** Keeps one editor instance alive across the /invoices/new → /invoices/:id URL swap after the first autosave. */
 export default function InvoiceEditorRoute() {
@@ -91,27 +60,35 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const navigate = useNavigate()
   const [search] = useSearchParams()
 
-  const [invoice, setInvoice] = useState<Invoice | null>(null)
+  const [invoice, setInvoiceState] = useState<Invoice | null>(null)
   const [notFound, setNotFound] = useState(false)
-  const [saveState, setSaveState] = useState<SaveState>('idle')
   const [dialog, setDialog] = useState<null | 'issue' | 'paid' | 'email'>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
-  const invoiceRef = useRef<Invoice | null>(null)
-  const dirtyRef = useRef(false)
   const persistedRef = useRef(false)
   const mountedRef = useRef(true)
-  const saveRef = useRef(app.saveInvoice)
-  saveRef.current = app.saveInvoice
-  invoiceRef.current = invoice
-
   useEffect(() => {
-    try {
-      preloadPdfMake()
-    } catch {
-      /* preview will report problems */
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
     }
   }, [])
+  // Stored records may be incomplete (old or hand-edited backups): render them without crashing.
+  const setInvoice = useCallback((inv: Invoice) => setInvoiceState(normalizeInvoice(inv)), [])
+
+  const autosave = useAutosave(invoice, {
+    save: app.saveInvoice,
+    onSaved: (inv) => {
+      if (persistedRef.current) return
+      persistedRef.current = true
+      if (mountedRef.current) navigate(`/invoices/${inv.id}`, { replace: true, state: { editorKey } })
+    },
+    onError: (e, first) => {
+      if (first && mountedRef.current) toast.error(t('common.saveFailed') + ' ' + errorMessage(e))
+    },
+  })
+
+  useEffect(() => preloadPdfMake(), [])
 
   // Load (or create in memory) once per editor instance.
   useEffect(() => {
@@ -119,11 +96,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     if (id === 'new') {
       const clientId = search.get('client')
       const client = clientId ? clients.find((c) => c.id === clientId) : undefined
-      try {
-        setInvoice(newDraft(profile, client))
-      } catch (e) {
-        toast.error(errorMessage(e))
-      }
+      setInvoice(newDraft(profile, client))
       persistedRef.current = false
       return
     }
@@ -150,73 +123,23 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const flush = useCallback(async () => {
-    const inv = invoiceRef.current
-    if (!inv || !dirtyRef.current) return
-    dirtyRef.current = false
-    if (mountedRef.current) setSaveState('saving')
-    try {
-      await saveRef.current(inv)
-      if (!persistedRef.current) {
-        persistedRef.current = true
-        if (mountedRef.current) navigate(`/invoices/${inv.id}`, { replace: true, state: { editorKey } })
-      }
-      if (mountedRef.current) setSaveState(dirtyRef.current ? 'pending' : 'saved')
-    } catch (e) {
-      dirtyRef.current = true
-      if (mountedRef.current) {
-        setSaveState('error')
-        toast.error(t('common.saveFailed') + ' ' + errorMessage(e))
-      }
-    }
-  }, [navigate, editorKey, toast, t])
-
-  // Debounced autosave of drafts.
-  useEffect(() => {
-    if (saveState !== 'pending') return
-    const h = setTimeout(() => void flush(), 700)
-    return () => clearTimeout(h)
-  }, [invoice, saveState, flush])
-
-  // Save pending edits when leaving the editor or the page.
-  const flushRef = useRef(flush)
-  flushRef.current = flush
-  useEffect(() => {
-    mountedRef.current = true
-    const onHide = () => void flushRef.current()
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') void flushRef.current()
-    }
-    // IndexedDB writes may not finish during unload: flush early and ask the browser to confirm leaving.
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!dirtyRef.current) return
-      void flushRef.current()
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('pagehide', onHide)
-    window.addEventListener('beforeunload', onBeforeUnload)
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      window.removeEventListener('pagehide', onHide)
-      window.removeEventListener('beforeunload', onBeforeUnload)
-      document.removeEventListener('visibilitychange', onVisibility)
-      mountedRef.current = false
-      void flushRef.current()
-    }
-  }, [])
-
-  const edit = useCallback((fn: (inv: Invoice) => Invoice) => {
-    setInvoice((prev) => (prev && prev.status === 'draft' ? { ...fn(prev), updatedAt: nowISO() } : prev))
-    dirtyRef.current = true
-    setSaveState('pending')
-  }, [])
+  const { markDirty } = autosave
+  const isDraft = invoice?.status === 'draft'
+  const edit = useCallback(
+    (fn: (inv: Invoice) => Invoice) => {
+      if (!isDraft) return
+      setInvoiceState((prev) => (prev && prev.status === 'draft' ? { ...fn(prev), updatedAt: nowISO() } : prev))
+      markDirty()
+    },
+    [markDirty, isDraft],
+  )
 
   const set = useCallback((patch: Partial<Invoice>) => edit((inv) => ({ ...inv, ...patch })), [edit])
 
   const effective = useMemo(() => (invoice ? effectiveInvoice(invoice, profile) : null), [invoice, profile])
-  const issues = useMemo(() => (effective ? safeValidate(effective) : []), [effective])
-  const totals = useMemo(() => (invoice ? safeTotals(invoice) : null), [invoice])
+  // Drafts get their number when issued.
+  const issues = useMemo(() => (effective ? validateInvoice(effective, { requireNumber: effective.status !== 'draft' }) : []), [effective])
+  const totals = useMemo(() => (invoice ? computeTotals(invoice) : null), [invoice])
 
   if (notFound) {
     return (
@@ -238,9 +161,31 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const warnings = issues.filter((i) => i.severity === 'warning')
   const predicted = numberingPreview(profile.numbering, Number(invoice.issueDate.slice(0, 4)) || undefined)
   const term = daysBetween(invoice.issueDate, invoice.dueDate)
-  const note = safeNote(invoice)
-  const accounts = ro ? invoice.seller.bankAccounts : profile.bankAccounts
-  const xmlIssues = ro ? safeEInvoiceIssues(invoice) : []
+  const note = vatSchemeNote(invoice.vatScheme, invoice.language, invoice.vatExemptionNote)
+  // The note field is shown wherever the text is printed (and whenever a note is set, so it can be cleared).
+  const showNoteField = vatNoteRelevant(invoice) || !!invoice.vatExemptionNote
+  const noteField =
+    invoice.vatScheme === 'exempt'
+      ? { label: t('field.vatExemptionNote'), hint: t('field.vatExemptionNoteHint') }
+      : invoice.vatScheme === 'domestic'
+        ? { label: t('field.vatNoteZeroRate'), hint: t('field.vatNoteZeroRateHint') }
+        : vatNoteMode(invoice.vatScheme) === 'replace'
+          ? { label: t('field.vatNote'), hint: t('field.vatNoteReplaceHint') }
+          : { label: t('field.vatNoteExtra'), hint: t('field.vatNoteAppendHint') }
+  const accounts = effective.seller.bankAccounts
+  const selectedAccounts = selectedBankAccounts(effective)
+  const xmlIssues = ro ? eInvoiceIssues(invoice) : []
+  const today = localTodayISO()
+  const stale: StaleIssueDate | null =
+    !ro && /^\d{4}-\d{2}-\d{2}$/.test(invoice.issueDate) && invoice.issueDate < today
+      ? {
+          date: invoice.issueDate,
+          today,
+          newDueDate: redateInvoice(invoice, today).dueDate,
+          supplyDateMoves: !!invoice.supplyDate && invoice.supplyDate === invoice.issueDate,
+          numberWithToday: formatInvoiceNumber(profile.numbering, profile.numbering.nextNumber, Number(today.slice(0, 4))),
+        }
+      : null
   const buyerFieldIssue = !!invoice.buyer.name && issues.some((i) => i.field.startsWith('buyer.'))
   const creditedBy =
     ro && invoice.type !== 'credit-note' && invoice.number
@@ -277,18 +222,20 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     }
   }
 
-  const downloadPdf = () => act('pdf', async () => downloadBlob(await renderPdf(), safeFileName(effective, 'pdf')))
+  const downloadPdf = () => act('pdf', async () => downloadBlob(await renderPdf(), invoiceFileName(effective, 'pdf')))
 
   const print = () =>
     act('print', async () => {
       // Open the window synchronously (inside the click) so popup blockers allow it, then load the PDF.
       const w = window.open('', '_blank')
+      // The PDF needs no access back to this app.
+      if (w) w.opener = null
       const blob = await renderPdf().catch((e) => {
         w?.close()
         throw e
       })
       if (!w) {
-        downloadBlob(blob, safeFileName(effective, 'pdf'))
+        downloadBlob(blob, invoiceFileName(effective, 'pdf'))
         return
       }
       const url = URL.createObjectURL(blob)
@@ -301,12 +248,12 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       // Embed the human-readable PDF so the receiver gets both in one file.
       let pdf: { base64: string; fileName: string } | undefined
       try {
-        pdf = { base64: await renderInvoicePdfBase64(invoice), fileName: safeFileName(invoice, 'pdf') }
+        pdf = { base64: await renderInvoicePdfBase64(invoice), fileName: invoiceFileName(invoice, 'pdf') }
       } catch (e) {
         console.warn('PDF embedding failed', e)
       }
       const xml = buildUblXml(invoice, pdf ? { pdf } : {})
-      downloadBlob(new Blob([xml], { type: 'application/xml' }), safeFileName(invoice, 'xml'))
+      downloadBlob(new Blob([xml], { type: 'application/xml' }), invoiceFileName(invoice, 'xml'))
       toast.success(t('einvoice.downloaded'))
     })
 
@@ -320,23 +267,26 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       // Sign in first: the consent popup must open directly from the click.
       await googleSignIn(settings.googleClientId, ['drive'])
       const blob = await renderPdf()
-      const res = await uploadToDrive(settings.googleClientId, blob, safeFileName(effective, 'pdf'), settings.driveFolderName)
+      const res = await uploadToDrive(settings.googleClientId, blob, invoiceFileName(effective, 'pdf'), settings.driveFolderName)
       toast.success(t('drive.saved', { folder: settings.driveFolderName }), res.webViewLink ? { label: t('drive.open'), href: res.webViewLink } : undefined)
     })
 
-  const issue = async () => {
+  const issue = async (useToday: boolean) => {
+    // Save the final draft first; if that fails, stop and keep the edits on screen (still dirty).
+    let draft: Invoice | undefined
+    if (useToday) {
+      draft = { ...redateInvoice(invoice, localTodayISO()), updatedAt: nowISO() }
+      setInvoiceState(draft)
+    } else if (!persistedRef.current) draft = invoice
+    if (!(await autosave.flush(draft))) {
+      toast.error(t('issue.saveFailed'))
+      throw new Error('save failed')
+    }
     try {
-      await flush()
       // The repository allocates the number and, if empty, the reference number.
-      const inv = invoiceRef.current ?? invoice
-      if (!persistedRef.current) {
-        await app.saveInvoice(inv)
-        persistedRef.current = true
-      }
-      dirtyRef.current = false
-      const issued = await app.issueInvoice(inv.id)
+      const issued = await app.issueInvoice(invoice.id)
+      autosave.reset()
       setInvoice(issued)
-      setSaveState('idle')
       if (window.location.hash.includes('/invoices/new')) navigate(`/invoices/${issued.id}`, { replace: true, state: { editorKey } })
       toast.success(t('issue.done', { number: issued.number }))
     } catch (e) {
@@ -369,9 +319,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const deleteDraft = async () => {
     const ok = await confirm({ title: t('actions.deleteDraftTitle'), message: t('actions.deleteDraftConfirm'), confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true })
     if (!ok) return
-    dirtyRef.current = false
     await act('delete', async () => {
-      if (persistedRef.current) await app.deleteInvoice(invoice.id)
+      // Wait for an in-flight (e.g. the very first) autosave, so it cannot recreate the record after the delete.
+      await autosave.discard()
+      await app.deleteInvoice(invoice.id)
       toast.success(t('actions.draftDeleted'))
       navigate('/')
     })
@@ -398,16 +349,24 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
           <h1>
             {title} <StatusChip status={status} />
           </h1>
-          <p className="muted small" aria-live="polite">
+          <p className={`small save-state${!ro && autosave.state === 'error' ? ' save-error' : ' muted'}`} aria-live="polite">
             {ro
               ? [invoice.issuedAt && t('editor.issuedAt', { date: formatDateTime(invoice.issuedAt) }), invoice.paidAt && t('editor.paidAt', { date: formatDate(invoice.paidAt) })].filter(Boolean).join(' · ')
-              : saveState === 'saving' || saveState === 'pending'
+              : autosave.state === 'saving' || autosave.state === 'pending'
                 ? t('editor.saving')
-                : saveState === 'saved'
+                : autosave.state === 'saved'
                   ? t('editor.saved')
-                  : saveState === 'error'
+                  : autosave.state === 'error'
                     ? t('editor.saveError')
                     : t('editor.autosaveHint')}
+            {!ro && autosave.state === 'error' && (
+              <>
+                {' '}
+                <button type="button" className="link-btn" onClick={() => void autosave.flush()}>
+                  {t('editor.retrySave')}
+                </button>
+              </>
+            )}
           </p>
         </div>
         <div className="editor-actions" role="toolbar" aria-label={t('editor.actions')}>
@@ -553,8 +512,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             </div>
             <p className="explain">{t(`vat.explain.${invoice.vatScheme}`)}</p>
             {!profile.vatRegistered && invoice.vatScheme !== 'not-registered' && !ro && <p className="notice notice-warn">{t('editor.notVatRegistered')}</p>}
-            {invoice.vatScheme === 'exempt' && (
-              <TextField label={t('field.vatExemptionNote')} path="vatExemptionNote" value={invoice.vatExemptionNote} onChange={(v) => set({ vatExemptionNote: v || undefined })} hint={t('field.vatExemptionNoteHint')} />
+            {showNoteField && (
+              <TextField label={noteField.label} path="vatExemptionNote" value={invoice.vatExemptionNote} onChange={(v) => set({ vatExemptionNote: v || undefined })} hint={noteField.hint} />
             )}
             {note && (
               <p className="printed-note">
@@ -585,7 +544,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 id={fieldId('referenceNumber')}
                 label={t('field.referenceNumber')}
                 hint={invoice.referenceNumber ? undefined : t('field.referenceNumberHint')}
-                error={invoice.referenceNumber && !safeRefValid(invoice.referenceNumber) ? t('field.referenceNumberInvalid') : undefined}
+                error={invoice.referenceNumber && !isValidReferenceNumber(invoice.referenceNumber) ? t('field.referenceNumberInvalid') : undefined}
               >
                 <div>
                   <input
@@ -622,14 +581,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               <fieldset className="bank-select">
                 <legend className="label">{t('editor.bankAccounts')}</legend>
                 {accounts.map((a) => {
-                  const checked = invoice.bankAccountIds.length === 0 || invoice.bankAccountIds.includes(a.id)
+                  const checked = selectedAccounts.includes(a)
                   return (
                     <label key={a.id} className="check-line">
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={(e) => {
-                          const current = invoice.bankAccountIds.length ? invoice.bankAccountIds : accounts.map((x) => x.id)
+                          const current = selectedAccounts.map((x) => x.id)
                           const next = e.target.checked ? [...current, a.id] : current.filter((x) => x !== a.id)
                           set({ bankAccountIds: next.length === accounts.length ? [] : next })
                         }}
@@ -683,17 +642,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         </aside>
       </div>
 
-      {dialog === 'issue' && <IssueDialog predictedNumber={predicted} warnings={warnings.length} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && <IssueDialog predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
       {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus((id) => app.markInvoicePaid(id, paidAt)).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}
       {dialog === 'email' && <EmailDialog invoice={effective} onClose={() => setDialog(null)} />}
     </div>
   )
-}
-
-function safeRefValid(ref: string): boolean {
-  try {
-    return isValidReferenceNumber(ref)
-  } catch {
-    return true
-  }
 }

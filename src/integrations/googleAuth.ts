@@ -222,9 +222,11 @@ export async function googleSignOut(): Promise<void> {
     return
   }
   try {
-    await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
+    // Token in the body, not the URL (URLs end up in logs and history).
+    await fetch('https://oauth2.googleapis.com/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }).toString(),
     })
   } catch {
     // best effort

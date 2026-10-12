@@ -14,7 +14,7 @@ function initialProfile(): CompanyProfile {
 
 /** First run: find own company in the register → check details → save. */
 export default function Onboarding() {
-  const { t, saveProfile, lang, saveSettings } = useApp()
+  const { t, saveProfile, lang, saveSettings, settings } = useApp()
   const toast = useToast()
   const [step, setStep] = useState<'find' | 'details'>('find')
   const [profile, setProfile] = useState<CompanyProfile>(initialProfile)
@@ -72,6 +72,7 @@ export default function Onboarding() {
       {step === 'find' ? (
         <div className="card onboarding-find">
           <CompanySearch onPick={onPick} autoFocus label={t('onboarding.searchLabel')} />
+          {settings.registryLiveLookup && <p className="muted small">{t('onboarding.liveLookupNote')}</p>}
           <div className="divider">
             <span>{t('common.or')}</span>
           </div>

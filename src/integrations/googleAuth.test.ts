@@ -138,6 +138,23 @@ describe('token model', () => {
     expect(getGoogleStatus(CLIENT)).toEqual({ configured: true, signedIn: false, email: undefined })
   })
 
+  it('revokes without GIS via a POST body, never with the token in the URL', async () => {
+    const token = await getAccessToken(CLIENT, ['drive'])
+    delete window.google
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      await googleSignOut()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://oauth2.googleapis.com/revoke')
+    expect(url).not.toContain(token)
+    expect(init).toMatchObject({ method: 'POST', body: `token=${encodeURIComponent(token)}` })
+  })
+
   it('loads the GIS script on demand', async () => {
     delete window.google
     const promise = getAccessToken(CLIENT, ['drive'])

@@ -3,8 +3,9 @@ import type { BackupFile } from '../../domain'
 import { RegistryAttribution } from '../components/CompanySearch'
 import { backupToDrive, downloadBlob, getGoogleStatus, googleSignIn, googleSignOut, restoreFromDrive, type GoogleStatus } from '../../integrations'
 import { getIndexInfo, type RegistryIndexInfo } from '../../registry'
-import { BackupFormatError, backupFileName, parseBackup, requestPersistentStorage, serializeBackup } from '../../storage'
+import { backupFileName, requestPersistentStorage, serializeBackup } from '../../storage'
 import { useApp } from '../AppContext'
+import { GOOGLE_CLIENT_ID_RE, keepClientId, paymentDetailChanges, readBackupText } from './backupReview'
 import { Dialog, useConfirm } from '../components/Dialog'
 import { CheckboxField, SelectField, TextField } from '../components/fields'
 import { Section } from '../components/misc'
@@ -16,22 +17,19 @@ export const REPO_URL = 'https://github.com/mikkmihkel/invoice-generator'
 export const GOOGLE_SETUP_URL = `${REPO_URL}/blob/main/docs/google-setup.md`
 export const LEGAL_DOC_URL = `${REPO_URL}/blob/main/docs/legal-requirements.md`
 
-/** Parse a backup file's text; a malformed file yields the specific problem (record / field) in the UI language. */
-export function readBackupText(text: string, lang: 'et' | 'en'): { backup: BackupFile } | { error: string } {
-  try {
-    return { backup: parseBackup(text) }
-  } catch (e) {
-    if (e instanceof BackupFormatError) return { error: e.messages[lang] }
-    throw e
-  }
-}
-
 /** Shows what a backup contains and imports it with merge or replace. */
 export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; onClose: () => void }) {
-  const { t, repo, reload } = useApp()
+  const { t, repo, reload, profile, settings } = useApp()
   const toast = useToast()
   const confirm = useConfirm()
   const [busy, setBusy] = useState(false)
+  const [importClientId, setImportClientId] = useState(false)
+  const [reviewed, setReviewed] = useState(false)
+  const changes = paymentDetailChanges({ profile, settings }, backup)
+  const clientIdChange = changes.some((c) => c.field === 'googleClientId')
+  // Changed payment details (or an imported client ID) need an explicit confirmation.
+  const needsReview = changes.some((c) => c.field !== 'googleClientId') || (clientIdChange && importClientId)
+  const blocked = busy || (needsReview && !reviewed)
 
   const run = async (mode: 'merge' | 'replace') => {
     if (mode === 'replace') {
@@ -40,7 +38,7 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
     }
     setBusy(true)
     try {
-      const res = await repo.importBackup(backup, mode)
+      const res = await repo.importBackup(importClientId ? backup : keepClientId(backup, settings.googleClientId), mode)
       await reload()
       toast.success(t('backup.imported'))
       if (res?.duplicateNumbers?.length) toast.error(t('backup.duplicates', { numbers: res.duplicateNumbers.join(', ') }))
@@ -56,15 +54,16 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
       title={t('backup.importTitle')}
       onClose={onClose}
       closeLabel={t('common.close')}
+      dismissible={!busy}
       footer={
         <>
           <button type="button" className="btn" onClick={onClose} disabled={busy}>
             {t('common.cancel')}
           </button>
-          <button type="button" className="btn btn-danger" onClick={() => void run('replace')} disabled={busy}>
+          <button type="button" className="btn btn-danger" onClick={() => void run('replace')} disabled={blocked}>
             {t('backup.replace')}
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => void run('merge')} disabled={busy} data-autofocus>
+          <button type="button" className="btn btn-primary" onClick={() => void run('merge')} disabled={blocked} data-autofocus>
             {t('backup.merge')}
           </button>
         </>
@@ -76,6 +75,26 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
         <li>{t('backup.mergeHint')}</li>
         <li>{t('backup.replaceHint')}</li>
       </ul>
+      {changes.length > 0 && (
+        <div className="notice notice-warn backup-changes">
+          <strong>{t('backup.changesTitle')}</strong>
+          <p className="small">{t('backup.changesIntro')}</p>
+          <dl className="change-list">
+            {changes.map((c) => (
+              <div key={c.field}>
+                <dt>{t(`backup.change.${c.field}`)}</dt>
+                <dd>
+                  <span className="change-from">{c.from || t('backup.notSet')}</span> → <strong className="change-to">{c.to || t('backup.notSet')}</strong>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {clientIdChange && (
+            <CheckboxField label={t('backup.importClientId')} hint={t('backup.importClientIdHint')} checked={importClientId} onChange={setImportClientId} disabled={busy} />
+          )}
+          {needsReview && <CheckboxField label={t('backup.confirmChanges')} checked={reviewed} onChange={setReviewed} disabled={busy} />}
+        </div>
+      )}
     </Dialog>
   )
 }
@@ -150,8 +169,11 @@ export default function SettingsPage() {
     }
   }
 
+  const clientIdError = clientId.trim() && !GOOGLE_CLIENT_ID_RE.test(clientId.trim()) ? t('google.clientIdInvalid') : undefined
+
   const saveGoogle = () =>
     withBusy('google-save', async () => {
+      if (clientIdError) throw new Error(clientIdError)
       const id = clientId.trim() || undefined
       await saveSettings({ googleClientId: id, driveFolderName: folder.trim() || settings.driveFolderName })
       setGoogle(getGoogleStatus(id))
@@ -246,7 +268,7 @@ export default function SettingsPage() {
             </a>
           </p>
           <div className="grid">
-            <TextField className="span-2" label={t('google.clientId')} value={clientId} onChange={setClientId} placeholder="123456789-abc.apps.googleusercontent.com" spellCheck={false} />
+            <TextField className="span-2" label={t('google.clientId')} value={clientId} onChange={setClientId} placeholder="123456789-abc.apps.googleusercontent.com" spellCheck={false} error={clientIdError} />
             <TextField label={t('google.folder')} value={folder} onChange={setFolder} hint={t('google.folderHint')} />
           </div>
           <div className="btn-row">
