@@ -65,8 +65,10 @@ export type VatScheme =
   | 'eu-reverse-charge'
   /** Intra-Community supply of goods to an EU VAT payer — 0%, buyer VAT number required. */
   | 'eu-goods'
-  /** Export of goods / services outside the EU — 0%. */
+  /** Export of goods outside the EU — 0%. */
   | 'export'
+  /** B2B service to a customer outside the EU — place of supply outside Estonia, not taxable here (KMS § 10). */
+  | 'non-eu-services'
   /** VAT-exempt supply (KMS § 16) — legal basis must be stated. */
   | 'exempt'
   /** Domestic reverse charge (KMS § 41¹, e.g. scrap metal, real estate). */

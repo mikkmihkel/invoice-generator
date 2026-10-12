@@ -57,6 +57,7 @@ export const en: Record<keyof typeof et, string> = {
   'vat.scheme.eu-reverse-charge': 'Services to EU business (reverse charge)',
   'vat.scheme.eu-goods': 'Goods to EU business (intra-Community supply)',
   'vat.scheme.export': 'Export outside the EU',
+  'vat.scheme.non-eu-services': 'Service outside the EU (not taxed in Estonia)',
   'vat.scheme.exempt': 'VAT-exempt supply',
   'vat.scheme.domestic-reverse-charge': 'Domestic reverse charge',
 
@@ -64,7 +65,8 @@ export const en: Record<keyof typeof et, string> = {
   'vat.explain.not-registered': 'You are not registered for VAT (annual turnover below the registration threshold). No VAT is added or shown on the invoice.',
   'vat.explain.eu-reverse-charge': 'Services sold to a VAT-registered business in another EU country. No VAT is added – the buyer accounts for it in their country (reverse charge). The buyer’s VAT number is required.',
   'vat.explain.eu-goods': 'Goods sold to a VAT-registered business in another EU country and transported there. VAT rate 0%; the buyer’s VAT number is required.',
-  'vat.explain.export': 'Export of goods or services outside the European Union. VAT rate 0%; keep the documents proving the export.',
+  'vat.explain.export': 'Export of goods outside the European Union. VAT rate 0%; keep the documents proving the export.',
+  'vat.explain.non-eu-services': 'Services to a business outside the EU (e.g. USA, UK, Norway). The place of supply is the customer\u2019s country, so no Estonian VAT is added.',
   'vat.explain.exempt': 'VAT-exempt supply (KMS § 16), e.g. certain financial, insurance, education and health services. The invoice must refer to the legal basis of the exemption.',
   'vat.explain.domestic-reverse-charge': 'Estonian domestic reverse charge (KMS § 41¹), e.g. scrap metal or certain real estate. The buyer accounts for and pays the VAT.',
 

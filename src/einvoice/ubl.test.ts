@@ -197,6 +197,7 @@ describe('buildUblXml — VAT schemes', () => {
   })
 
   it('export → G, exempt → E with the custom legal basis, domestic 0% → Z', () => {
+    expect(category(sampleInvoice({ vatScheme: 'non-eu-services', buyer: fiBuyer({ address: { street: 'X', city: 'NYC', postalCode: '1', country: 'US' } }) }))).toMatchObject({ id: 'G', code: 'VATEX-EU-G' })
     expect(category(sampleInvoice({ vatScheme: 'export', buyer: fiBuyer({ address: { street: 'X', city: 'NYC', postalCode: '1', country: 'US' } }) }))).toMatchObject({ id: 'G', code: 'VATEX-EU-G' })
     expect(category(sampleInvoice({ vatScheme: 'exempt', vatExemptionNote: 'KMS § 16 lg 2 p 1' }))).toMatchObject({ id: 'E', percent: '0', reason: 'KMS § 16 lg 2 p 1' })
     const z = category(sampleInvoice({ lines: [line({ id: 'z', vatRate: 0 })] }))

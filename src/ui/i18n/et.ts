@@ -55,6 +55,7 @@ export const et = {
   'vat.scheme.eu-reverse-charge': 'Teenus ELi ettevõttele (pöördmaksustamine)',
   'vat.scheme.eu-goods': 'Kaup ELi ettevõttele (ühendusesisene käive)',
   'vat.scheme.export': 'Eksport väljapoole ELi',
+  'vat.scheme.non-eu-services': 'Teenus väljapoole ELi (ei maksustata Eestis)',
   'vat.scheme.exempt': 'Maksuvaba käive',
   'vat.scheme.domestic-reverse-charge': 'Eesti-sisene pöördmaksustamine',
 
@@ -62,7 +63,8 @@ export const et = {
   'vat.explain.not-registered': 'Sa ei ole käibemaksukohustuslasena registreeritud (aastakäive alla registreerimiskohustuse piiri). Käibemaksu arvele ei lisata ega näidata.',
   'vat.explain.eu-reverse-charge': 'Teenuse müük teise ELi riigi käibemaksukohustuslasele. Käibemaksu ei lisata – selle arvestab ostja oma riigis (pöördmaksustamine). Ostja KMKR number on kohustuslik.',
   'vat.explain.eu-goods': 'Kauba müük teise ELi riigi käibemaksukohustuslasele, kui kaup veetakse teise liikmesriiki. Käibemaksumäär 0%, ostja KMKR number on kohustuslik.',
-  'vat.explain.export': 'Kauba eksport või teenuse osutamine väljapoole Euroopa Liitu. Käibemaksumäär 0%; säilita ekspordi tõendavad dokumendid.',
+  'vat.explain.export': 'Kauba eksport väljapoole Euroopa Liitu. Käibemaksumäär 0%; säilita ekspordi tõendavad dokumendid.',
+  'vat.explain.non-eu-services': 'Teenuse osutamine väljaspool ELi asuvale ettevõttele (nt USA, Ühendkuningriik, Norra). Teenuse käibe tekkimise koht on ostja asukohariik, Eestis käibemaksu ei lisata.',
   'vat.explain.exempt': 'Maksuvaba käive (KMS § 16), nt teatud finants-, kindlustus-, haridus- ja tervishoiuteenused. Arvel peab olema viide maksuvabastuse alusele.',
   'vat.explain.domestic-reverse-charge': 'Eesti-sisene pöördmaksustamine (KMS § 41¹), nt metallijäätmete või teatud kinnisasjade müük. Käibemaksu arvestab ja tasub ostja.',
 

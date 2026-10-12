@@ -39,6 +39,7 @@ const L = {
   KMS37_EUR: 'KMS § 37 lg 7 (käibemaksusumma eurodes)',
   KMS37_REF: 'KMS § 37 lg 8',
   KMS37_CREDIT: 'KMS § 37 lg 4; direktiiv 2006/112/EÜ art 219',
+  KMS10: 'KMS § 10',
   KMS15: 'KMS § 15 lg 3',
   KMS15_RATES: 'KMS § 15',
   KMS16: 'KMS § 16; KMS § 37 lg 8',
@@ -267,6 +268,15 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       'Ostja asub EL-is – eksport on kauba väljavedu EL-ist. Kontrolli, kas sobib "EL kaup" või "EL teenus (pöördmaksustamine)".',
       'The buyer is in the EU – export means goods leaving the EU. Check whether "EU goods" or "EU services (reverse charge)" fits.',
       L.KMS15,
+    )
+  }
+  if (vatScheme === 'non-eu-services' && buyerCountry && (isEuCountry(buyerCountry) || buyerCountry === 'EE')) {
+    add(
+      'vatScheme',
+      'warning',
+      'Ostja asub EL-is – teenuse müügil ELi ettevõttele kasuta "EL teenus (pöördmaksustamine)", Eesti ostjale tavalist käibemaksu.',
+      'The buyer is in the EU – for services to an EU business use "EU services (reverse charge)", for an Estonian buyer use normal VAT.',
+      L.KMS10,
     )
   }
   if (vatScheme === 'domestic' && buyerCountry && buyerCountry !== 'EE' && buyer?.kind === 'company' && buyerVatValid && buyerVatPrefix !== 'EE') {

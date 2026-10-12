@@ -16,7 +16,7 @@ export interface TaxCategory {
 /**
  * VatScheme → EN 16931 VAT category.
  * domestic: S (rate > 0) / Z (0 %); EU services reverse charge and KMS § 41¹ domestic reverse charge: AE;
- * intra-Community goods: K; export: G; exempt (KMS § 16): E; seller not VAT registered: O.
+ * intra-Community goods: K; export and services to non-EU customers: G; exempt (KMS § 16): E; seller not VAT registered: O.
  */
 export function taxCategoryFor(scheme: VatScheme, rate: number, reason?: string): TaxCategory {
   switch (scheme) {
@@ -29,6 +29,8 @@ export function taxCategoryFor(scheme: VatScheme, rate: number, reason?: string)
       return { id: 'K', percent: 0, reasonCode: 'VATEX-EU-IC', reason: reason || 'Intra-Community supply' }
     case 'export':
       return { id: 'G', percent: 0, reasonCode: 'VATEX-EU-G', reason: reason || 'Export outside the EU' }
+    case 'non-eu-services':
+      return { id: 'G', percent: 0, reasonCode: 'VATEX-EU-G', reason: reason || 'Services supplied outside the EU, not subject to Estonian VAT' }
     case 'exempt':
       return { id: 'E', percent: 0, reason: reason || 'Exempt from VAT' }
     case 'not-registered':

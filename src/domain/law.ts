@@ -57,6 +57,10 @@ const SCHEME_NOTES: Record<VatScheme, SchemeNote | null> = {
     et: 'Kauba eksport, käibemaksumäär 0% (KMS § 15 lg 3 p 1; direktiivi 2006/112/EÜ art 146).',
     en: 'Export of goods, VAT rate 0% (Estonian VAT Act § 15(3)(1); Directive 2006/112/EC Art. 146).',
   },
+  'non-eu-services': {
+    et: 'Käive ei ole Eestis maksustatav – teenuse käibe tekkimise koht on väljaspool Eestit (KMS § 10; direktiivi 2006/112/EÜ art 44).',
+    en: 'Not subject to Estonian VAT – the place of supply of the service is outside Estonia (Estonian VAT Act § 10; Directive 2006/112/EC Art. 44).',
+  },
   exempt: {
     et: 'Käibemaksuvaba käive (KMS § 16).',
     en: 'VAT-exempt supply (Estonian VAT Act § 16).',

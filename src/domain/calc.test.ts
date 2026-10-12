@@ -145,7 +145,7 @@ describe('computeTotals', () => {
     expect(t.lines[0]).toEqual({ lineId: expect.any(String), net: 100, vat: 0, gross: 100 })
   })
 
-  it.each<VatScheme>(['eu-reverse-charge', 'eu-goods', 'export', 'exempt', 'domestic-reverse-charge'])(
+  it.each<VatScheme>(['eu-reverse-charge', 'eu-goods', 'export', 'non-eu-services', 'exempt', 'domestic-reverse-charge'])(
     'shows a single 0%% row for %s',
     (scheme) => {
       const t = totals([line(2, 50, 24), line(1, 10, 9)], scheme)

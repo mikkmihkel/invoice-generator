@@ -2,7 +2,7 @@ import { ESTONIAN_VAT_RATES, type InvoiceLanguage, type TemplateId, type VatSche
 import { TEMPLATES, type TemplateInfo } from '../pdf'
 import type { Translate } from './i18n'
 
-export const VAT_SCHEMES: VatScheme[] = ['domestic', 'not-registered', 'eu-reverse-charge', 'eu-goods', 'export', 'exempt', 'domestic-reverse-charge']
+export const VAT_SCHEMES: VatScheme[] = ['domestic', 'not-registered', 'eu-reverse-charge', 'eu-goods', 'export', 'non-eu-services', 'exempt', 'domestic-reverse-charge']
 
 export const CURRENCIES = ['EUR', 'USD', 'GBP', 'SEK', 'NOK', 'DKK', 'PLN', 'CHF']
 

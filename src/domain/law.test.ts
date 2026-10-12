@@ -63,6 +63,10 @@ describe('vatSchemeNote', () => {
     expect(vatSchemeNote('eu-goods', 'en')).toContain('Art. 138')
     expect(vatSchemeNote('export', 'et')).toContain('KMS § 15 lg 3 p 1')
     expect(vatSchemeNote('export', 'en')).toContain('Art. 146')
+    expect(vatSchemeNote('non-eu-services', 'et')).toContain('ei ole Eestis maksustatav')
+    expect(vatSchemeNote('non-eu-services', 'en')).toContain('§ 10')
+    expect(vatSchemeAllowsRates('non-eu-services')).toBe(false)
+    expect(vatSchemeRequiresBuyerVat('non-eu-services')).toBe(false)
     expect(vatSchemeNote('exempt', 'et')).toContain('KMS § 16')
   })
   it('combines both languages for bilingual invoices', () => {

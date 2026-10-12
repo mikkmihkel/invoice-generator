@@ -305,6 +305,7 @@ describe('validateInvoice – VAT schemes', () => {
   })
   it('warns when export is used for an EU buyer', () => {
     expectIssue(euInvoice('export'), 'vatScheme', 'warning')
+    expectIssue(euInvoice('non-eu-services'), 'vatScheme', 'warning')
   })
   it('warns when domestic VAT is charged to a foreign EU business', () => {
     const inv = euInvoice('domestic')
