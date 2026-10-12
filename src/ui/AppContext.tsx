@@ -23,6 +23,10 @@ export interface AppData {
   saveInvoice(invoice: Invoice): Promise<void>
   deleteInvoice(id: string): Promise<void>
   issueInvoice(id: string): Promise<Invoice>
+  /** Status-only changes of issued invoices (the repository rejects other edits to them). */
+  markInvoicePaid(id: string, paidAt: string): Promise<Invoice>
+  markInvoiceUnpaid(id: string): Promise<Invoice>
+  cancelInvoice(id: string): Promise<Invoice>
 }
 
 const AppContext = createContext<AppData | null>(null)
@@ -178,6 +182,15 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
     [repo],
   )
 
+  const statusChange = useCallback(async (change: () => Promise<Invoice>) => {
+    const updated = await change()
+    setInvoices((list) => sortInvoices([...list.filter((x) => x.id !== updated.id), updated]))
+    return updated
+  }, [])
+  const markInvoicePaid = useCallback((id: string, paidAt: string) => statusChange(() => repo.markInvoicePaid(id, paidAt)), [repo, statusChange])
+  const markInvoiceUnpaid = useCallback((id: string) => statusChange(() => repo.markInvoiceUnpaid(id)), [repo, statusChange])
+  const cancelInvoice = useCallback((id: string) => statusChange(() => repo.cancelInvoice(id)), [repo, statusChange])
+
   const value = useMemo<AppData>(
     () => ({
       ready,
@@ -197,8 +210,11 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
       saveInvoice,
       deleteInvoice,
       issueInvoice,
+      markInvoicePaid,
+      markInvoiceUnpaid,
+      cancelInvoice,
     }),
-    [ready, loadError, repo, profile, settings, clients, invoices, lang, t, reload, saveProfile, saveSettings, saveClient, deleteClient, saveInvoice, deleteInvoice, issueInvoice],
+    [ready, loadError, repo, profile, settings, clients, invoices, lang, t, reload, saveProfile, saveSettings, saveClient, deleteClient, saveInvoice, deleteInvoice, issueInvoice, markInvoicePaid, markInvoiceUnpaid, cancelInvoice],
   )
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

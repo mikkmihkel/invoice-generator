@@ -7,6 +7,8 @@ import {
   type InvoiceDefaults,
   type InvoiceLanguage,
 } from '../../../domain'
+// Directly from the pure module (not the integrations index, which UI tests mock).
+import { assertValidEmail, parseAddress } from '../../../integrations/mime'
 import { formatDate as formatDocumentDate } from '../../../pdf/format'
 import { formatDate, formatMoney } from '../../format'
 import { safeTotals } from '../../util'
@@ -17,7 +19,15 @@ export interface Recipient {
   address: string
 }
 
-const EMAIL_RE = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/
+/** Same rules as the MIME builder used for sending (ASCII addr-spec), plus a dotted domain. */
+function isValidRecipient(email: string): boolean {
+  try {
+    assertValidEmail(email)
+  } catch {
+    return false
+  }
+  return email.slice(email.lastIndexOf('@') + 1).includes('.')
+}
 
 /**
  * Split a recipient field on commas, semicolons and line breaks (not inside quotes), accepting
@@ -40,9 +50,14 @@ export function parseRecipients(input: string): { valid: Recipient[]; invalid: s
   for (const raw of parts) {
     const display = raw.trim()
     if (!display) continue
-    const m = /^(.*?)\s*<([^<>]*)>$/.exec(display)
-    const address = (m ? m[2] : display).trim()
-    if (EMAIL_RE.test(address)) valid.push({ display: m && m[1].trim() ? display : address, address })
+    let parsed: { name: string; email: string }
+    try {
+      parsed = parseAddress(display)
+    } catch {
+      invalid.push(display)
+      continue
+    }
+    if (isValidRecipient(parsed.email)) valid.push({ display: parsed.name ? display : parsed.email, address: parsed.email })
     else invalid.push(display)
   }
   return { valid, invalid }

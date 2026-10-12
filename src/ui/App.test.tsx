@@ -299,6 +299,42 @@ describe('credit notes', () => {
   })
 })
 
+describe('status changes', () => {
+  it('marks an invoice paid from the list through the repository status call', async () => {
+    const profile = sampleProfile()
+    const inv = {
+      id: newId(),
+      number: '2026-0007',
+      type: 'invoice' as const,
+      status: 'issued' as const,
+      issueDate: '2026-01-05',
+      dueDate: '2099-01-19',
+      seller: { ...profile },
+      buyer: { kind: 'company' as const, name: 'Ostja AS', address: profile.address },
+      bankAccountIds: [],
+      lines: [{ id: newId(), description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 100, vatRate: 24 }],
+      currency: 'EUR',
+      vatScheme: 'domestic' as const,
+      language: 'et' as const,
+      templateId: 'classic' as const,
+      accentColor: '#2457c5',
+      createdAt: '2026-01-05T10:00:00Z',
+      updatedAt: '2026-01-05T10:00:00Z',
+    }
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt('#/', repo)
+    const row = (await screen.findByText('2026-0007')).closest('tr')!
+    fireEvent.click(within(row).getByRole('button', { name: 'Märgi tasutuks' }))
+    const dialog = await screen.findByRole('dialog')
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Märgi tasutuks' }))
+    })
+    expect(repo.markInvoicePaid).toHaveBeenCalledWith(inv.id, expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/))
+    expect(repo.saveInvoice).not.toHaveBeenCalled()
+    expect(await within(row).findByText('Tasutud')).toBeInTheDocument()
+  })
+})
+
 describe('issue button summary', () => {
   it('explains a disabled issue button and points to the requirements check', async () => {
     const repo = createMemoryRepo({ profile: sampleProfile() })

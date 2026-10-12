@@ -17,6 +17,7 @@ describe('parseRecipients', () => {
     const r = parseRecipients('jaan@firma, , <mari@firma.ee>, not an email')
     expect(r.valid.map((x) => x.display)).toEqual(['mari@firma.ee'])
     expect(r.invalid).toEqual(['jaan@firma', 'not an email'])
+    expect(parseRecipients('jüri@firma.ee').invalid).toEqual(['jüri@firma.ee'])
   })
 })
 

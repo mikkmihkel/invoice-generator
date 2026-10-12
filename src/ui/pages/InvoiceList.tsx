@@ -33,7 +33,7 @@ function MoneySum({ sums }: { sums: Map<string, number> }) {
 }
 
 export default function InvoiceList() {
-  const { t, invoices, saveInvoice } = useApp()
+  const { t, invoices, markInvoicePaid } = useApp()
   const toast = useToast()
   const navigate = useNavigate()
   const today = localTodayISO()
@@ -217,7 +217,7 @@ export default function InvoiceList() {
           invoice={paying}
           onClose={() => setPaying(null)}
           onConfirm={async (paidAt) => {
-            await saveInvoice({ ...paying, status: 'paid', paidAt, updatedAt: new Date().toISOString() })
+            await markInvoicePaid(paying.id, paidAt)
             toast.success(t('actions.markedPaid', { number: paying.number }))
           }}
         />

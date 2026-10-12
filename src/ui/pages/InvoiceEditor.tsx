@@ -263,11 +263,11 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     }
   }
 
-  const changeStatus = async (patch: Partial<Invoice>) => {
-    const next = { ...invoice, ...patch, updatedAt: nowISO() }
-    await app.saveInvoice(next)
-    setInvoice(next)
+  // Status changes go through dedicated repository calls (issued invoices are otherwise immutable).
+  const changeStatus = async (change: (id: string) => Promise<Invoice>) => {
+    setInvoice(await change(invoice.id))
   }
+
 
   const renderPdf = async () => {
     try {
@@ -363,7 +363,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       cancelLabel: t('common.back'),
       danger: true,
     })
-    if (ok) await act('cancel', () => changeStatus({ status: 'cancelled' }))
+    if (ok) await act('cancel', () => changeStatus(app.cancelInvoice))
   }
 
   const deleteDraft = async () => {
@@ -487,7 +487,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               </button>
             )}
             {invoice.status === 'paid' && (
-              <button type="button" className="btn btn-sm" onClick={() => void act('unpaid', () => changeStatus({ status: 'issued', paidAt: undefined }))} disabled={busyAny}>
+              <button type="button" className="btn btn-sm" onClick={() => void act('unpaid', () => changeStatus(app.markInvoiceUnpaid))} disabled={busyAny}>
                 {t('actions.markUnpaid')}
               </button>
             )}
@@ -684,7 +684,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       </div>
 
       {dialog === 'issue' && <IssueDialog predictedNumber={predicted} warnings={warnings.length} onClose={() => setDialog(null)} onConfirm={issue} />}
-      {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus({ status: 'paid', paidAt }).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}
+      {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus((id) => app.markInvoicePaid(id, paidAt)).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}
       {dialog === 'email' && <EmailDialog invoice={effective} onClose={() => setDialog(null)} />}
     </div>
   )
