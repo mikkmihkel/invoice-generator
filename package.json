@@ -14,6 +14,9 @@
     "registry:build": "node scripts/registry/build-index.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
     "idb": "^8.0.4",
     "pdfmake": "^0.3.11",
     "react": "^19.2.8",
