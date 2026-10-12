@@ -571,6 +571,16 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 suffix={t('common.percentPerDay')}
               />
               <SelectField label={t('field.currency')} path="currency" value={invoice.currency} onChange={(currency) => set({ currency })} options={[...new Set([invoice.currency, ...CURRENCIES])].map((c) => ({ value: c, label: c }))} />
+              {invoice.currency.toUpperCase() !== 'EUR' && totals.vat !== 0 && (
+                <NumberField
+                  label={t('field.eurExchangeRate')}
+                  hint={t('field.eurExchangeRateHint', { currency: invoice.currency })}
+                  path="eurExchangeRate"
+                  value={invoice.eurExchangeRate}
+                  onChange={(v) => set({ eurExchangeRate: v ?? undefined })}
+                  allowEmpty
+                />
+              )}
             </div>
             {accounts.length > 1 && (
               <fieldset className="bank-select">

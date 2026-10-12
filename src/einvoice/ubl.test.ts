@@ -257,3 +257,16 @@ describe('eInvoiceIssues', () => {
     expect(fields).toEqual(['number', 'buyer.registryCode'])
   })
 })
+
+describe('buildUblXml — foreign currency', () => {
+  it('adds the EUR VAT total (BR-53) when an exchange rate is given', () => {
+    const inv = sampleInvoice({ currency: 'USD', eurExchangeRate: 1.25 })
+    const xml = buildUblXml(inv)
+    const vat = computeTotals(inv).vat
+    expect(xml).toContain('<cbc:TaxCurrencyCode>EUR</cbc:TaxCurrencyCode>')
+    expect(xml).toContain(`<cbc:TaxAmount currencyID="EUR">${(Math.round((vat / 1.25) * 100) / 100).toFixed(2)}</cbc:TaxAmount>`)
+  })
+  it('omits it for EUR invoices', () => {
+    expect(buildUblXml(sampleInvoice())).not.toContain('TaxCurrencyCode')
+  })
+})

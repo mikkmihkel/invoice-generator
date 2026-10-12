@@ -1,5 +1,5 @@
 // UBL 2.1 Invoice / CreditNote per Peppol BIS Billing 3.0 (EN 16931). Element order follows the UBL 2.1 schemas.
-import { computeTotals, vatSchemeNote } from '../domain'
+import { computeTotals, vatInEur, vatSchemeNote } from '../domain'
 import type { BankAccount, Invoice, Party } from '../domain/types'
 import { endpointFor, legalIdScheme, taxCategoryFor, unitCode, type TaxCategory } from './codes'
 import { el, leaf, serialize, type XmlChild, type XmlElement } from './xml'
@@ -104,6 +104,7 @@ export function buildUblXml(invoice: Invoice, opts: UblOptions = {}): string {
   const sign = isCredit && totals.gross < 0 ? -1 : 1
   const currency = (invoice.currency || 'EUR').toUpperCase()
   const money = (name: string, v: number) => cbc(name, amount(v * sign), { currencyID: currency })
+  const vatEur = vatInEur(invoice, totals)
   const scheme = invoice.vatScheme
   const reason = scheme === 'domestic' ? undefined : vatSchemeNote(scheme, invoice.language, invoice.vatExemptionNote) ?? undefined
   const categoryFor = (rate: number) => taxCategoryFor(scheme, scheme === 'domestic' ? rate : 0, reason)
@@ -191,6 +192,7 @@ export function buildUblXml(invoice: Invoice, opts: UblOptions = {}): string {
     isCredit ? cbc('CreditNoteTypeCode', '381') : cbc('InvoiceTypeCode', invoice.type === 'prepayment' ? '386' : '380'),
     cbc('Note', notes),
     cbc('DocumentCurrencyCode', currency),
+    vatEur !== null && cbc('TaxCurrencyCode', 'EUR'),
     cbc('BuyerReference', buyerReference),
     (invoice.periodStart || invoice.periodEnd) && cac('InvoicePeriod', cbc('StartDate', invoice.periodStart), cbc('EndDate', invoice.periodEnd)),
     cac('OrderReference', cbc('ID', invoice.orderReference)),
@@ -223,6 +225,8 @@ export function buildUblXml(invoice: Invoice, opts: UblOptions = {}): string {
     paymentMeans,
     cac('PaymentTerms', cbc('Note', paymentTermsText(invoice))),
     cac('TaxTotal', money('TaxAmount', totals.vat), subtotals),
+    // BR-53: VAT total in the accounting currency (EUR) when it differs from the invoice currency.
+    vatEur !== null && cac('TaxTotal', cbc('TaxAmount', amount(vatEur * sign), { currencyID: 'EUR' })),
     cac(
       'LegalMonetaryTotal',
       money('LineExtensionAmount', totals.net),

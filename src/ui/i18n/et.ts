@@ -138,6 +138,8 @@ export const et = {
   'field.paymentTerm': 'Maksetähtaeg',
   'field.invoiceLanguage': 'Arve keel',
   'field.currency': 'Valuuta',
+  'field.eurExchangeRate': 'Euro vahetuskurss',
+  'field.eurExchangeRateHint': '1 EUR = … {currency}. Vajalik, et näidata käibemaksusumma eurodes (KMS § 37).',
   'field.vatScheme': 'Käibemaksurežiim',
   'field.defaultVatRate': 'Vaikimisi käibemaksumäär',
   'field.defaultUnit': 'Vaikimisi ühik',

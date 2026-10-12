@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeTotals, formatMoney, lineNetCents, roundMoney, toCents } from './calc'
+import { computeTotals, formatMoney, lineNetCents, roundMoney, toCents, vatInEur } from './calc'
 import type { InvoiceLine, VatScheme } from './types'
 
 let seq = 0
@@ -166,5 +166,16 @@ describe('formatMoney', () => {
   it('formats with two decimals', () => {
     expect(formatMoney(1234.5, 'en')).toBe('1,234.50')
     expect(formatMoney(12345.5, 'et', 'EUR').replace(/\s/g, ' ')).toBe('12 345,50 EUR')
+  })
+})
+
+describe('vatInEur', () => {
+  it('converts VAT of a foreign-currency invoice with the given rate', () => {
+    expect(vatInEur({ currency: 'USD', eurExchangeRate: 1.08 }, { vat: 240 })).toBe(222.22)
+  })
+  it('is null for EUR, zero VAT or a missing rate', () => {
+    expect(vatInEur({ currency: 'EUR', eurExchangeRate: 1 }, { vat: 240 })).toBeNull()
+    expect(vatInEur({ currency: 'USD', eurExchangeRate: 1.08 }, { vat: 0 })).toBeNull()
+    expect(vatInEur({ currency: 'USD' }, { vat: 240 })).toBeNull()
   })
 })

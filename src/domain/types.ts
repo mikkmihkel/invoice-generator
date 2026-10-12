@@ -185,6 +185,12 @@ export interface Invoice {
   /** Required for vatScheme 'exempt' if the default text is not suitable. */
   vatExemptionNote?: string
 
+  /**
+   * Units of the invoice currency per 1 EUR (e.g. 1.0832 for USD). Required when a foreign-currency
+   * invoice charges VAT: the VAT amount must also be shown in euros (KMS § 37).
+   */
+  eurExchangeRate?: number
+
   /** Estonian payment reference number (viitenumber, 7-3-1 checksum). */
   referenceNumber?: string
   /** Buyer's order / PO number. */

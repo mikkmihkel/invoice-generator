@@ -400,13 +400,16 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     if (isBlank(invoice.currency)) {
       add('currency', 'error', 'Valuuta puudub.', 'Currency is missing.')
     } else if (vatScheme === 'domestic' && totals.vat !== 0 && invoice.currency.trim().toUpperCase() !== 'EUR') {
-      add(
-        'currency',
-        'warning',
-        'Välisvaluutas arvel tuleb käibemaksusumma näidata ka eurodes.',
-        'On a foreign-currency invoice the VAT amount must also be shown in euros.',
-        L.KMS37_EUR,
-      )
+      const rate = invoice.eurExchangeRate
+      if (!rate || !Number.isFinite(rate) || rate <= 0) {
+        add(
+          'eurExchangeRate',
+          'error',
+          'Välisvaluutas arvel tuleb käibemaksusumma näidata ka eurodes – sisesta euro vahetuskurss.',
+          'On a foreign-currency invoice the VAT amount must also be shown in euros – enter the euro exchange rate.',
+          L.KMS37_EUR,
+        )
+      }
     }
   }
 

@@ -39,6 +39,7 @@ export const LABELS = {
   vatAmount: { et: 'Käibemaks', en: 'VAT' },
   netTotal: { et: 'Summa käibemaksuta', en: 'Total excl. VAT' },
   vatTotal: { et: 'Käibemaks kokku', en: 'Total VAT' },
+  vatInEur: { et: 'Käibemaks eurodes', en: 'VAT in EUR' },
   total: { et: 'Kokku', en: 'Total' },
   amountDue: { et: 'Tasumisele kuulub', en: 'Amount due' },
   amountCredited: { et: 'Krediteeritav summa', en: 'Amount credited' },

@@ -1,9 +1,10 @@
 // Shared, template-agnostic building blocks. Templates decide placement and styling.
 import type { Content, ContentStack, ContentTable, ContentText, CustomTableLayout, DynamicContent, TableCell } from 'pdfmake/interfaces'
 import { addressLines, COLORS, type DocContext } from './context'
-import { formatIban, formatQuantity, formatUnitPrice } from './format'
+import { formatIban, formatMoney, formatQuantity, formatUnitPrice } from './format'
 import { creditNoteText, lateInterestText, referenceHint, type LabelKey } from './labels'
 import { vatSchemeAllowsRates } from '../domain/law'
+import { vatInEur } from '../domain/calc'
 
 export interface TableStyle {
   layout: CustomTableLayout
@@ -230,6 +231,11 @@ export function totalRows(ctx: DocContext): TotalRow[] {
     const single = totals.vatBreakdown.length === 1 ? totals.vatBreakdown[0] : null
     if (single) rows.push({ text: `${t('vatAmount')} ${ctx.percent(single.rate)}`, value: ctx.money(single.vat) })
     else rows.push({ text: t('vatTotal'), value: ctx.money(totals.vat) })
+    const eur = vatInEur(ctx.invoice, totals)
+    if (eur !== null) {
+      const rate = ctx.invoice.eurExchangeRate!.toLocaleString(ctx.lang === 'en' ? 'en-GB' : 'et-EE', { maximumFractionDigits: 6 })
+      rows.push({ text: `${t('vatInEur')} (1 EUR = ${rate} ${ctx.invoice.currency.toUpperCase()})`, value: formatMoney(eur, 'EUR', ctx.lang) })
+    }
   }
   const grandKey: LabelKey = ctx.invoice.type === 'credit-note' ? 'amountCredited' : 'amountDue'
   rows.push({ text: t(grandKey), value: ctx.money(totals.gross), grand: true })

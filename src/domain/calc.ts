@@ -116,3 +116,14 @@ export function formatMoney(value: number, language: 'et' | 'en' = 'et', currenc
   }).format(roundMoney(value))
   return currency ? `${text} ${currency}` : text
 }
+
+/**
+ * VAT amount converted to EUR for a foreign-currency invoice that charges VAT (KMS § 37), or null when not
+ * applicable or the exchange rate is missing. `eurExchangeRate` = invoice-currency units per 1 EUR.
+ */
+export function vatInEur(invoice: Pick<Invoice, 'currency' | 'eurExchangeRate'>, totals: Pick<InvoiceTotals, 'vat'>): number | null {
+  if (!invoice.currency || invoice.currency.trim().toUpperCase() === 'EUR' || totals.vat === 0) return null
+  const rate = invoice.eurExchangeRate
+  if (!rate || !Number.isFinite(rate) || rate <= 0) return null
+  return roundMoney(totals.vat / rate)
+}

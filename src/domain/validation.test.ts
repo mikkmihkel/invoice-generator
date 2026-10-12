@@ -341,10 +341,12 @@ describe('validateInvoice – VAT schemes', () => {
     inv.lines[0].vatRate = 24
     expectIssue(inv, 'lines.0.vatRate', 'warning')
   })
-  it('warns that VAT must be shown in euros on foreign currency invoices', () => {
+  it('requires a euro exchange rate on foreign currency VAT invoices', () => {
     const inv = baseInvoice()
     inv.currency = 'USD'
-    expectIssue(inv, 'currency', 'warning', /eurodes/)
+    expectIssue(inv, 'eurExchangeRate', 'error', /eurodes/)
+    inv.eurExchangeRate = 1.08
+    expect(validateInvoice(inv).some((i) => i.field === 'eurExchangeRate')).toBe(false)
     inv.currency = ''
     expectIssue(inv, 'currency', 'error')
   })

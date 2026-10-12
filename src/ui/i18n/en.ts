@@ -140,6 +140,8 @@ export const en: Record<keyof typeof et, string> = {
   'field.paymentTerm': 'Payment term',
   'field.invoiceLanguage': 'Invoice language',
   'field.currency': 'Currency',
+  'field.eurExchangeRate': 'Euro exchange rate',
+  'field.eurExchangeRateHint': '1 EUR = … {currency}. Needed to show the VAT amount in euros (KMS § 37).',
   'field.vatScheme': 'VAT treatment',
   'field.defaultVatRate': 'Default VAT rate',
   'field.defaultUnit': 'Default unit',
