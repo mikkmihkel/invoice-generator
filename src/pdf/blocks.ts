@@ -302,7 +302,7 @@ export function notesBlock(ctx: DocContext, o: TextBlockOptions): Content | null
   if (inv.type === 'credit-note' && inv.creditedInvoiceNumber) {
     items.push({ text: creditNoteText(inv.creditedInvoiceNumber, ctx.lang), fontSize: o.fontSize, color: o.color })
   }
-  if (inv.lateInterestPercentPerDay && inv.lateInterestPercentPerDay > 0) {
+  if (inv.lateInterestPercentPerDay && inv.lateInterestPercentPerDay > 0 && inv.type !== 'credit-note') {
     items.push({ text: lateInterestText(ctx.percent(inv.lateInterestPercentPerDay), ctx.lang), fontSize: o.fontSize, color: o.mutedColor })
   }
   if (inv.notes?.trim()) {

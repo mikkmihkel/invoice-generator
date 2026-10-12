@@ -99,11 +99,11 @@ const TRANSLIT: Record<string, string> = {
   ß: 'ss', æ: 'ae', Æ: 'AE', ø: 'o', Ø: 'O', å: 'a', Å: 'A', ł: 'l', Ł: 'L', đ: 'd', Đ: 'D',
 }
 
-/** Transliterate to ASCII: Estonian letters explicitly, other accents via Unicode decomposition. */
+/** Transliterate to printable ASCII: Estonian letters explicitly, other accents via Unicode decomposition. */
 export function toAscii(input: string): string {
   return input
-    .replace(/[^\u0000-\u007f]/g, (ch) => TRANSLIT[ch] ?? ch.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
-    .replace(/[^\u0000-\u007f]/g, '')
+    .replace(/[^ -~]/g, (ch) => TRANSLIT[ch] ?? ch.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+    .replace(/[^ -~]/g, '')
 }
 
 /** ASCII-safe file name segment: "Klient OÜ" → "Klient-OU". */
