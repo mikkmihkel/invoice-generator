@@ -9,6 +9,13 @@ export function createMemoryRepo(init: { profile?: CompanyProfile | null; client
   const clients = new Map((init.clients ?? []).map((c) => [c.id, c]))
   const invoices = new Map((init.invoices ?? []).map((i) => [i.id, i]))
   const clone = <T,>(v: T): T => structuredClone(v)
+  const setStatus = (id: string, patch: Partial<Invoice>): Invoice => {
+    const inv = invoices.get(id)
+    if (!inv) throw new Error('not found')
+    const next = { ...inv, ...patch, updatedAt: new Date().toISOString() }
+    invoices.set(id, next)
+    return clone(next)
+  }
 
   const repo = {
     getProfile: vi.fn(async () => clone(profile)),
@@ -40,6 +47,9 @@ export function createMemoryRepo(init: { profile?: CompanyProfile | null; client
       invoices.set(id, issued)
       return clone(issued)
     }),
+    markInvoicePaid: vi.fn(async (id: string, paidAt: string) => setStatus(id, { status: 'paid', paidAt })),
+    markInvoiceUnpaid: vi.fn(async (id: string) => setStatus(id, { status: 'issued', paidAt: undefined })),
+    cancelInvoice: vi.fn(async (id: string) => setStatus(id, { status: 'cancelled' })),
     getSettings: vi.fn(async () => clone(settings)),
     saveSettings: vi.fn(async (s: AppSettings) => {
       settings = clone(s)

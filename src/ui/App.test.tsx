@@ -83,6 +83,44 @@ describe('onboarding', () => {
     expect(screen.getByLabelText(/^Linn/)).toHaveValue('Tallinn')
     expect(screen.getByLabelText('Olen käibemaksukohustuslane')).toBeChecked()
   })
+
+  it('hides the "type 2 characters" hint once searching and warns about companies in liquidation', async () => {
+    const repo = createMemoryRepo()
+    renderAt('#/', repo)
+
+    const search = await screen.findByRole('combobox')
+    expect(screen.getByText(/Sisesta vähemalt 2 tähemärki/)).toBeInTheDocument()
+    fireEvent.change(search, { target: { value: 'vana' } })
+    const option = await screen.findByRole('option', { name: /Vana Firma OÜ/ })
+    expect(screen.queryByText(/Sisesta vähemalt 2 tähemärki/)).not.toBeInTheDocument()
+    fireEvent.click(option)
+
+    expect(await screen.findByText(/staatus äriregistris on „Likvideerimisel“/)).toBeInTheDocument()
+    expect(await screen.findByLabelText(/^Nimi/)).toHaveValue('Vana Firma OÜ')
+  })
+
+  it('blocks saving with an invalid registry code', async () => {
+    const repo = createMemoryRepo()
+    renderAt('#/', repo)
+    fireEvent.click(await screen.findByRole('button', { name: 'Sisesta andmed käsitsi' }))
+    fireEvent.change(screen.getByLabelText(/^Nimi/), { target: { value: 'Minu Firma OÜ' } })
+    fireEvent.change(screen.getByLabelText(/^IBAN/), { target: { value: 'EE38 2200 2210 2014 5685' } })
+    // Empty registry code: a warning, not a blocker.
+    expect(screen.getByText(/Registrikood on lisamata/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/^Registrikood/), { target: { value: '12345679' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvesta ja alusta' }))
+    expect(await screen.findByText(/Registrikood on vigane/)).toBeInTheDocument()
+    expect(repo.saveProfile).not.toHaveBeenCalled()
+  })
+})
+
+describe('company page', () => {
+  it('focuses the field named in the link from the invoice validation panel', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile() })
+    renderAt('#/company?focus=vatNumber', repo)
+    const input = await screen.findByLabelText(/^KMKR number/)
+    await waitFor(() => expect(input).toHaveFocus())
+  })
 })
 
 describe('invoice editor', () => {
@@ -200,5 +238,74 @@ describe('invoice list', () => {
     expect(within(row).getByText(/124,00/)).toBeInTheDocument()
     // The backup reminder is shown while no backup has been made.
     expect(screen.getByText(/ei ole veel varukoopiat teinud/)).toBeInTheDocument()
+  })
+})
+
+describe('credit notes', () => {
+  const profile = sampleProfile()
+  const base = (patch: Record<string, unknown>) => ({
+    id: newId(),
+    number: '2026-0001',
+    type: 'invoice' as const,
+    status: 'issued' as const,
+    issueDate: '2026-01-05',
+    dueDate: '2026-01-19',
+    seller: { ...profile },
+    buyer: { kind: 'company' as const, name: 'Ostja AS', address: profile.address },
+    bankAccountIds: [],
+    lines: [{ id: newId(), description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 100, vatRate: 24 }],
+    currency: 'EUR',
+    vatScheme: 'domestic' as const,
+    language: 'et' as const,
+    templateId: 'classic' as const,
+    accentColor: '#2457c5',
+    createdAt: '2026-01-05T10:00:00Z',
+    updatedAt: '2026-01-05T10:00:00Z',
+    ...patch,
+  })
+
+  it('are never overdue, not counted as unpaid and cannot be marked paid', async () => {
+    const credit = base({
+      number: '2026-0002',
+      type: 'credit-note',
+      creditedInvoiceNumber: '2026-0001',
+      issueDate: '2026-01-06',
+      dueDate: '2026-01-06',
+      lines: [{ id: newId(), description: 'Töö', quantity: -1, unit: 'tk', unitPrice: 100, vatRate: 24 }],
+    })
+    const repo = createMemoryRepo({ profile, invoices: [base({ status: 'paid' }), credit] })
+    renderAt('#/', repo)
+    const row = (await screen.findByText('2026-0002')).closest('tr')!
+    expect(within(row).getByText('Väljastatud')).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Märgi tasutuks' })).not.toBeInTheDocument()
+    const unpaid = screen.getByRole('button', { name: /Tasumata/ })
+    expect(within(unpaid).getByText('Arveid: 0')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Tähtaeg ületatud/ })).toHaveTextContent('Arveid: 0')
+  })
+
+  it('are linked from the credited invoice, without a "mark as paid" action on the credit note', async () => {
+    const original = base({})
+    const credit = base({ number: '2026-0002', type: 'credit-note', creditedInvoiceNumber: '2026-0001', issueDate: '2026-01-06', dueDate: '2026-01-06' })
+    const repo = createMemoryRepo({ profile, invoices: [original, credit] })
+    const { unmount } = renderAt(`#/invoices/${original.id}`, repo)
+    const link = await screen.findByRole('link', { name: '2026-0002' })
+    expect(link.closest('.credited-by')).toHaveTextContent('Arvele koostatud kreeditarved:')
+    expect(screen.getByRole('button', { name: 'Märgi tasutuks' })).toBeInTheDocument()
+    unmount()
+
+    renderAt(`#/invoices/${credit.id}`, repo)
+    expect(await screen.findByText(/väljastatud ja lukustatud/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Märgi tasutuks' })).not.toBeInTheDocument()
+  })
+})
+
+describe('issue button summary', () => {
+  it('explains a disabled issue button and points to the requirements check', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile() })
+    renderAt('#/invoices/new', repo)
+    const summary = await screen.findByRole('button', { name: /^Vigu: \d+ – vaata nõuete kontrolli$/ })
+    expect(screen.getByRole('button', { name: 'Väljasta arve' })).toHaveAttribute('aria-describedby', 'issue-summary')
+    fireEvent.click(summary)
+    expect(document.getElementById('validation-panel')).toHaveFocus()
   })
 })

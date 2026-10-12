@@ -7,7 +7,10 @@ import { formatDate, formatMoney, parseDecimal } from './format'
 import { translate } from './i18n'
 import { en } from './i18n/en'
 import { et } from './i18n/et'
+import { vatNumberError } from './components/PartyFields'
 import { ValidationPanel } from './pages/editor/ValidationPanel'
+import { profileProblems } from './pages/ProfileForm'
+import { sampleProfile } from './testing/memoryRepo'
 import { createMemoryRepo } from './testing/memoryRepo'
 import { displayStatus, errorMessage, fillTemplate } from './util'
 
@@ -39,6 +42,16 @@ describe('ValidationPanel', () => {
     expect(screen.getByRole('button', { name: 'Maksetähtaeg on minevikus.' })).toBeInTheDocument()
   })
 
+  it('links seller issues to the company profile instead of a missing editor field', () => {
+    render(
+      <AppProvider repository={createMemoryRepo()}>
+        <ValidationPanel issues={[{ field: 'seller.vatNumber', severity: 'error', message: { et: 'Müüja KMKR number on vigane.', en: 'Seller VAT number is invalid.' } }]} />
+      </AppProvider>,
+    )
+    expect(screen.queryByRole('button', { name: 'Müüja KMKR number on vigane.' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Paranda ettevõtte andmetes/ })).toHaveAttribute('href', '#/company?focus=vatNumber')
+  })
+
   it('confirms when there are no issues', () => {
     render(
       <AppProvider repository={createMemoryRepo()}>
@@ -46,6 +59,26 @@ describe('ValidationPanel', () => {
       </AppProvider>,
     )
     expect(screen.getByText('Kõik kohustuslikud andmed on olemas.')).toBeInTheDocument()
+  })
+})
+
+describe('profile checks', () => {
+  const t = (k: string) => k
+  it('blocks an invalid registry code, an invalid VAT number and VAT registration without a number', () => {
+    expect(profileProblems(sampleProfile(), t)).toEqual([])
+    expect(profileProblems(sampleProfile({ registryCode: '12345679' }), t)).toEqual(['profile.registryCodeInvalid'])
+    expect(profileProblems(sampleProfile({ vatNumber: 'EE101234567' }), t)).toEqual(['profile.vatNumberInvalid'])
+    expect(profileProblems(sampleProfile({ vatNumber: '' }), t)).toEqual(['profile.vatNumberRequired'])
+    expect(profileProblems(sampleProfile({ vatNumber: '', vatRegistered: false }), t)).toEqual([])
+  })
+  it('does not block a missing registry code (only warned about in the form)', () => {
+    expect(profileProblems(sampleProfile({ registryCode: '' }), t)).toEqual([])
+  })
+  it('tells a wrong check digit apart from a wrong format', () => {
+    expect(vatNumberError('EE101234567', 'format', 'checksum')).toBe('checksum')
+    expect(vatNumberError('101234568', 'format', 'checksum')).toBe('format')
+    expect(vatNumberError('EE1012', 'format', 'checksum')).toBe('format')
+    expect(vatNumberError('EE101234568', 'format', 'checksum')).toBeUndefined()
   })
 })
 

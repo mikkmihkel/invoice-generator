@@ -13,6 +13,7 @@ export const REGISTRY_FIXTURE: RegistryCompany[] = [
     address: { street: 'Tartu mnt 10', city: 'Tallinn', postalCode: '10115', country: 'EE' },
   },
   { registryCode: '12000001', name: 'Päikesekiir AS', status: 'Registrisse kantud', addressText: 'Rüütli 1, Pärnu' },
+  { registryCode: '12000002', name: 'Vana Firma OÜ', status: 'Likvideerimisel', addressText: 'Pikk 2, Tartu' },
 ]
 
 export function registryMock() {
