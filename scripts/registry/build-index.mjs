@@ -230,12 +230,21 @@ export async function openCsvStream(file) {
   return raw.pipe(inflate)
 }
 
-async function download(url, dest, log) {
-  log(`Downloading ${url}`)
-  const res = await fetch(url, { headers: { 'user-agent': 'invoice-generator registry index builder (GitHub Actions)' } })
-  if (!res.ok || !res.body) throw new Error(`Download failed: HTTP ${res.status} ${res.statusText} (${url})`)
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(dest))
-  return res.headers.get('last-modified')
+async function download(url, dest, log, attempts = 3) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      log(`Downloading ${url}${attempt > 1 ? ` (attempt ${attempt})` : ''}`)
+      const res = await fetch(url, { headers: { 'user-agent': 'invoice-generator registry index builder (GitHub Actions)' } })
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} ${res.statusText}`)
+      await pipeline(Readable.fromWeb(res.body), createWriteStream(dest))
+      return res.headers.get('last-modified')
+    } catch (err) {
+      const reason = err?.cause ? `${err.message}: ${err.cause.message ?? err.cause}` : (err?.message ?? String(err))
+      if (attempt >= attempts) throw new Error(`Download failed (${url}): ${reason}`)
+      log(`Download failed: ${reason} — retrying`)
+      await new Promise((r) => setTimeout(r, 5000 * attempt))
+    }
+  }
 }
 
 /** Parse the CSV stream into index records (deleted entities and malformed rows dropped). */
@@ -522,7 +531,7 @@ async function main() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main().catch((err) => {
-    console.error(`[registry] FAILED: ${err?.stack ?? err}`)
+    console.error(`[registry] FAILED: ${err?.message ?? err}`)
     process.exitCode = 1
   })
 }

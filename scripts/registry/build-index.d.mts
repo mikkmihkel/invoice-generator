@@ -27,3 +27,7 @@ export const DEFAULT_SOURCE_URL: string
 export const ATTRIBUTION: string
 export const LICENCE: string
 export function build(options: BuildOptions): Promise<BuiltMeta>
+export function buildIndex(records: unknown[], options?: Partial<BuildOptions>): { files: Map<string, string>; meta: BuiltMeta }
+export function findZipEntry(zipPath: string, match?: (name: string) => boolean): Promise<{ name: string; method: number; compressedSize: number; uncompressedSize: number; dataStart: number }>
+export function openCsvStream(file: string): Promise<NodeJS.ReadableStream>
+export function readRecords(stream: NodeJS.ReadableStream, log?: (msg: string) => void): Promise<Array<Record<string, string>>>
