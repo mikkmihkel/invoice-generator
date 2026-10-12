@@ -9,14 +9,6 @@ export function newLine(unit: string, vatRate: number): InvoiceLine {
   return { id: newId(), description: '', quantity: 1, unit, unitPrice: 0, vatRate }
 }
 
-export function schemeAllowsRates(scheme: VatScheme): boolean {
-  try {
-    return vatSchemeAllowsRates(scheme)
-  } catch {
-    return scheme === 'domestic'
-  }
-}
-
 interface Props {
   lines: InvoiceLine[]
   onChange: (lines: InvoiceLine[]) => void
@@ -30,7 +22,7 @@ interface Props {
 
 export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defaultUnit, defaultVatRate, disabled }: Props) {
   const { t } = useApp()
-  const showRates = schemeAllowsRates(vatScheme)
+  const showRates = vatSchemeAllowsRates(vatScheme)
   const [showDiscount, setShowDiscount] = useState(() => lines.some((l) => l.discountPercent))
   const discountCol = showDiscount || lines.some((l) => l.discountPercent)
   const lineTotal = new Map(totals.lines.map((l) => [l.lineId, l]))

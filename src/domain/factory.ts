@@ -113,6 +113,15 @@ export function sellerSnapshot(profile: CompanyProfile): SellerSnapshot {
   return clone(seller)
 }
 
+/**
+ * Seller copy kept on a draft: without the logo, which can be large and would be rewritten by every autosave.
+ * Drafts are displayed with the current profile (UI `effectiveInvoice`); issueInvoice snapshots the full seller.
+ */
+export function draftSellerSnapshot(profile: CompanyProfile): SellerSnapshot {
+  const { logoDataUrl: _logo, ...seller } = sellerSnapshot(profile)
+  return seller
+}
+
 export function buyerSnapshot(client: Client): BuyerSnapshot {
   const { id, kind, contactPerson, name, registryCode, personalCode, vatNumber, address, email, phone } = client
   const buyer: BuyerSnapshot = { clientId: id, kind, name, address: clone(address) }
@@ -155,7 +164,7 @@ export function createEmptyInvoice(profile: CompanyProfile, client?: Client): In
     status: 'draft',
     issueDate,
     dueDate: addDays(issueDate, defaults.paymentTermDays),
-    seller: sellerSnapshot(profile),
+    seller: draftSellerSnapshot(profile),
     buyer: client
       ? buyerSnapshot(client)
       : { kind: 'company', name: '', address: { street: '', city: '', postalCode: '', country: 'EE' } },

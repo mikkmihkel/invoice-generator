@@ -9,6 +9,9 @@ import {
   isValidVatNumber,
   vatSchemeAllowsRates,
   vatSchemeNote,
+  vatNoteMode,
+  vatNoteRelevant,
+  NOTE_REPLACEABLE,
   vatSchemeRequiresBuyerVat,
   vatSchemeRequiresSellerVat,
 } from './law'
@@ -182,5 +185,28 @@ describe('isEuCountry', () => {
     expect(isEuCountry('GB')).toBe(false)
     expect(isEuCountry('NO')).toBe(false)
     expect(isEuCountry(undefined)).toBe(false)
+  })
+})
+
+describe('vatNoteMode / vatNoteRelevant', () => {
+  it('replaces the default where the legal basis depends on the supply, appends to statutory wording', () => {
+    for (const s of NOTE_REPLACEABLE) expect(vatNoteMode(s)).toBe('replace')
+    expect(vatNoteMode('eu-reverse-charge')).toBe('append')
+    expect(vatNoteMode('eu-goods')).toBe('append')
+    expect(vatNoteMode('non-eu-services')).toBe('append')
+    expect(vatNoteMode('domestic-reverse-charge')).toBe('append')
+    // vatSchemeNote follows the same rule.
+    expect(vatSchemeNote('export', 'et', 'X')).toBe('X')
+    expect(vatSchemeNote('eu-goods', 'et', 'X')).toMatch(/^Kauba ühendusesisene käive.* X$/)
+  })
+
+  it('is relevant for 0% / exempt / foreign supplies, not for normal domestic VAT', () => {
+    const line = (vatRate: number) => ({ vatRate })
+    expect(vatNoteRelevant({ vatScheme: 'domestic', lines: [line(24)] })).toBe(false)
+    expect(vatNoteRelevant({ vatScheme: 'domestic', lines: [line(24), line(0)] })).toBe(true)
+    expect(vatNoteRelevant({ vatScheme: 'not-registered', lines: [line(0)] })).toBe(false)
+    for (const s of ['exempt', 'export', 'non-eu-services', 'eu-goods', 'eu-reverse-charge', 'domestic-reverse-charge'] as const) {
+      expect(vatNoteRelevant({ vatScheme: s, lines: [] })).toBe(true)
+    }
   })
 })

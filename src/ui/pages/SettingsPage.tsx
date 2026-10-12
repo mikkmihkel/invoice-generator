@@ -3,7 +3,7 @@ import type { BackupFile } from '../../domain'
 import { RegistryAttribution } from '../components/CompanySearch'
 import { backupToDrive, downloadBlob, getGoogleStatus, googleSignIn, googleSignOut, restoreFromDrive, type GoogleStatus } from '../../integrations'
 import { getIndexInfo, type RegistryIndexInfo } from '../../registry'
-import { backupFileName, parseBackup as parseBackupFile, requestPersistentStorage, serializeBackup } from '../../storage'
+import { BackupFormatError, backupFileName, parseBackup, requestPersistentStorage, serializeBackup } from '../../storage'
 import { useApp } from '../AppContext'
 import { Dialog, useConfirm } from '../components/Dialog'
 import { CheckboxField, SelectField, TextField } from '../components/fields'
@@ -16,19 +16,13 @@ export const REPO_URL = 'https://github.com/mikkmihkel/invoice-generator'
 export const GOOGLE_SETUP_URL = `${REPO_URL}/blob/main/docs/google-setup.md`
 export const LEGAL_DOC_URL = `${REPO_URL}/blob/main/docs/legal-requirements.md`
 
-export function parseBackup(json: string): BackupFile | null {
+/** Parse a backup file's text; a malformed file yields the specific problem (record / field) in the UI language. */
+export function readBackupText(text: string, lang: 'et' | 'en'): { backup: BackupFile } | { error: string } {
   try {
-    return parseBackupFile(json)
-  } catch {
-    return null
-  }
-}
-
-function safeGoogleStatus(clientId?: string): GoogleStatus {
-  try {
-    return getGoogleStatus(clientId)
-  } catch {
-    return { configured: false, signedIn: false }
+    return { backup: parseBackup(text) }
+  } catch (e) {
+    if (e instanceof BackupFormatError) return { error: e.messages[lang] }
+    throw e
   }
 }
 
@@ -87,21 +81,22 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
 }
 
 export function BackupImport({ compact }: { compact?: boolean }) {
-  const { t } = useApp()
+  const { t, lang } = useApp()
   const toast = useToast()
   const [pending, setPending] = useState<BackupFile | null>(null)
   const ref = useRef<HTMLInputElement>(null)
 
   const onFile = async (file: File | undefined) => {
     if (!file) return
-    const text = await file.text()
-    const backup = parseBackup(text)
-    if (ref.current) ref.current.value = ''
-    if (!backup) {
-      toast.error(t('backup.invalid'))
-      return
+    try {
+      const res = readBackupText(await file.text(), lang)
+      if ('error' in res) toast.error(t('backup.invalidReason', { reason: res.error }))
+      else setPending(res.backup)
+    } catch (e) {
+      toast.error(t('backup.importFailed') + ' ' + errorMessage(e, lang))
+    } finally {
+      if (ref.current) ref.current.value = ''
     }
-    setPending(backup)
   }
 
   return (
@@ -120,7 +115,7 @@ export default function SettingsPage() {
   const toast = useToast()
   const [clientId, setClientId] = useState(settings.googleClientId ?? '')
   const [folder, setFolder] = useState(settings.driveFolderName)
-  const [google, setGoogle] = useState<GoogleStatus>(() => safeGoogleStatus(settings.googleClientId))
+  const [google, setGoogle] = useState<GoogleStatus>(() => getGoogleStatus(settings.googleClientId))
   const [lastBackup, setLastBackup] = useState(getLastBackupAt)
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const [indexInfo, setIndexInfo] = useState<RegistryIndexInfo | null | 'loading'>('loading')
@@ -159,7 +154,7 @@ export default function SettingsPage() {
     withBusy('google-save', async () => {
       const id = clientId.trim() || undefined
       await saveSettings({ googleClientId: id, driveFolderName: folder.trim() || settings.driveFolderName })
-      setGoogle(safeGoogleStatus(id))
+      setGoogle(getGoogleStatus(id))
       toast.success(t('common.saved'))
     })
 
@@ -173,7 +168,7 @@ export default function SettingsPage() {
   const disconnect = () =>
     withBusy('google-disconnect', async () => {
       await googleSignOut()
-      setGoogle(safeGoogleStatus(settings.googleClientId))
+      setGoogle(getGoogleStatus(settings.googleClientId))
       toast.info(t('google.disconnected'))
     })
 
@@ -195,7 +190,7 @@ export default function SettingsPage() {
       const res = await backupToDrive(settings.googleClientId, serializeBackup(backup), settings.driveFolderName)
       markBackupDone()
       setLastBackup(getLastBackupAt())
-      setGoogle(safeGoogleStatus(settings.googleClientId))
+      setGoogle(getGoogleStatus(settings.googleClientId))
       toast.success(t('backup.driveSaved', { time: formatDateTime(res.modifiedTime) }))
     })
 
@@ -208,9 +203,9 @@ export default function SettingsPage() {
         toast.info(t('backup.driveNone'))
         return
       }
-      const backup = parseBackup(json)
-      if (!backup) throw new Error(t('backup.invalid'))
-      setDriveBackup(backup)
+      const res = readBackupText(json, lang)
+      if ('error' in res) throw new Error(t('backup.invalidReason', { reason: res.error }))
+      setDriveBackup(res.backup)
     })
 
   const persist = () =>

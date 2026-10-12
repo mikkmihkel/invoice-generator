@@ -135,6 +135,17 @@ describe('validateInvoice – invoice data', () => {
     inv.dueDate = '2027-01-15'
     expectIssue(inv, 'issueDate', 'warning')
   })
+  it('warns when a draft is dated more than a week in the past', () => {
+    const inv = baseInvoice()
+    inv.issueDate = '2026-10-05'
+    inv.dueDate = '2026-10-19'
+    expect(find(run(inv), 'issueDate')).toBeUndefined()
+    inv.issueDate = '2026-10-04'
+    expectIssue(inv, 'issueDate', 'warning')
+    expect(find(run(inv), 'issueDate')!.message.et).toMatch(/rohkem kui nädal minevikus/)
+    // Issued invoices keep their date.
+    expect(find(run({ ...inv, status: 'issued' }), 'issueDate')).toBeUndefined()
+  })
   it('requires due date ≥ issue date', () => {
     const inv = baseInvoice()
     inv.dueDate = '2026-10-11'

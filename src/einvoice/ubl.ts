@@ -1,6 +1,6 @@
 // UBL 2.1 Invoice / CreditNote per Peppol BIS Billing 3.0 (EN 16931). Element order follows the UBL 2.1 schemas.
-import { computeTotals, vatInEur, vatSchemeNote } from '../domain'
-import type { BankAccount, Invoice, Party } from '../domain/types'
+import { computeTotals, selectedBankAccounts, vatInEur, vatSchemeNote } from '../domain'
+import type { Invoice, Party } from '../domain/types'
 import { endpointFor, legalIdScheme, taxCategoryFor, unitCode, type TaxCategory } from './codes'
 import { el, leaf, serialize, type XmlChild, type XmlElement } from './xml'
 
@@ -64,13 +64,6 @@ function partyXml(party: Party & { contactPerson?: string }, o: { vatId: boolean
     cac('PartyLegalEntity', cbc('RegistrationName', party.name), cbc('CompanyID', regCode, { schemeID: legalIdScheme(party) })),
     cac('Contact', cbc('Name', party.contactPerson), cbc('Telephone', party.phone), cbc('ElectronicMail', party.email)),
   )
-}
-
-function selectedAccounts(invoice: Invoice): BankAccount[] {
-  const all = invoice.seller.bankAccounts ?? []
-  if (!invoice.bankAccountIds?.length) return all
-  const sel = all.filter((b) => invoice.bankAccountIds.includes(b.id))
-  return sel.length ? sel : all
 }
 
 function paymentTermsText(invoice: Invoice): string | undefined {
@@ -163,7 +156,7 @@ export function buildUblXml(invoice: Invoice, opts: UblOptions = {}): string {
   })
 
   // --- Header ---------------------------------------------------------------------------
-  const accounts = selectedAccounts(invoice)
+  const accounts = selectedBankAccounts(invoice)
   const notes = invoice.notes?.trim()
   const buyer = invoice.buyer
   const buyerReference = buyer.contactPerson?.trim() || (invoice.orderReference?.trim() ? undefined : invoice.number || 'N/A')

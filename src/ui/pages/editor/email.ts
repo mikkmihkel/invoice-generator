@@ -1,4 +1,5 @@
 import {
+  computeTotals,
   DEFAULT_EMAIL_BODY_EN,
   DEFAULT_EMAIL_BODY_ET,
   DEFAULT_EMAIL_SUBJECT_EN,
@@ -11,7 +12,6 @@ import {
 import { assertValidEmail, parseAddress } from '../../../integrations/mime'
 import { formatDate as formatDocumentDate } from '../../../pdf/format'
 import { formatDate, formatMoney } from '../../format'
-import { safeTotals } from '../../util'
 
 export interface Recipient {
   /** As typed, e.g. "Jaan Tamm <jaan@firma.ee>" or "jaan@firma.ee". */
@@ -70,7 +70,7 @@ export function emailVars(inv: Invoice, companyName: string): Record<string, str
     number: inv.number,
     company: companyName,
     client: inv.buyer.name,
-    total: formatMoney(safeTotals(inv).gross, inv.currency, inv.language),
+    total: formatMoney(computeTotals(inv).gross, inv.currency, inv.language),
     dueDate: en ? formatDocumentDate(inv.dueDate, 'en') : formatDate(inv.dueDate),
   }
 }

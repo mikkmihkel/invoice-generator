@@ -44,7 +44,7 @@ export interface Repository {
   listInvoices(): Promise<Invoice[]>
   getInvoice(id: string): Promise<Invoice | null>
   /**
-   * Create / update an invoice. Drafts may change freely. For an already issued (issued / paid / cancelled)
+   * Create / update an invoice. Drafts may change freely but stay drafts (use issueInvoice). For an already issued (issued / paid / cancelled)
    * record only `status` (issued ↔ paid, → cancelled), `paidAt` and `updatedAt` may differ from the stored
    * copy; anything else throws RepositoryError 'immutable'. Prefer the explicit status methods below.
    */
@@ -288,6 +288,16 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
     async saveInvoice(invoice) {
       const tx = (await db()).transaction('invoices', 'readwrite')
       const existing = await tx.store.get(invoice.id)
+      if (existing && existing.status === 'draft' && invoice.status !== 'draft') {
+        // Issuing allocates the number and snapshots the seller — it must go through issueInvoice.
+        tx.abort()
+        await tx.done.catch(() => {})
+        throw new RepositoryError(
+          'invalid-transition',
+          'Mustandi olekut ei saa salvestamisega muuta – kasuta arve väljastamist.',
+          'A draft cannot change status by saving it – issue it instead.',
+        )
+      }
       if (existing && existing.status !== 'draft') {
         let error: RepositoryError | null = null
         if (!isAllowedIssuedTransition(existing.status, invoice.status)) {

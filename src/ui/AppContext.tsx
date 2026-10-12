@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createDefaultSettings, type AppSettings, type Client, type CompanyProfile, type Invoice, type UiLanguage } from '../domain'
-import { getRepository, subscribe, type Repository } from '../storage'
+import { getRepository, subscribe, type Repository, type StorageArea } from '../storage'
 import { makeT, type Translate } from './i18n'
 import { errorMessage, nowISO, setErrorLanguage, sortInvoices } from './util'
 
@@ -31,87 +31,109 @@ export interface AppData {
 
 const AppContext = createContext<AppData | null>(null)
 
-function same<T>(prev: T, next: T): T {
-  try {
-    return JSON.stringify(prev) === JSON.stringify(next) ? prev : next
-  } catch {
-    return next
-  }
+type Versioned = { id: string; updatedAt?: string }
+
+/**
+ * Next list from storage, keeping the previous array and unchanged items (same id + updatedAt) so dependants
+ * (e.g. the PDF preview) don't re-render. The repository stamps `updatedAt` on every write.
+ */
+export function reconcileList<T extends Versioned>(prev: T[], next: T[]): T[] {
+  const byId = new Map(prev.map((x) => [x.id, x]))
+  let changed = prev.length !== next.length
+  const out = next.map((x, i) => {
+    const old = byId.get(x.id)
+    if (old && old.updatedAt === x.updatedAt) {
+      if (prev[i] !== old) changed = true
+      return old
+    }
+    changed = true
+    return x
+  })
+  return changed ? out : prev
 }
 
-function fallbackSettings(): AppSettings {
-  try {
-    return createDefaultSettings()
-  } catch {
-    return { uiLanguage: 'et', driveFolderName: 'Arved', registryLiveLookup: true, updatedAt: nowISO() }
-  }
+function reconcileOne<T extends { updatedAt?: string }>(prev: T | null, next: T | null): T | null {
+  return prev && next && prev.updatedAt === next.updatedAt ? prev : next
 }
+
+const sortClients = (list: Client[]) => [...list].sort((a, b) => a.name.localeCompare(b.name, 'et'))
+
+/** Draft seller data is taken from the current profile, so don't keep (and rewrite on every autosave) the logo. */
+function withoutDraftLogo(inv: Invoice): Invoice {
+  if (inv.status !== 'draft' || !inv.seller?.logoDataUrl) return inv
+  const { logoDataUrl: _logo, ...seller } = inv.seller
+  return { ...inv, seller }
+}
+
+type Area = Exclude<StorageArea, 'all'>
+const ALL_AREAS: Area[] = ['profile', 'settings', 'clients', 'invoices']
 
 /** Holds repository-backed app data, settings and the UI language. */
 export function AppProvider({ children, repository }: { children: ReactNode; repository?: Repository }) {
-  const repo = useMemo<Repository>(() => {
-    if (repository) return repository
-    try {
-      return getRepository()
-    } catch (e) {
-      return new Proxy({} as Repository, {
-        get: () => () => Promise.reject(e),
-      })
-    }
-  }, [repository])
+  const repo = useMemo<Repository>(() => repository ?? getRepository(), [repository])
 
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [profile, setProfile] = useState<CompanyProfile | null>(null)
-  const [settings, setSettings] = useState<AppSettings>(fallbackSettings)
+  const [settings, setSettings] = useState<AppSettings>(createDefaultSettings)
   const [clients, setClients] = useState<Client[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const settingsRef = useRef(settings)
-  settingsRef.current = settings
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
 
-  const reload = useCallback(async () => {
-    try {
-      const [p, s, c, i] = await Promise.all([repo.getProfile(), repo.getSettings(), repo.listClients(), repo.listInvoices()])
-      // Keep object identity when nothing changed, so dependants (e.g. the PDF preview) don't re-render.
-      setProfile((prev) => same(prev, p))
-      if (s) setSettings((prev) => same(prev, s))
-      setClients((prev) => same(prev, [...c].sort((a, b) => a.name.localeCompare(b.name, 'et'))))
-      setInvoices((prev) => same(prev, i))
-      setLoadError(null)
-    } catch (e) {
-      console.error(e)
-      setLoadError(errorMessage(e))
-    } finally {
-      setReady(true)
-    }
-  }, [repo])
+  const load = useCallback(
+    async (areas: Iterable<Area>) => {
+      const set = new Set(areas)
+      try {
+        await Promise.all([
+          set.has('profile') && repo.getProfile().then((p) => setProfile((prev) => reconcileOne(prev, p))),
+          set.has('settings') && repo.getSettings().then((s) => s && setSettings((prev) => reconcileOne(prev, s) ?? prev)),
+          set.has('clients') && repo.listClients().then((c) => setClients((prev) => reconcileList(prev, sortClients(c)))),
+          set.has('invoices') && repo.listInvoices().then((i) => setInvoices((prev) => reconcileList(prev, i))),
+        ])
+        setLoadError(null)
+      } catch (e) {
+        console.error(e)
+        setLoadError(errorMessage(e))
+      } finally {
+        setReady(true)
+      }
+    },
+    [repo],
+  )
+  const reload = useCallback(() => load(ALL_AREAS), [load])
 
   useEffect(() => {
     void reload()
   }, [reload])
 
-  // Refresh after writes (backup import, other tabs). Coalesce bursts such as autosaves.
+  // Refresh after writes the context did not make itself: other tabs and bulk changes (backup import).
+  // Local single-area writes all go through the methods below, which already update the state.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    let unsub: (() => void) | undefined
-    try {
-      unsub = subscribe(() => {
-        clearTimeout(timer)
-        timer = setTimeout(() => void reload(), 150)
-      })
-    } catch {
-      /* no change feed */
-    }
+    const pending = new Set<Area>()
+    const unsub = subscribe((change) => {
+      if (change.source === 'local' && change.area !== 'all') return
+      for (const a of change.area === 'all' ? ALL_AREAS : [change.area]) pending.add(a)
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        const areas = [...pending]
+        pending.clear()
+        void load(areas)
+      }, 150)
+    })
     return () => {
       clearTimeout(timer)
-      unsub?.()
+      unsub()
     }
-  }, [reload])
+  }, [load])
 
   const lang: UiLanguage = settings.uiLanguage === 'en' ? 'en' : 'et'
-  setErrorLanguage(lang)
   useEffect(() => {
     document.documentElement.lang = lang
+    setErrorLanguage(lang)
   }, [lang])
 
   const t = useMemo(() => makeT(lang), [lang])
@@ -128,6 +150,7 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
   const saveSettings = useCallback(
     async (patch: Partial<AppSettings>) => {
       const next = { ...settingsRef.current, ...patch, updatedAt: nowISO() }
+      settingsRef.current = next
       setSettings(next)
       await repo.saveSettings(next)
     },
@@ -138,7 +161,7 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
     async (c: Client) => {
       const next = { ...c, updatedAt: nowISO() }
       await repo.saveClient(next)
-      setClients((list) => [...list.filter((x) => x.id !== c.id), next].sort((a, b) => a.name.localeCompare(b.name, 'et')))
+      setClients((list) => sortClients([...list.filter((x) => x.id !== c.id), next]))
     },
     [repo],
   )
@@ -152,7 +175,8 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
   )
 
   const saveInvoice = useCallback(
-    async (inv: Invoice) => {
+    async (invoice: Invoice) => {
+      const inv = withoutDraftLogo(invoice)
       await repo.saveInvoice(inv)
       setInvoices((list) => sortInvoices([...list.filter((x) => x.id !== inv.id), inv]))
     },
@@ -172,14 +196,10 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
       const issued = await repo.issueInvoice(id)
       setInvoices((list) => sortInvoices([...list.filter((x) => x.id !== id), issued]))
       // Numbering advanced inside the repository — refresh the profile.
-      try {
-        setProfile(await repo.getProfile())
-      } catch {
-        /* ignore */
-      }
+      await load(['profile'])
       return issued
     },
-    [repo],
+    [repo, load],
   )
 
   const statusChange = useCallback(async (change: () => Promise<Invoice>) => {

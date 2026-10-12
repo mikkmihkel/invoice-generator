@@ -70,9 +70,30 @@ describe('invoices', () => {
     await repo.saveInvoice({ ...issued, status: 'paid', paidAt: '2026-03-20' })
     expect((await repo.getInvoice('x'))?.status).toBe('paid')
   })
+
+  it('does not let a draft leave the draft status through saveInvoice', async () => {
+    await repo.saveInvoice(makeInvoice('d'))
+    for (const status of ['issued', 'paid', 'cancelled'] as const) {
+      await expect(repo.saveInvoice(makeInvoice('d', { status }))).rejects.toMatchObject({ code: 'invalid-transition' })
+    }
+    const stored = await repo.getInvoice('d')
+    expect(stored?.status).toBe('draft')
+    expect(stored?.number).toBe('')
+    // Ordinary draft edits still work.
+    await repo.saveInvoice(makeInvoice('d', { notes: 'edited' }))
+    expect((await repo.getInvoice('d'))?.notes).toBe('edited')
+  })
 })
 
 describe('issueInvoice', () => {
+  it('snapshots the seller including the logo even when the draft has none', async () => {
+    await repo.saveProfile(makeProfile({ logoDataUrl: 'data:image/png;base64,AAAA' }))
+    const draft = makeInvoice('a')
+    delete draft.seller.logoDataUrl
+    await repo.saveInvoice(draft)
+    expect((await repo.issueInvoice('a')).seller.logoDataUrl).toBe('data:image/png;base64,AAAA')
+  })
+
   it('allocates sequential numbers, increments nextNumber and sets issued fields', async () => {
     await repo.saveProfile(makeProfile({ numbering: { prefix: 'ARVE-', nextNumber: 7, padding: 4 } }))
     await repo.saveInvoice(makeInvoice('a'))

@@ -17,6 +17,9 @@ export {
   EU_COUNTRIES,
   EU_VAT_PREFIXES,
   vatSchemeNote,
+  vatNoteMode,
+  vatNoteRelevant,
+  NOTE_REPLACEABLE,
   vatSchemeAllowsRates,
   vatSchemeRequiresBuyerVat,
   vatSchemeRequiresSellerVat,
@@ -46,6 +49,8 @@ export {
   createEmptyLine,
   effectiveVatScheme,
   sellerSnapshot,
+  draftSellerSnapshot,
   buyerSnapshot,
 } from './factory'
 export { withVatScheme } from './scheme'
+export { selectedBankAccounts } from './accounts'

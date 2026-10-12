@@ -1,6 +1,5 @@
 import {
   buyerSnapshot,
-  computeTotals,
   newId,
   sellerSnapshot as domainSellerSnapshot,
   type Address,
@@ -8,7 +7,6 @@ import {
   type Client,
   type CompanyProfile,
   type Invoice,
-  type InvoiceTotals,
   type Party,
   type RegistryCompany,
   type SellerSnapshot,
@@ -50,23 +48,11 @@ export function addDaysISO(dateISO: string, days: number): string {
   return new Date(t + days * 86_400_000).toISOString().slice(0, 10)
 }
 
-const ZERO_TOTALS: InvoiceTotals = { lines: [], vatBreakdown: [], net: 0, vat: 0, gross: 0, showVat: false }
-
-/** computeTotals, but never throws (the UI must keep rendering even on a bad line). */
-export function safeTotals(inv: Pick<Invoice, 'lines' | 'vatScheme'>): InvoiceTotals {
-  try {
-    return computeTotals(inv)
-  } catch (e) {
-    console.error('computeTotals failed', e)
-    return ZERO_TOTALS
-  }
-}
-
 export function sellerSnapshot(profile: CompanyProfile): SellerSnapshot {
   return domainSellerSnapshot(profile)
 }
 
-/** Drafts always show the current company profile; issued invoices keep their frozen snapshot. */
+/** Drafts always show the current company profile (incl. logo); issued invoices keep their frozen snapshot. */
 export function effectiveInvoice(inv: Invoice, profile: CompanyProfile | null): Invoice {
   if (inv.status !== 'draft' || !profile) return inv
   return { ...inv, seller: sellerSnapshot(profile) }
@@ -136,22 +122,22 @@ export function structuredCloneSafe<T>(v: T): T {
 }
 
 let errorLanguage: 'et' | 'en' = 'et'
-/** Set by AppProvider so error texts follow the UI language. */
+/** Default language of `errorMessage`; synced from the UI language by an AppProvider effect. */
 export function setErrorLanguage(lang: 'et' | 'en') {
   errorLanguage = lang
 }
 
 /**
  * User-facing text for an error. Understands the bilingual errors of other modules
- * (RepositoryError / GoogleApiError `.messages`, InvoiceValidationError `.issues`).
+ * (RepositoryError / GoogleApiError / BackupFormatError `.messages`, InvoiceValidationError `.issues`).
  */
-export function errorMessage(e: unknown): string {
+export function errorMessage(e: unknown, lang: 'et' | 'en' = errorLanguage): string {
   const x = e as { messages?: { et?: string; en?: string }; issues?: { severity: string; message: { et: string; en: string } }[] } | null
   if (x && Array.isArray(x.issues)) {
     const errs = x.issues.filter((i) => i.severity === 'error')
-    if (errs.length) return errs.map((i) => i.message[errorLanguage] || i.message.et).join(' ')
+    if (errs.length) return errs.map((i) => i.message[lang] || i.message.et).join(' ')
   }
-  if (x && x.messages && typeof x.messages[errorLanguage] === 'string') return x.messages[errorLanguage] as string
+  if (x && x.messages && typeof x.messages[lang] === 'string') return x.messages[lang] as string
   if (e instanceof Error) return e.message
   return String(e)
 }
@@ -221,4 +207,46 @@ export function sortInvoices(list: Invoice[]): Invoice[] {
     if (a.issueDate !== b.issueDate) return a.issueDate < b.issueDate ? 1 : -1
     return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0
   })
+}
+
+/** Round half away from zero to `places` decimals (input precision matching what the PDF prints). */
+export function roundTo(value: number, places: number): number {
+  if (!Number.isFinite(value)) return value
+  const r = Number(`${Math.round(Number(`${Math.abs(value)}e${places}`))}e-${places}`)
+  return value < 0 ? -r : r
+}
+
+/**
+ * Fill in missing parts of a stored invoice (old or hand-edited backups) so screens can render it.
+ * Validation still reports the missing data; nothing is written back unless the draft is edited.
+ */
+export function normalizeInvoice(inv: Invoice): Invoice {
+  const seller = inv.seller ?? ({} as Invoice['seller'])
+  const buyer = inv.buyer ?? ({} as Invoice['buyer'])
+  return {
+    ...inv,
+    number: inv.number ?? '',
+    type: inv.type ?? 'invoice',
+    issueDate: inv.issueDate ?? '',
+    dueDate: inv.dueDate ?? '',
+    currency: inv.currency ?? 'EUR',
+    vatScheme: inv.vatScheme ?? 'domestic',
+    language: inv.language ?? 'et',
+    bankAccountIds: Array.isArray(inv.bankAccountIds) ? inv.bankAccountIds : [],
+    lines: Array.isArray(inv.lines) ? inv.lines : [],
+    seller: { ...seller, name: seller.name ?? '', address: seller.address ?? emptyAddress(), bankAccounts: Array.isArray(seller.bankAccounts) ? seller.bankAccounts : [] },
+    buyer: { ...buyer, kind: buyer.kind ?? 'company', name: buyer.name ?? '', address: buyer.address ?? emptyAddress() },
+  }
+}
+
+export const DEFAULT_ACCENT = '#1f6feb'
+
+/** The logo as an <img> source only if it is an embedded PNG/JPEG (never a remote URL from imported data). */
+export function logoImageSrc(value: string | undefined): string | undefined {
+  return value && /^data:image\/(png|jpe?g);base64,/i.test(value) ? value : undefined
+}
+
+/** Accent colour usable in CSS: `#rrggbb` only, otherwise the default. */
+export function accentColor(value: string | undefined): string {
+  return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : DEFAULT_ACCENT
 }

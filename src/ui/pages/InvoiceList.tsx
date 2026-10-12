@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import type { Invoice } from '../../domain'
+import { computeTotals, type Invoice } from '../../domain'
 import { downloadBlob } from '../../integrations'
 import { invoiceFileName, renderInvoicePdf } from '../../pdf'
 import { useApp } from '../AppContext'
 import { StatusChip } from '../components/misc'
 import { formatDate, formatMoney } from '../format'
 import { useToast } from '../Toasts'
-import { daysBetween, displayStatus, errorMessage, getLastBackupAt, isUnpaid, localTodayISO, safeTotals, sumByCurrency, type DisplayStatus } from '../util'
+import { daysBetween, displayStatus, errorMessage, getLastBackupAt, isUnpaid, localTodayISO, normalizeInvoice, sumByCurrency, type DisplayStatus } from '../util'
 import { MarkPaidDialog } from './editor/StatusDialogs'
 
 type StatusFilter = 'all' | 'unpaid' | DisplayStatus
@@ -44,9 +44,17 @@ export default function InvoiceList() {
   const [paying, setPaying] = useState<Invoice | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  const rows = useMemo<Row[]>(() => invoices.map((inv) => ({ inv, status: displayStatus(inv, today), gross: safeTotals(inv).gross })), [invoices, today])
+  // Normalized so a malformed stored record (old / hand-edited backup) still renders as a row.
+  const rows = useMemo<Row[]>(
+    () =>
+      invoices.map((raw) => {
+        const inv = normalizeInvoice(raw)
+        return { inv, status: displayStatus(inv, today), gross: computeTotals(inv).gross }
+      }),
+    [invoices, today],
+  )
 
-  const years = useMemo(() => [...new Set(invoices.map((i) => i.issueDate.slice(0, 4)))].sort().reverse(), [invoices])
+  const years = useMemo(() => [...new Set(rows.map((r) => r.inv.issueDate.slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse(), [rows])
 
   const summary = useMemo(() => {
     const unpaid = rows.filter((r) => isUnpaid(r.inv))

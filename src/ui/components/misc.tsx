@@ -4,7 +4,7 @@ import { useApp } from '../AppContext'
 import { formatIban } from '../format'
 import { useToast } from '../Toasts'
 import type { DisplayStatus } from '../util'
-import { errorMessage, estonianBankFromIban, resizeImageToDataUrl } from '../util'
+import { errorMessage, estonianBankFromIban, logoImageSrc, resizeImageToDataUrl } from '../util'
 import { TextField } from './fields'
 
 export function StatusChip({ status }: { status: DisplayStatus }) {
@@ -56,7 +56,7 @@ export function LogoInput({ value, onChange }: { value: string | undefined; onCh
     <div className="field logo-input">
       <span className="label">{t('logo.label')}</span>
       <div className="logo-row">
-        <div className="logo-preview">{value ? <img src={value} alt={t('logo.preview')} /> : <span className="muted">{t('logo.none')}</span>}</div>
+        <div className="logo-preview">{logoImageSrc(value) ? <img src={logoImageSrc(value)} alt={t('logo.preview')} /> : <span className="muted">{t('logo.none')}</span>}</div>
         <div className="btn-row">
           <label className="btn">
             {busy ? t('common.loading') : value ? t('logo.change') : t('logo.upload')}
@@ -72,14 +72,6 @@ export function LogoInput({ value, onChange }: { value: string | undefined; onCh
       <div className="field-hint">{t('logo.hint')}</div>
     </div>
   )
-}
-
-function ibanValid(iban: string): boolean {
-  try {
-    return isValidIban(iban)
-  } catch {
-    return true
-  }
 }
 
 export function BankAccountsEditor({ value, onChange }: { value: BankAccount[]; onChange: (v: BankAccount[]) => void }) {
@@ -99,7 +91,7 @@ export function BankAccountsEditor({ value, onChange }: { value: BankAccount[]; 
               update(i, { iban, bankName: acc.bankName || guess?.bankName, bic: acc.bic || guess?.bic })
             }}
             placeholder="EE38 2200 2210 2014 5685"
-            error={acc.iban && !ibanValid(acc.iban) ? t('bank.ibanInvalid') : undefined}
+            error={acc.iban && !isValidIban(acc.iban) ? t('bank.ibanInvalid') : undefined}
             hint={acc.iban ? formatIban(acc.iban) : undefined}
             required
           />

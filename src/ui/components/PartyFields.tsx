@@ -2,23 +2,15 @@ import { isValidEstonianRegistryCode, isValidVatNumber, normalizeVatNumber, type
 import { useApp } from '../AppContext'
 import { TextField } from './fields'
 
-function safeCheck(fn: () => boolean): boolean {
-  try {
-    return fn()
-  } catch {
-    return true
-  }
-}
-
 export function registryCodeError(code: string | undefined, country: string | undefined, msg: string): string | undefined {
   if (!code || (country && country !== 'EE')) return undefined
-  return safeCheck(() => isValidEstonianRegistryCode(code)) ? undefined : msg
+  return isValidEstonianRegistryCode(code) ? undefined : msg
 }
 
 /** `formatMsg` for a wrong prefix/length, `checksumMsg` for a well-formed Estonian number whose check digit is wrong. */
 export function vatNumberError(vat: string | undefined, formatMsg: string, checksumMsg: string = formatMsg): string | undefined {
   if (!vat) return undefined
-  if (safeCheck(() => isValidVatNumber(vat))) return undefined
+  if (isValidVatNumber(vat)) return undefined
   return /^EE\d{9}$/.test(normalizeVatNumber(vat)) ? checksumMsg : formatMsg
 }
 

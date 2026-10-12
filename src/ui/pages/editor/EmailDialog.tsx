@@ -21,13 +21,7 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
   const [pdf, setPdf] = useState<Blob | null>(null)
   const [pdfError, setPdfError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const fileName = useMemo(() => {
-    try {
-      return invoiceFileName(invoice, 'pdf')
-    } catch {
-      return `invoice-${invoice.number || invoice.id}.pdf`
-    }
-  }, [invoice])
+  const fileName = useMemo(() => invoiceFileName(invoice, 'pdf'), [invoice])
 
   useEffect(() => {
     let alive = true
@@ -40,14 +34,7 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
   }, [invoice])
 
   const file = useMemo(() => (pdf ? new File([pdf], fileName, { type: 'application/pdf' }) : null), [pdf, fileName])
-  const shareable = useMemo(() => {
-    if (!file) return false
-    try {
-      return canShareFiles([file])
-    } catch {
-      return false
-    }
-  }, [file])
+  const shareable = useMemo(() => !!file && canShareFiles([file]), [file])
 
   const toList = parseRecipients(to)
   const ccList = parseRecipients(cc)

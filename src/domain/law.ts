@@ -1,4 +1,4 @@
-import type { InvoiceLanguage, VatScheme } from './types'
+import type { InvoiceLanguage, InvoiceLine, VatScheme } from './types'
 
 /**
  * Estonian VAT rates in percent valid for 2026 (standard first).
@@ -72,7 +72,22 @@ const SCHEME_NOTES: Record<VatScheme, SchemeNote | null> = {
 }
 
 /** Schemes where the custom note replaces the default wording (the legal basis depends on the actual supply). */
-const NOTE_REPLACEABLE: readonly VatScheme[] = ['exempt', 'export', 'domestic', 'not-registered']
+export const NOTE_REPLACEABLE: readonly VatScheme[] = ['exempt', 'export', 'domestic', 'not-registered']
+
+/** How the custom note (Invoice.vatExemptionNote) combines with the scheme's default wording. */
+export function vatNoteMode(scheme: VatScheme): 'replace' | 'append' {
+  return NOTE_REPLACEABLE.includes(scheme) || !SCHEME_NOTES[scheme] ? 'replace' : 'append'
+}
+
+/**
+ * Whether the custom VAT note is meaningful for the invoice: the legal basis of an exempt / 0% supply
+ * (exempt, export, domestic with a 0% line) or extra text after the statutory wording (EU, non-EU services,
+ * domestic reverse charge). Not relevant for normal domestic VAT without 0% lines or for 'not-registered'.
+ */
+export function vatNoteRelevant(invoice: { vatScheme: VatScheme; lines?: Pick<InvoiceLine, 'vatRate'>[] }): boolean {
+  if (invoice.vatScheme === 'domestic') return (invoice.lines ?? []).some((l) => l.vatRate === 0)
+  return invoice.vatScheme !== 'not-registered'
+}
 
 function pick(note: SchemeNote, language: InvoiceLanguage): string {
   if (language === 'et') return note.et
@@ -89,7 +104,7 @@ function pick(note: SchemeNote, language: InvoiceLanguage): string {
 export function vatSchemeNote(scheme: VatScheme, language: InvoiceLanguage, customNote?: string): string | null {
   const custom = customNote?.trim()
   const base = SCHEME_NOTES[scheme]
-  if (custom && (NOTE_REPLACEABLE.includes(scheme) || !base)) return custom
+  if (custom && vatNoteMode(scheme) === 'replace') return custom
   if (!base) return null
   const text = pick(base, language)
   return custom ? `${text} ${custom}` : text

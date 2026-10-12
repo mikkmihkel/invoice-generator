@@ -2,6 +2,7 @@ import { useId } from 'react'
 import type { TemplateId } from '../../domain'
 import { useApp } from '../AppContext'
 import { ACCENT_PRESETS, templates } from '../options'
+import { accentColor } from '../util'
 
 /** Template cards with a tiny schematic thumbnail in the chosen accent colour. */
 export function TemplatePicker({ value, onChange, accent, disabled }: { value: TemplateId; onChange: (v: TemplateId) => void; accent: string; disabled?: boolean }) {
@@ -14,7 +15,7 @@ export function TemplatePicker({ value, onChange, accent, disabled }: { value: T
         {templates().map((tpl) => (
           <label key={tpl.id} className={`template-card${value === tpl.id ? ' selected' : ''}`}>
             <input type="radio" name={name} value={tpl.id} checked={value === tpl.id} onChange={() => onChange(tpl.id)} className="visually-hidden" />
-            <span className={`tpl-thumb tpl-${tpl.id}`} style={{ ['--tpl-accent' as string]: accent }} aria-hidden="true">
+            <span className={`tpl-thumb tpl-${tpl.id}`} style={{ ['--tpl-accent' as string]: accentColor(accent) }} aria-hidden="true">
               <span className="tpl-head" />
               <span className="tpl-line" />
               <span className="tpl-line short" />
@@ -37,7 +38,7 @@ export function AccentPicker({ value, onChange, disabled }: { value: string; onC
     <div className="field accent-picker">
       <label htmlFor={id}>{t('appearance.accent')}</label>
       <div className="accent-row">
-        <input id={id} type="color" value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#1f6feb'} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
+        <input id={id} type="color" value={accentColor(value)} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
         {ACCENT_PRESETS.map((c) => (
           <button
             key={c}

@@ -1,5 +1,5 @@
 // Everything a template needs to lay out an invoice: resolved totals, labels, formatters and colours.
-import { computeTotals, vatSchemeNote } from '../domain'
+import { computeTotals, selectedBankAccounts, vatSchemeNote } from '../domain'
 import type { Address, BankAccount, Invoice, InvoiceLanguage, InvoiceTotals, Party } from '../domain/types'
 import { formatAmount, formatDate, formatMoney, formatPercent } from './format'
 import { translator, type Translator } from './labels'
@@ -94,13 +94,6 @@ export function readableOnWhite(hex: string): string {
   let c = hex
   for (let i = 0; i < 6 && 1.05 / (relativeLuminance(c) + 0.05) < 3; i++) c = shade(c, 0.2)
   return c
-}
-
-export function selectedBankAccounts(invoice: Invoice): BankAccount[] {
-  const all = invoice.seller.bankAccounts ?? []
-  if (!invoice.bankAccountIds?.length) return all
-  const selected = all.filter((a) => invoice.bankAccountIds.includes(a.id))
-  return selected.length ? selected : all
 }
 
 const COUNTRY_FALLBACK: Record<string, { et: string; en: string }> = {

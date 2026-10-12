@@ -9,10 +9,12 @@ export interface DialogProps {
   footer?: ReactNode
   wide?: boolean
   closeLabel?: string
+  /** False while an operation is running: Escape, the backdrop and × don't close the dialog. */
+  dismissible?: boolean
 }
 
 /** Accessible modal: focus moves in on open, Tab is trapped, Escape closes, focus is restored on close. */
-export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'Close' }: DialogProps) {
+export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'Close', dismissible = true }: DialogProps) {
   const titleId = useId()
   const ref = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
@@ -29,7 +31,7 @@ export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'C
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.stopPropagation()
-      onCloseRef.current()
+      if (dismissible) onCloseRef.current()
       return
     }
     if (e.key !== 'Tab' || !ref.current) return
@@ -50,7 +52,7 @@ export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'C
     <div
       className="dialog-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        if (e.target === e.currentTarget && dismissible) onClose()
       }}
     >
       <div
@@ -64,7 +66,7 @@ export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'C
       >
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="icon-btn" aria-label={closeLabel} onClick={onClose}>
+          <button type="button" className="icon-btn" aria-label={closeLabel} onClick={onClose} disabled={!dismissible}>
             ×
           </button>
         </div>

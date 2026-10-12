@@ -8,11 +8,7 @@ import { CURRENCIES, languageOptions, vatRates, vatSchemeOptions, UNIT_SUGGESTIO
 import { localTodayISO } from '../util'
 
 export function numberingPreview(n: NumberingSettings, year = Number(localTodayISO().slice(0, 4))): string {
-  try {
-    return formatInvoiceNumber(n, n.nextNumber, year)
-  } catch {
-    return n.prefix.replace('{YYYY}', String(year)) + String(n.nextNumber).padStart(n.padding, '0')
-  }
+  return formatInvoiceNumber(n, n.nextNumber, year)
 }
 
 export type ProfileSection = 'company' | 'vat' | 'bank' | 'logo' | 'defaults' | 'numbering' | 'email'

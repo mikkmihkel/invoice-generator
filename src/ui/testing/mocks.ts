@@ -27,7 +27,10 @@ export function registryMock() {
 
 export function pdfMock() {
   return {
-    TEMPLATES: [],
+    TEMPLATES: [
+      { id: 'classic', name: { et: 'Klassikaline', en: 'Classic' }, description: { et: 'Selge tabeliga.', en: 'With a clear table.' } },
+      { id: 'modern', name: { et: 'Moodne', en: 'Modern' }, description: { et: 'Värviline päis.', en: 'Coloured header.' } },
+    ],
     renderInvoicePdf: vi.fn(async () => new Blob(['%PDF-1.7'], { type: 'application/pdf' })),
     renderInvoicePdfBase64: vi.fn(async () => 'JVBERi0xLjc='),
     preloadPdfMake: vi.fn(),

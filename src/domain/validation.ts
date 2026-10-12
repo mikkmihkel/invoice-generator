@@ -1,3 +1,4 @@
+import { selectedBankAccounts } from './accounts'
 import { computeTotals } from './calc'
 import { isValidISODate, todayISO, addDays } from './factory'
 import {
@@ -78,6 +79,13 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     const today = options.today ?? todayISO()
     if (invoice.issueDate > addDays(today, 30)) {
       add('issueDate', 'warning', 'Arve kuupäev on kaugel tulevikus.', 'Issue date is far in the future.')
+    } else if (invoice.status === 'draft' && invoice.issueDate < addDays(today, -7)) {
+      add(
+        'issueDate',
+        'warning',
+        'Arve kuupäev on rohkem kui nädal minevikus. Kontrolli enne väljastamist, kas see on õige – tavaliselt märgitakse arvele väljastamise päev.',
+        'The issue date is more than a week in the past. Check it before issuing – an invoice is normally dated on the day it is issued.',
+      )
     }
   }
   if (!isValidISODate(invoice.dueDate)) {
@@ -166,9 +174,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
 
   // --- Bank accounts ------------------------------------------------------------
   const accounts = seller?.bankAccounts ?? []
-  const selected = invoice.bankAccountIds?.length
-    ? accounts.filter((a) => invoice.bankAccountIds.includes(a.id))
-    : accounts
+  const selected = selectedBankAccounts(invoice, accounts)
   if (selected.length === 0) {
     add(
       'bankAccountIds',

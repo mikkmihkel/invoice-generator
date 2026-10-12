@@ -64,3 +64,14 @@ export function creditNoteFor(src: Invoice, profile: CompanyProfile): Invoice {
     updatedAt: now,
   }
 }
+
+/**
+ * Move the issue date (e.g. a stale draft to today): the due date keeps the payment term, and the supply date
+ * moves only if it equalled the old issue date.
+ */
+export function redateInvoice(inv: Invoice, issueDate: string): Invoice {
+  const term = Math.max(0, daysBetween(inv.issueDate, inv.dueDate))
+  const next: Invoice = { ...inv, issueDate, dueDate: addDaysISO(issueDate, term) }
+  if (inv.supplyDate && inv.supplyDate === inv.issueDate) next.supplyDate = issueDate
+  return next
+}

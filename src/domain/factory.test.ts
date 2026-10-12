@@ -158,6 +158,11 @@ describe('createEmptyInvoice', () => {
     expect(inv.seller.bankAccounts[0].iban).toBe('EE382200221020145685')
   })
 
+  it('does not copy the logo into a draft (issueInvoice snapshots it)', () => {
+    const p = { ...registeredProfile(), logoDataUrl: 'data:image/png;base64,AAAA' }
+    expect(createEmptyInvoice(p).seller).not.toHaveProperty('logoDataUrl')
+  })
+
   it('applies client overrides and buyer snapshot', () => {
     const inv = createEmptyInvoice(registeredProfile(), client({ defaultLanguage: 'en', defaultVatScheme: 'eu-reverse-charge' }))
     expect(inv.language).toBe('en')

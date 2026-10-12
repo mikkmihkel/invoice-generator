@@ -23,21 +23,14 @@ export function vatSchemeOptions(t: Translate): { value: VatScheme; label: strin
 }
 
 export function vatRates(current?: number): number[] {
-  const base = ESTONIAN_VAT_RATES.length ? [...ESTONIAN_VAT_RATES] : [24, 13, 9, 0]
+  const base = [...ESTONIAN_VAT_RATES]
   if (!base.includes(0)) base.push(0)
   if (current != null && !base.includes(current)) base.push(current)
   return base
 }
 
-const FALLBACK_TEMPLATES: TemplateInfo[] = [
-  { id: 'classic', name: { et: 'Klassikaline', en: 'Classic' }, description: { et: 'Traditsiooniline, selge tabeliga.', en: 'Traditional with a clear table.' } },
-  { id: 'modern', name: { et: 'Moodne', en: 'Modern' }, description: { et: 'Värviline päis, õhuline paigutus.', en: 'Coloured header, airy layout.' } },
-  { id: 'minimal', name: { et: 'Minimalistlik', en: 'Minimal' }, description: { et: 'Ainult hädavajalik, palju valget.', en: 'Only the essentials, lots of white.' } },
-  { id: 'bold', name: { et: 'Julge', en: 'Bold' }, description: { et: 'Suur kirjatüüp ja tugev aktsent.', en: 'Large type and a strong accent.' } },
-]
-
 export function templates(): TemplateInfo[] {
-  return TEMPLATES && TEMPLATES.length ? TEMPLATES : FALLBACK_TEMPLATES
+  return TEMPLATES
 }
 
 export function templateName(id: TemplateId, lang: 'et' | 'en'): string {

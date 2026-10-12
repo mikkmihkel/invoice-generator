@@ -2138,3 +2138,23 @@ button.summary-card:hover {
     display: none;
   }
 }
+
+/* ---------- Error screen ---------- */
+
+.error-screen {
+  max-width: 560px;
+  margin: 24px auto;
+  color: var(--text);
+}
+.error-screen h1,
+.error-screen h2 {
+  margin-bottom: 8px;
+}
+.error-screen .btn-row {
+  margin: 16px 0 8px;
+}
+.error-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 6px;
+}
