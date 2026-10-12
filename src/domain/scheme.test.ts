@@ -19,3 +19,14 @@ describe('withVatScheme', () => {
     expect(inv.lines.map((l) => l.vatRate)).toEqual([0, 9])
   })
 })
+
+describe('withVatScheme – VAT note', () => {
+  it('drops the exemption note when the scheme changes', () => {
+    const inv = withVatScheme({ vatScheme: 'exempt', lines: [line(0)], vatExemptionNote: 'KMS § 16 lg 2 p 3' }, 'export', 24)
+    expect(inv.vatExemptionNote).toBeUndefined()
+  })
+  it('keeps it when the scheme stays the same', () => {
+    const inv = withVatScheme({ vatScheme: 'exempt', lines: [line(0)], vatExemptionNote: 'KMS § 16' }, 'exempt', 24)
+    expect(inv.vatExemptionNote).toBe('KMS § 16')
+  })
+})
