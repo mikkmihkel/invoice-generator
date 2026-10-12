@@ -7,6 +7,8 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: './',
   plugins: [react()],
+  // pdfmake + its fonts (~1.8 MB) are lazy-loaded chunks only fetched when a PDF is rendered.
+  build: { chunkSizeWarningLimit: 1000 },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
