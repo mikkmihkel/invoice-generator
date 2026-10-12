@@ -166,5 +166,6 @@ export function createEmptyInvoice(profile: CompanyProfile, client?: Client): In
   if (defaults.lateInterestPercentPerDay !== undefined) {
     invoice.lateInterestPercentPerDay = defaults.lateInterestPercentPerDay
   }
+  if (defaults.footerNote) invoice.footerNote = defaults.footerNote
   return invoice
 }

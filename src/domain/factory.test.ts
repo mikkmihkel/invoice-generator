@@ -97,6 +97,7 @@ function registeredProfile(): CompanyProfile {
   ]
   p.defaults.vatScheme = 'domestic'
   p.defaults.lateInterestPercentPerDay = 0.05
+  p.defaults.footerNote = 'Täname koostöö eest!'
   return p
 }
 
@@ -134,6 +135,7 @@ describe('createEmptyInvoice', () => {
       accentColor: '#1f4e79',
       bankAccountIds: ['a1', 'a2'],
       lateInterestPercentPerDay: 0.05,
+      footerNote: 'Täname koostöö eest!',
     })
     expect(inv.lines).toHaveLength(1)
     expect(inv.lines[0]).toMatchObject({ description: '', quantity: 1, unit: 'tk', unitPrice: 0, vatRate: 24 })
@@ -177,6 +179,7 @@ describe('createEmptyInvoice', () => {
     expect(inv.lines[0].vatRate).toBe(0)
     expect(inv.bankAccountIds).toEqual([])
     expect(inv).not.toHaveProperty('lateInterestPercentPerDay')
+    expect(inv).not.toHaveProperty('footerNote')
   })
 
   it('uses domestic for a registered seller whose default is still not-registered', () => {
