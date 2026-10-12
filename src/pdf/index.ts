@@ -1,20 +1,7 @@
 // OWNER: documents agent. PDF rendering with pdfmake (vector text, embedded fonts supporting õ ä ö ü š ž).
-import type { Invoice, TemplateId } from '../domain/types'
-
-export interface TemplateInfo {
-  id: TemplateId
-  name: { et: string; en: string }
-  description: { et: string; en: string }
-}
-
-export const TEMPLATES: TemplateInfo[] = []
-
-/** Render the invoice to a PDF Blob (application/pdf). Must lazy-load pdfmake to keep the initial bundle small. */
-export async function renderInvoicePdf(_invoice: Invoice): Promise<Blob> {
-  throw new Error('not implemented')
-}
-
-/** e.g. "Arve_2026-0007_Klient-OU.pdf" (ASCII-safe). */
-export function invoiceFileName(_invoice: Invoice, _ext?: 'pdf' | 'xml'): string {
-  throw new Error('not implemented')
-}
+// pdfmake itself is lazy-loaded inside render.ts; everything else here is light and synchronous.
+export { TEMPLATES, type TemplateInfo } from './templates'
+export { buildDocDefinition, type DocDefinitionOptions } from './docDefinition'
+export { renderInvoicePdf, renderInvoicePdfDataUrl, renderInvoicePdfBase64, preloadPdfMake, loadPdfMake } from './render'
+export { invoiceFileName } from './fileName'
+export { formatMoney as formatDocumentMoney, formatDate as formatDocumentDate, toAscii } from './format'

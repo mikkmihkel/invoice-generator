@@ -189,6 +189,8 @@ export interface Invoice {
   orderReference?: string
   notes?: string
   lateInterestPercentPerDay?: number
+  /** Footer text printed on every page (copied from profile defaults.footerNote when the invoice is created). */
+  footerNote?: string
 
   language: InvoiceLanguage
   templateId: TemplateId
