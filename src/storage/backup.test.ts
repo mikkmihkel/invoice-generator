@@ -186,3 +186,28 @@ describe('validateBackup', () => {
     expect(() => parseBackup(text)).toThrow(/too large/)
   })
 })
+
+describe('validateBackup – values that reach URLs or CSS', () => {
+  it('rejects remote logo URLs and non-hex colours (no beacons from a hostile backup)', () => {
+    const profileLogo = base()
+    ;(profileLogo.profile as Record<string, unknown>).logoDataUrl = 'https://attacker.invalid/logo.png'
+    expect(errorOf(profileLogo).messages.en).toMatch(/logo/)
+
+    expect(errorOf(withInvoice((i) => (i.accentColor = 'url(https://attacker.invalid/x.png)'))).messages.en).toMatch(/accent colour/)
+    expect(errorOf(withInvoice((i) => ((i.seller as Record<string, unknown>).logoDataUrl = 'https://attacker.invalid/a.png'))).messages.en).toMatch(/seller logo/)
+  })
+
+  it('validates invoice defaults deeply and the Google client ID format', () => {
+    const badDefaults = base()
+    ;(badDefaults.profile as Record<string, unknown>).defaults = {}
+    expect(() => validateBackup(badDefaults)).toThrow(BackupFormatError)
+
+    const badWebsite = base()
+    ;(badWebsite.profile as Record<string, unknown>).website = 12345
+    expect(() => validateBackup(badWebsite)).toThrow(BackupFormatError)
+
+    const settings = { uiLanguage: 'et', driveFolderName: 'Arved', registryLiveLookup: true, updatedAt: '' }
+    expect(() => validateBackup({ ...base(), settings: { ...settings, googleClientId: 'evil' } })).toThrow(BackupFormatError)
+    expect(validateBackup({ ...base(), settings: { ...settings, googleClientId: '123-abc.apps.googleusercontent.com' } }).settings).toBeTruthy()
+  })
+})

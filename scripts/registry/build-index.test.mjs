@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import zlib from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { build, buildIndex, findZipEntry, readRecords, openCsvStream } from './build-index.mjs'
+import { build, buildIndex, byteLimit, findZipEntry, readRecords, openCsvStream } from './build-index.mjs'
 import { nameTokens, normalizeText } from './normalize.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -157,5 +157,20 @@ describe('CLI', () => {
     expect(existsSync(path.join(out, 'meta.json'))).toBe(true)
     await expect(run(process.execPath, [SCRIPT, '--input', path.join(tmp, 'nope.csv'), '--out', out, '--quiet'])).rejects.toMatchObject({ code: 1 })
     await expect(run(process.execPath, [SCRIPT, '--input', FIXTURE, '--out', out, '--min-count', '100', '--quiet'])).rejects.toMatchObject({ code: 1 })
+  })
+})
+
+describe('byteLimit', () => {
+  it('passes data under the limit and fails above it', async () => {
+    const { Readable } = await import('node:stream')
+    const { pipeline } = await import('node:stream/promises')
+    const sink = async (src) => {
+      let n = 0
+      for await (const c of src) n += c.length
+      return n
+    }
+    const ok = Readable.from([Buffer.alloc(10), Buffer.alloc(10)]).pipe(byteLimit(20, 'test'))
+    expect(await sink(ok)).toBe(20)
+    await expect(pipeline(Readable.from([Buffer.alloc(15), Buffer.alloc(15)]), byteLimit(20, 'test'), async function* (s) { for await (const _ of s) yield _ })).rejects.toThrow(/exceeds the limit/)
   })
 })

@@ -9,7 +9,7 @@ import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { Readable } from 'node:stream'
+import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import zlib from 'node:zlib'
@@ -98,9 +98,32 @@ function normalizeVat(v) {
   return s
 }
 
+/**
+ * Safety limits for untrusted input (the source file is downloaded from the internet in CI):
+ * the real file is ~19 MB zipped / ~100 MB unzipped with short fields.
+ */
+export const LIMITS = {
+  downloadBytes: 200 * 1024 * 1024,
+  centralDirectoryBytes: 16 * 1024 * 1024,
+  csvBytes: 1024 * 1024 * 1024,
+  fieldChars: 500,
+}
+
+/** Pass-through stream that fails once more than `max` bytes went through. */
+export function byteLimit(max, what) {
+  let seen = 0
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      seen += chunk.length
+      if (seen > max) cb(new Error(`${what} exceeds the limit of ${max} bytes`))
+      else cb(null, chunk)
+    },
+  })
+}
+
 /** Map a CSV row (array) to an index record, or null when it should be skipped. */
 export function toRecord(row, col) {
-  const get = (name) => clean(row[col[name]])
+  const get = (name) => clean(row[col[name]]).slice(0, LIMITS.fieldChars)
   const code = get('ariregistri_kood')
   if (!/^\d{8}$/.test(code)) return null
   const status = get('ettevotja_staatus').toUpperCase()
@@ -162,6 +185,7 @@ export async function findZipEntry(zipPath, match = (n) => /\.csv$/i.test(n)) {
       cdSize = Number(z64.readBigUInt64LE(40))
       cdOffset = Number(z64.readBigUInt64LE(48))
     }
+    if (cdSize > LIMITS.centralDirectoryBytes) throw new Error('ZIP central directory is implausibly large')
     const cd = await readAt(fh, cdOffset, cdSize)
     let p = 0
     for (let i = 0; i < count && p + 46 <= cd.length; i++) {
@@ -223,11 +247,18 @@ export async function openCsvStream(file) {
   const entry = await findZipEntry(file)
   if (entry.compressedSize === 0) return Readable.from([])
   const raw = createReadStream(file, { start: entry.dataStart, end: entry.dataStart + entry.compressedSize - 1 })
-  if (entry.method === 0) return raw
+  if (entry.uncompressedSize > LIMITS.csvBytes) throw new Error('CSV in the ZIP archive is implausibly large')
+  const limit = byteLimit(LIMITS.csvBytes, 'Unzipped CSV')
+  if (entry.method === 0) {
+    raw.on('error', (err) => limit.destroy(err))
+    return raw.pipe(limit)
+  }
   if (entry.method !== 8) throw new Error(`Unsupported ZIP compression method ${entry.method}`)
+  // Don't trust the declared size: count the inflated bytes too (zip bomb guard).
   const inflate = zlib.createInflateRaw()
   raw.on('error', (err) => inflate.destroy(err))
-  return raw.pipe(inflate)
+  inflate.on('error', (err) => limit.destroy(err))
+  return raw.pipe(inflate).pipe(limit)
 }
 
 async function download(url, dest, log, attempts = 3) {
@@ -236,7 +267,7 @@ async function download(url, dest, log, attempts = 3) {
       log(`Downloading ${url}${attempt > 1 ? ` (attempt ${attempt})` : ''}`)
       const res = await fetch(url, { headers: { 'user-agent': 'invoice-generator registry index builder (GitHub Actions)' } })
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} ${res.statusText}`)
-      await pipeline(Readable.fromWeb(res.body), createWriteStream(dest))
+      await pipeline(Readable.fromWeb(res.body), byteLimit(LIMITS.downloadBytes, 'Download'), createWriteStream(dest))
       return res.headers.get('last-modified')
     } catch (err) {
       const reason = err?.cause ? `${err.message}: ${err.cause.message ?? err.cause}` : (err?.message ?? String(err))

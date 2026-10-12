@@ -82,6 +82,16 @@ npm run registry:build
 | `scripts/registry/` | Builds the open-data search index |
 | `docs/` | Legal checklist, register index format, Google setup, team brief |
 
-## Privacy
+## Privacy and security
 
-There is no backend. Company, client and invoice data never leave your browser unless you export them: download, email, Drive or an e-invoice operator. Google access tokens are kept only in memory. The app can request the `drive.file` scope (it sees only files it created) and the `gmail.send` scope (send only, it cannot read your mail).
+- **No backend.** Company, client and invoice data stay in your browser unless you export them: download, email, Google Drive or an e-invoice operator.
+- **Register live lookup** (on by default, Settings → Register): your search text is sent to the Estonian e-Business Register (`ariregister.rik.ee`). Turn it off to search only the bundled index.
+- **Google:** access tokens are kept in memory only. The app requests `drive.file` (it sees only files it created) and `gmail.send` (send only, it cannot read your mail).
+- **Content Security Policy:** the production build only allows scripts from the site itself and Google Identity Services, and only allows connections to RIK and Google APIs.
+- **Backups are untrusted input:** imports are validated field by field. Logos must be embedded PNG/JPEG images and colours plain hex values, and bank details that would change need confirming.
+- **CI:** GitHub Actions are pinned to commit SHAs, with least-privilege permissions and `npm ci --ignore-scripts`. CodeQL and Dependabot are also set up.
+
+## Third-party notices
+
+- Register data: Estonian e-Business Register, RIK, open data under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- PDF fonts: Roboto (Apache License 2.0), bundled through [pdfmake](https://github.com/bpampuch/pdfmake) (MIT).

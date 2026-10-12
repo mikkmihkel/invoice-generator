@@ -58,6 +58,12 @@ const PARTY_FIELDS = [
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
+/** Only embedded PNG/JPEG logos: a remote URL would leak the user's IP when rendered. */
+export const LOGO_DATA_URL = /^data:image\/(png|jpe?g);base64,[A-Za-z0-9+/=]+$/
+/** Only plain hex colours: anything else (e.g. url(...)) would reach CSS custom properties. */
+export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
+export const GOOGLE_CLIENT_ID = /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/
+
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
@@ -149,6 +155,10 @@ class RecordCheck {
   optNum(key: string, field: Text, from: Record<string, unknown> = this.r) {
     return this.check(from[key], field, (x) => typeof x === 'number' && Number.isFinite(x), false)
   }
+  /** Optional string that must match `pattern` (used for values that end up in URLs or CSS). */
+  optMatch(key: string, field: Text, pattern: RegExp, from: Record<string, unknown> = this.r) {
+    return this.check(from[key], field, (x) => typeof x === 'string' && (x === '' || pattern.test(x)), false)
+  }
   optBool(key: string, field: Text, from: Record<string, unknown> = this.r) {
     return this.check(from[key], field, (x) => typeof x === 'boolean', false)
   }
@@ -208,7 +218,7 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
   c.str('currency', { et: 'valuuta', en: 'currency' })
   c.oneOf('language', { et: 'arve keel', en: 'invoice language' }, LANGUAGES)
   c.str('templateId', { et: 'kujundus', en: 'template' })
-  c.oneOf('vatScheme', { et: 'käibemaksu režiim', en: 'VAT scheme' }, VAT_SCHEMES)
+  c.oneOf('vatScheme', { et: 'käibemaksurežiim', en: 'VAT scheme' }, VAT_SCHEMES)
   const seller = c.obj('seller', { et: 'müüja andmed', en: 'seller details' })
   if (seller) {
     c.party(seller, { et: 'müüja', en: 'seller' })
@@ -243,9 +253,13 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
     ['issuedAt', 'väljastamise aeg', 'issue time'],
     ['referenceNumber', 'viitenumber', 'reference number'],
     ['notes', 'märkused', 'notes'],
-    ['accentColor', 'värv', 'accent colour'],
   ]) {
     c.optStr(k, { et, en })
+  }
+  c.optMatch('accentColor', { et: 'värv', en: 'accent colour' }, HEX_COLOR)
+  if (seller) {
+    c.optMatch('logoDataUrl', { et: 'müüja logo', en: 'seller logo' }, LOGO_DATA_URL, seller)
+    c.optStr('website', { et: 'müüja veebileht', en: 'seller website' }, seller)
   }
   c.optNum('eurExchangeRate', { et: 'euro vahetuskurss', en: 'EUR exchange rate' })
   return c.problem
@@ -265,14 +279,36 @@ function checkProfile(r: Record<string, unknown>): Text | null {
   c.str('name', { et: 'nimi', en: 'name' }, true)
   c.address('address', { et: 'aadress', en: 'address' })
   c.bankAccounts('bankAccounts', { et: 'pangakontod', en: 'bank accounts' })
-  c.obj('defaults', { et: 'arve vaikeväärtused', en: 'invoice defaults' })
+  const d = c.obj('defaults', { et: 'arve vaikeväärtused', en: 'invoice defaults' })
+  if (d) {
+    c.num('paymentTermDays', { et: 'maksetähtaeg päevades', en: 'payment term' }, d)
+    c.str('templateId', { et: 'arve kujundus', en: 'invoice template' }, false, d)
+    c.str('accentColor', { et: 'arve värv', en: 'invoice accent colour' }, false, d)
+    c.optMatch('accentColor', { et: 'arve värv', en: 'invoice accent colour' }, HEX_COLOR, d)
+    c.oneOf('language', { et: 'arve keel', en: 'invoice language' }, LANGUAGES, d)
+    c.str('currency', { et: 'valuuta', en: 'currency' }, false, d)
+    c.oneOf('vatScheme', { et: 'käibemaksurežiim', en: 'VAT scheme' }, VAT_SCHEMES, d)
+    c.num('defaultVatRate', { et: 'vaikimisi käibemaksumäär', en: 'default VAT rate' }, d)
+    c.str('defaultUnit', { et: 'vaikimisi ühik', en: 'default unit' }, true, d)
+    c.optNum('lateInterestPercentPerDay', { et: 'viivis', en: 'late interest' }, d)
+    c.str('emailSubject', { et: 'e-kirja teema', en: 'email subject' }, true, d)
+    c.str('emailBody', { et: 'e-kirja sisu', en: 'email body' }, true, d)
+    for (const [k, et, en] of [
+      ['footerNote', 'jaluse tekst', 'footer note'],
+      ['emailSubjectEn', 'ingliskeelse e-kirja teema', 'English email subject'],
+      ['emailBodyEn', 'ingliskeelse e-kirja sisu', 'English email body'],
+    ]) {
+      c.optStr(k, { et, en }, d)
+    }
+  }
   const numbering = c.obj('numbering', { et: 'arvete numeratsioon', en: 'invoice numbering' })
   if (numbering) {
     c.num('nextNumber', { et: 'järgmine arve number', en: 'next invoice number' }, numbering)
     c.num('padding', { et: 'numbri pikkus', en: 'number padding' }, numbering)
     c.optStr('prefix', { et: 'numbri eesliide', en: 'number prefix' }, numbering)
   }
-  c.optStr('logoDataUrl', { et: 'logo', en: 'logo' })
+  c.optMatch('logoDataUrl', { et: 'logo', en: 'logo' }, LOGO_DATA_URL)
+  c.optStr('website', { et: 'veebileht', en: 'website' })
   c.optStr('updatedAt', { et: 'muutmise aeg', en: 'modification time' })
   return c.problem
 }
@@ -280,7 +316,7 @@ function checkProfile(r: Record<string, unknown>): Text | null {
 function checkSettings(r: Record<string, unknown>): Text | null {
   const c = new RecordCheck(r)
   c.optOneOf('uiLanguage', { et: 'kasutajaliidese keel', en: 'interface language' }, UI_LANGUAGES)
-  c.optStr('googleClientId', { et: 'Google’i kliendi ID', en: 'Google client ID' })
+  c.optMatch('googleClientId', { et: 'Google’i kliendi ID', en: 'Google client ID' }, GOOGLE_CLIENT_ID)
   c.optStr('driveFolderName', { et: 'Drive’i kausta nimi', en: 'Drive folder name' })
   c.optBool('registryLiveLookup', { et: 'registri otsingu seade', en: 'registry lookup setting' })
   c.optStr('updatedAt', { et: 'muutmise aeg', en: 'modification time' })

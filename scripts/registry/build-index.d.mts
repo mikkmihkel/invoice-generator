@@ -31,3 +31,5 @@ export function buildIndex(records: unknown[], options?: Partial<BuildOptions>):
 export function findZipEntry(zipPath: string, match?: (name: string) => boolean): Promise<{ name: string; method: number; compressedSize: number; uncompressedSize: number; dataStart: number }>
 export function openCsvStream(file: string): Promise<NodeJS.ReadableStream>
 export function readRecords(stream: NodeJS.ReadableStream, log?: (msg: string) => void): Promise<Array<Record<string, string>>>
+export declare const LIMITS: { downloadBytes: number; centralDirectoryBytes: number; csvBytes: number; fieldChars: number }
+export declare function byteLimit(max: number, what: string): import('node:stream').Transform
