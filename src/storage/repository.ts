@@ -165,7 +165,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
           await tx.done.catch(() => {})
           throw new RepositoryError(
             'immutable',
-            'Väljastatud arve numbrit ega olekut mustandiks muuta ei saa.',
+            'Väljastatud arve numbrit ei saa muuta ega arvet mustandiks tagasi muuta.',
             'An issued invoice cannot get a new number or go back to draft.',
           )
         }

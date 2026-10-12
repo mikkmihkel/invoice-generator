@@ -265,7 +265,7 @@ export function eInvoiceIssues(invoice: Invoice): UblIssue[] {
     add('buyer.vatNumber', 'Pöördmaksustamisel on vaja ostja KMKR numbrit.', 'Reverse charge requires the buyer VAT number.')
   }
   if ((invoice.currency || 'EUR').toUpperCase() !== 'EUR' && invoice.vatScheme === 'domestic') {
-    add('currency', 'Välisvaluutas käibemaksuarvel peaks käibemaks olema ka eurodes (TaxCurrencyCode), mida see eksport ei lisa.', 'For VAT invoices in a foreign currency the VAT should also be stated in EUR, which this export does not add.')
+    add('currency', 'Välisvaluutas käibemaksuga arvel tuleb käibemaksusumma näidata ka eurodes (TaxCurrencyCode), kuid e-arve eksport seda ei lisa.', 'For VAT invoices in a foreign currency the VAT should also be stated in EUR, which this export does not add.')
   }
   if (!invoice.lines.length) add('lines', 'Arvel pole ridu.', 'The invoice has no lines.')
   return issues

@@ -8,12 +8,12 @@ export const LABELS = {
   creditNote: { et: 'Kreeditarve', en: 'Credit note' },
   prepayment: { et: 'Ettemaksuarve', en: 'Prepayment invoice' },
   number: { et: 'Number', en: 'Number' },
-  issueDate: { et: 'Kuupäev', en: 'Date of issue' },
+  issueDate: { et: 'Arve kuupäev', en: 'Date of issue' },
   dueDate: { et: 'Maksetähtaeg', en: 'Due date' },
-  supplyDate: { et: 'Käibe kuupäev', en: 'Date of supply' },
+  supplyDate: { et: 'Käibe tekkimise kuupäev', en: 'Date of supply' },
   period: { et: 'Periood', en: 'Period' },
   referenceNumber: { et: 'Viitenumber', en: 'Reference no.' },
-  orderReference: { et: 'Tellimuse viide', en: 'Order reference' },
+  orderReference: { et: 'Tellimuse nr', en: 'Order reference' },
   creditedInvoice: { et: 'Krediteeritav arve', en: 'Credited invoice' },
   seller: { et: 'Müüja', en: 'Seller' },
   buyer: { et: 'Ostja', en: 'Buyer' },
@@ -23,14 +23,14 @@ export const LABELS = {
   contactPerson: { et: 'Kontaktisik', en: 'Contact person' },
   email: { et: 'E-post', en: 'Email' },
   phone: { et: 'Telefon', en: 'Phone' },
-  website: { et: 'Koduleht', en: 'Website' },
+  website: { et: 'Veebileht', en: 'Website' },
   bankDetails: { et: 'Pangarekvisiidid', en: 'Bank details' },
   bank: { et: 'Pank', en: 'Bank' },
   lineNo: { et: 'Nr', en: 'No.' },
   description: { et: 'Kirjeldus', en: 'Description' },
   quantity: { et: 'Kogus', en: 'Qty' },
   unit: { et: 'Ühik', en: 'Unit' },
-  unitPrice: { et: 'Ühiku hind', en: 'Unit price' },
+  unitPrice: { et: 'Ühikuhind', en: 'Unit price' },
   discount: { et: 'Allahindlus', en: 'Discount' },
   vatRate: { et: 'KM %', en: 'VAT %' },
   lineTotal: { et: 'Summa', en: 'Amount' },
@@ -42,7 +42,7 @@ export const LABELS = {
   total: { et: 'Kokku', en: 'Total' },
   amountDue: { et: 'Tasumisele kuulub', en: 'Amount due' },
   amountCredited: { et: 'Krediteeritav summa', en: 'Amount credited' },
-  notes: { et: 'Märkused', en: 'Notes' },
+  notes: { et: 'Lisainfo', en: 'Notes' },
   payment: { et: 'Tasumine', en: 'Payment' },
   lateInterest: { et: 'Viivis', en: 'Late payment interest' },
   page: { et: 'Lk', en: 'Page' },
@@ -85,7 +85,7 @@ export function lateInterestText(formatted: string, lang: InvoiceLanguage): stri
 }
 
 export function referenceHint(ref: string, lang: InvoiceLanguage): string {
-  const et = `Makse tegemisel palume märkida viitenumber ${ref}.`
+  const et = `Makse tegemisel palume märkida viitenumbri ${ref}.`
   const en = `Please use reference number ${ref} when paying.`
   return lang === 'et' ? et : lang === 'en' ? en : `${et} / ${en}`
 }

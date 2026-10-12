@@ -84,7 +84,7 @@ describe('vatSchemeNote', () => {
     const rc = vatSchemeNote('eu-reverse-charge', 'et', 'Lisainfo')
     expect(rc).toMatch(/^Pöördmaksustamine\./)
     expect(rc).toMatch(/Lisainfo$/)
-    expect(vatSchemeNote('exempt', 'et', '   ')).toBe('Käibemaksuvaba käive (KMS § 16).')
+    expect(vatSchemeNote('exempt', 'et', '   ')).toBe('Maksuvaba käive (KMS § 16).')
   })
 })
 

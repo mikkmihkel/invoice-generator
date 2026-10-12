@@ -80,7 +80,7 @@ export function createDefaultProfile(): CompanyProfile {
       emailSubject: 'Arve {number} – {company}',
       emailBody:
         'Tere!\n\n' +
-        'Saadan manuses arve nr {number} summas {total}. Palun tasuda hiljemalt {dueDate}.\n\n' +
+        'Manuses on arve nr {number} summas {total}. Palume arve tasuda hiljemalt {dueDate}.\n\n' +
         'Lugupidamisega\n{company}',
     },
     numbering: { prefix: '{YYYY}-', nextNumber: 1, padding: 4 },

@@ -36,7 +36,7 @@ export const TEMPLATES: TemplateInfo[] = [
     id: 'classic',
     name: { et: 'Klassikaline', en: 'Classic' },
     description: {
-      et: 'Traditsiooniline Eesti arve: raamitud päis, müüja ja ostja kastides, ruudustikuga tabel.',
+      et: 'Traditsiooniline Eesti arve: raamitud päis, müüja ja ostja andmed kastides, ruudustikuga tabel.',
       en: 'Traditional Estonian invoice: boxed header, seller and buyer boxes, fully gridded table.',
     },
   },
@@ -44,7 +44,7 @@ export const TEMPLATES: TemplateInfo[] = [
     id: 'modern',
     name: { et: 'Moodne', en: 'Modern' },
     description: {
-      et: 'Värviline riba lehe ülaservas, puhas paigutus ja suur esiletõstetud tasumisele kuuluv summa.',
+      et: 'Värviline riba lehe ülaservas, puhas paigutus ja suurelt esile tõstetud tasumisele kuuluv summa.',
       en: 'Accent colour band at the top, clean layout and a large highlighted amount due.',
     },
   },
@@ -52,7 +52,7 @@ export const TEMPLATES: TemplateInfo[] = [
     id: 'minimal',
     name: { et: 'Minimalistlik', en: 'Minimal' },
     description: {
-      et: 'Palju õhku, peened jooned, mustvalge kujundus ühe aktsentvärviga.',
+      et: 'Palju õhku, peened jooned, mustvalge kujundus ühe aktsendivärviga.',
       en: 'Lots of whitespace, thin rules, monochrome with a single accent colour.',
     },
   },

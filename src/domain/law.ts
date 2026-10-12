@@ -41,7 +41,7 @@ interface SchemeNote {
 
 const SCHEME_NOTES: Record<VatScheme, SchemeNote | null> = {
   'not-registered': {
-    et: 'Müüja ei ole käibemaksukohustuslasena registreeritud, käibemaksu ei lisandu.',
+    et: 'Müüja ei ole käibemaksukohustuslasena registreeritud, seetõttu käibemaksu ei lisata.',
     en: 'The seller is not registered for VAT; no VAT is charged.',
   },
   domestic: null,
@@ -62,7 +62,7 @@ const SCHEME_NOTES: Record<VatScheme, SchemeNote | null> = {
     en: 'Not subject to Estonian VAT – the place of supply of the service is outside Estonia (Estonian VAT Act § 10; Directive 2006/112/EC Art. 44).',
   },
   exempt: {
-    et: 'Käibemaksuvaba käive (KMS § 16).',
+    et: 'Maksuvaba käive (KMS § 16).',
     en: 'VAT-exempt supply (Estonian VAT Act § 16).',
   },
   'domestic-reverse-charge': {

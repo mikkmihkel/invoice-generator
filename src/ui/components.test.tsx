@@ -32,7 +32,7 @@ describe('ValidationPanel', () => {
         <ValidationPanel issues={ISSUES} />
       </AppProvider>,
     )
-    expect(screen.getByText(/1 viga · 1 hoiatus/)).toBeInTheDocument()
+    expect(screen.getByText(/Vigu: 1 · Hoiatusi: 1/)).toBeInTheDocument()
     expect(screen.getByText('KMS § 37 lg 7 p 4')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Ostja KMKR number puudub.' }))
     expect(screen.getByLabelText('VAT')).toHaveFocus()

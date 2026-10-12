@@ -29,7 +29,7 @@ function checkRecords(list: unknown, what: { et: string; en: string }, extra?: (
       throw new BackupFormatError(`Vigane kirje: ${what.et} #${i + 1}`, `Invalid record: ${what.en} #${i + 1}`)
     }
     if (seen.has(r.id)) {
-      throw new BackupFormatError(`Korduv id: ${what.et} ${r.id}`, `Duplicate id in ${what.en}: ${r.id}`)
+      throw new BackupFormatError(`Korduv ID: ${what.et} ${r.id}`, `Duplicate id in ${what.en}: ${r.id}`)
     }
     seen.add(r.id)
     const problem = extra?.(r)
@@ -63,7 +63,7 @@ export function validateBackup(data: unknown): BackupFile {
   })
   if (data.profile !== null && data.profile !== undefined) {
     if (!isObject(data.profile) || typeof data.profile.name !== 'string' || !isObject(data.profile.numbering)) {
-      throw new BackupFormatError('Varukoopia ettevõtte profiil on vigane.', 'The company profile in the backup is invalid.')
+      throw new BackupFormatError('Varukoopias olevad ettevõtte andmed on vigased.', 'The company profile in the backup is invalid.')
     }
   }
   if (data.settings !== null && data.settings !== undefined && !isObject(data.settings)) {

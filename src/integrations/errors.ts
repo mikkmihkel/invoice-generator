@@ -26,57 +26,57 @@ export function friendlyGoogleMessage(code: GoogleErrorCode, detail?: string): B
   switch (code) {
     case 'not_configured':
       return {
-        et: 'Google ei ole seadistatud. Sisesta seadetes oma OAuth kliendi ID (vt juhendit).',
+        et: 'Google’i ühendus ei ole seadistatud. Sisesta seadetes oma OAuth-kliendi ID (vt juhendit).',
         en: 'Google is not set up. Enter your OAuth client ID in Settings (see the setup guide).',
       }
     case 'script_load_failed':
       return {
-        et: 'Google sisselogimise skripti laadimine ebaõnnestus. Kontrolli internetiühendust või reklaamiblokeerijat.',
+        et: 'Google’i sisselogimise skripti laadimine ebaõnnestus. Kontrolli internetiühendust või reklaamiblokeerijat.',
         en: 'Could not load Google sign-in. Check your connection or ad/script blocker.',
       }
     case 'popup_blocked':
       return {
-        et: 'Brauser blokeeris Google sisselogimise akna. Luba sellel lehel hüpikaknad ja proovi uuesti.',
+        et: 'Brauser blokeeris Google’i sisselogimise akna. Luba sellel lehel hüpikaknad ja proovi uuesti.',
         en: 'The browser blocked the Google sign-in popup. Allow popups for this site and try again.',
       }
     case 'popup_closed':
       return {
-        et: `Google sisselogimise aken suleti. Kui aknas oli viga „origin_mismatch”, lisa Google Cloudi kliendi „Authorized JavaScript origins” alla ${origin}.`,
+        et: `Google’i sisselogimise aken suleti. Kui aknas oli viga „origin_mismatch“, lisa aadress ${origin} Google Cloudi OAuth-kliendi jaotisesse „Authorized JavaScript origins“.`,
         en: `The Google sign-in window was closed. If it showed "origin_mismatch", add ${origin} to the client's Authorized JavaScript origins in Google Cloud.`,
       }
     case 'access_denied':
       return {
-        et: 'Google juurdepääsust keelduti. Funktsiooni kasutamiseks pead loa andma.',
+        et: 'Google’i juurdepääsust keelduti. Selle funktsiooni kasutamiseks pead andma loa.',
         en: 'Google access was denied. You need to grant permission to use this feature.',
       }
     case 'insufficient_scope':
       return {
-        et: 'Google ei andnud vajalikku õigust (nt Drive või Gmail linnuke jäi märkimata). Logi uuesti sisse ja luba kõik küsitud õigused.',
+        et: 'Google ei andnud vajalikku õigust (nt jäi Drive’i või Gmaili linnuke märkimata). Logi uuesti sisse ja luba kõik küsitud õigused.',
         en: 'Google did not grant the required permission (e.g. the Drive or Gmail box was unchecked). Sign in again and allow all requested permissions.',
       }
     case 'unauthorized':
       return {
-        et: 'Google sessioon aegus. Logi uuesti sisse.',
+        et: 'Google’i seanss aegus. Logi uuesti sisse.',
         en: 'Your Google session expired. Please sign in again.',
       }
     case 'origin_mismatch':
       return {
-        et: `Selle lehe aadress (${origin}) ei ole OAuth kliendi lubatud päritolude hulgas. Lisa see Google Cloudi konsoolis „Authorized JavaScript origins” alla.`,
+        et: `Selle lehe aadress (${origin}) ei ole OAuth-kliendi lubatud päritolude hulgas. Lisa see Google Cloudi konsoolis jaotisesse „Authorized JavaScript origins“.`,
         en: `This page's origin (${origin}) is not an authorized JavaScript origin of the OAuth client. Add it in the Google Cloud console.`,
       }
     case 'invalid_client':
       return {
-        et: 'OAuth kliendi ID on vale. Kontrolli seadetes kliendi ID-d (lõpeb „.apps.googleusercontent.com”).',
+        et: 'OAuth-kliendi ID on vale. Kontrolli seadetes kliendi ID-d (see lõpeb osaga „.apps.googleusercontent.com“).',
         en: 'The OAuth client ID is invalid. Check the client ID in Settings (ends with ".apps.googleusercontent.com").',
       }
     case 'api_not_enabled':
       return {
-        et: `Google API ei ole projektis lubatud${detail ? ` (${detail})` : ''}. Luba Google Cloudi konsoolis Drive API ja Gmail API.`,
+        et: `Google’i API ei ole projektis lubatud${detail ? ` (${detail})` : ''}. Luba Google Cloudi konsoolis Drive API ja Gmail API.`,
         en: `The Google API is not enabled in your project${detail ? ` (${detail})` : ''}. Enable the Drive API and Gmail API in the Google Cloud console.`,
       }
     case 'rate_limited':
       return {
-        et: 'Google päringute limiit ületati. Oota hetk ja proovi uuesti.',
+        et: 'Google’i päringute limiit on ületatud. Oota hetk ja proovi uuesti.',
         en: 'Google rate limit exceeded. Wait a moment and try again.',
       }
     case 'not_found':
@@ -88,7 +88,7 @@ export function friendlyGoogleMessage(code: GoogleErrorCode, detail?: string): B
       }
     default:
       return {
-        et: `Google päring ebaõnnestus${detail ? `: ${detail}` : '.'}`,
+        et: `Google’i päring ebaõnnestus${detail ? `: ${detail}` : '.'}`,
         en: `Google request failed${detail ? `: ${detail}` : '.'}`,
       }
   }

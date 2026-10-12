@@ -81,7 +81,7 @@ describe('onboarding', () => {
     expect(screen.getByLabelText(/^Registrikood/)).toHaveValue('16543210')
     expect(screen.getByLabelText(/^KMKR number/)).toHaveValue('EE102345676')
     expect(screen.getByLabelText(/^Linn/)).toHaveValue('Tallinn')
-    expect(screen.getByLabelText('Olen käibemaksukohustuslane (KMKR)')).toBeChecked()
+    expect(screen.getByLabelText('Olen käibemaksukohustuslane')).toBeChecked()
   })
 })
 
@@ -91,17 +91,17 @@ describe('invoice editor', () => {
     renderAt('#/invoices/new', repo)
 
     fireEvent.change(await screen.findByLabelText('Kogus'), { target: { value: '2' } })
-    fireEvent.change(screen.getByLabelText('Ühiku hind'), { target: { value: '100,5' } })
+    fireEvent.change(screen.getByLabelText('Ühikuhind'), { target: { value: '100,5' } })
 
     await waitFor(() => expect(screen.getByTestId('total-net')).toHaveTextContent('201,00'))
     expect(screen.getByTestId('total-gross')).toHaveTextContent('249,24')
     expect(screen.getByText(/Käibemaks 24%/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '+ Lisa rida' }))
-    const prices = screen.getAllByLabelText('Ühiku hind')
+    const prices = screen.getAllByLabelText('Ühikuhind')
     expect(prices).toHaveLength(2)
     fireEvent.change(prices[1], { target: { value: '10' } })
-    fireEvent.change(screen.getAllByLabelText('KM')[1], { target: { value: '9' } })
+    fireEvent.change(screen.getAllByLabelText('KM %')[1], { target: { value: '9' } })
 
     await waitFor(() => expect(screen.getByTestId('total-gross')).toHaveTextContent('260,14'))
     expect(screen.getByText(/Käibemaks 9%/)).toBeInTheDocument()
@@ -123,10 +123,10 @@ describe('invoice editor', () => {
       profile: { ...base, vatRegistered: false, vatNumber: undefined, defaults: { ...base.defaults, vatScheme: 'not-registered' } },
     })
     renderAt('#/invoices/new', repo)
-    fireEvent.change(await screen.findByLabelText('Ühiku hind'), { target: { value: '50' } })
+    fireEvent.change(await screen.findByLabelText('Ühikuhind'), { target: { value: '50' } })
     await waitFor(() => expect(screen.getByTestId('total-gross')).toHaveTextContent('50,00'))
     expect(screen.queryByTestId('total-net')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('KM')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('KM %')).not.toBeInTheDocument()
   })
 
   it('lists legal problems, blocks issuing until fixed, then issues and locks the invoice', async () => {
@@ -146,7 +146,7 @@ describe('invoice editor', () => {
     fireEvent.change(screen.getByLabelText('Klient'), { target: { value: client.id } })
     expect(await screen.findByText('Ostja AS')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Kirjeldus 1'), { target: { value: 'Veebilehe arendus' } })
-    fireEvent.change(screen.getByLabelText('Ühiku hind'), { target: { value: '400' } })
+    fireEvent.change(screen.getByLabelText('Ühikuhind'), { target: { value: '400' } })
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Väljasta arve' })).toBeEnabled())
     expect(within(panel).queryAllByText(/./, { selector: '.issue-error *' })).toHaveLength(0)
@@ -160,7 +160,7 @@ describe('invoice editor', () => {
 
     expect(await screen.findByText(/väljastatud ja lukustatud/)).toBeInTheDocument()
     expect(repo.issueInvoice).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('button', { name: 'Märgi makstuks' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Märgi tasutuks' })).toBeInTheDocument()
     expect(screen.getByLabelText('Kirjeldus 1')).toBeDisabled()
   })
 })
@@ -199,6 +199,6 @@ describe('invoice list', () => {
     expect(within(row).getByText('Tähtaeg ületatud')).toBeInTheDocument()
     expect(within(row).getByText(/124,00/)).toBeInTheDocument()
     // The backup reminder is shown while no backup has been made.
-    expect(screen.getByText(/pole veel varukoopiat teinud/)).toBeInTheDocument()
+    expect(screen.getByText(/ei ole veel varukoopiat teinud/)).toBeInTheDocument()
   })
 })

@@ -83,16 +83,16 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
   if (!isValidISODate(invoice.dueDate)) {
     add('dueDate', 'error', 'Maksetähtaeg puudub või on vigane.', 'Due date is missing or invalid.')
   } else if (issueOk && invoice.dueDate < invoice.issueDate) {
-    add('dueDate', 'error', 'Maksetähtaeg ei saa olla enne arve kuupäeva.', 'Due date cannot be before the issue date.')
+    add('dueDate', 'error', 'Maksetähtaeg ei saa olla varasem kui arve kuupäev.', 'Due date cannot be before the issue date.')
   }
   if (invoice.supplyDate !== undefined && invoice.supplyDate !== '') {
     if (!isValidISODate(invoice.supplyDate)) {
-      add('supplyDate', 'error', 'Käibe kuupäev on vigane.', 'Date of supply is invalid.', L.KMS37_6)
+      add('supplyDate', 'error', 'Käibe tekkimise kuupäev on vigane.', 'Date of supply is invalid.', L.KMS37_6)
     } else if (issueOk && sellerRegistered && addDays(invoice.supplyDate, 7) < invoice.issueDate) {
       add(
         'supplyDate',
         'warning',
-        'Arve tuleb üldjuhul väljastada 7 kalendripäeva jooksul käibe tekkimisest.',
+        'Arve tuleb üldjuhul väljastada seitsme kalendripäeva jooksul käibe tekkimisest arvates.',
         'An invoice must generally be issued within 7 calendar days of the supply.',
         'KMS § 37',
       )
@@ -113,7 +113,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       hasStart ? 'periodEnd' : 'periodStart',
       'warning',
-      'Teenuse perioodil on märgitud ainult üks kuupäev.',
+      'Teenuse perioodi puhul on täidetud ainult üks kuupäev.',
       'Only one date of the service period is set.',
     )
   }
@@ -131,7 +131,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'seller.registryCode',
       'error',
-      'Müüja registrikood on vigane (8 numbrit, kontrollnumber ei klapi).',
+      'Müüja registrikood on vigane (peab olema 8-kohaline ja kontrollnumber peab klappima).',
       'Seller registry code is invalid (8 digits, check digit mismatch).',
       L.AS,
     )
@@ -142,7 +142,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'vatScheme',
       'error',
-      'Käibemaksukohustuslasest müüja peab valima käibemaksu režiimi (nt "Eesti käive").',
+      'Käibemaksukohustuslasest müüja peab valima käibemaksurežiimi (nt „Tavaline käibemaks (Eesti)“).',
       'A VAT-registered seller must choose a VAT scheme (e.g. "domestic").',
       L.KMS37,
     )
@@ -151,7 +151,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'vatScheme',
       'error',
-      'Käibemaksukohustuslaseks registreerimata müüja ei tohi arvel käibemaksu arvestada ega KMKR režiimi kasutada.',
+      'Käibemaksukohustuslasena registreerimata müüja ei tohi arvele käibemaksu lisada ega valida muud käibemaksurežiimi kui „Ei ole käibemaksukohustuslane“.',
       'A seller not registered for VAT cannot charge VAT or use a VAT scheme.',
       L.NOT_REG,
     )
@@ -212,11 +212,11 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
         L.RPS7,
       )
     } else if (!isValidEstonianRegistryCode(buyer.registryCode!)) {
-      add('buyer.registryCode', 'warning', 'Ostja registrikood tundub vigane.', 'Buyer registry code looks invalid.')
+      add('buyer.registryCode', 'warning', 'Ostja registrikood on tõenäoliselt vigane.', 'Buyer registry code looks invalid.')
     }
   }
   if (buyer?.kind === 'person' && !isBlank(buyer.personalCode) && buyerCountry === 'EE' && !isValidEstonianPersonalCode(buyer.personalCode!)) {
-    add('buyer.personalCode', 'warning', 'Ostja isikukood tundub vigane.', 'Buyer personal ID code looks invalid.')
+    add('buyer.personalCode', 'warning', 'Ostja isikukood on tõenäoliselt vigane.', 'Buyer personal ID code looks invalid.')
   }
 
   const buyerVat = isBlank(buyer?.vatNumber) ? '' : normalizeVatNumber(buyer.vatNumber!)
@@ -229,14 +229,14 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       add('buyer.vatNumber', 'error', 'Ostja KMKR number on vigane.', 'Buyer VAT number is invalid.', L.KMS37_4)
     }
   } else if (buyerVat && !buyerVatValid) {
-    add('buyer.vatNumber', 'warning', 'Ostja KMKR number tundub vigane.', 'Buyer VAT number looks invalid.')
+    add('buyer.vatNumber', 'warning', 'Ostja KMKR number on tõenäoliselt vigane.', 'Buyer VAT number looks invalid.')
   }
   if ((vatScheme === 'eu-reverse-charge' || vatScheme === 'eu-goods') && buyerVatValid) {
     if (buyerVatPrefix === 'EE') {
       add(
         'buyer.vatNumber',
         'error',
-        'Ühendusesisene käive / pöördmaksustamine eeldab teise liikmesriigi KMKR numbrit; Eesti ostjale kasuta "Eesti käive".',
+        'Ühendusesisene käive ja ELi pöördmaksustamine eeldavad teise liikmesriigi KMKR numbrit; Eesti ostja puhul vali „Tavaline käibemaks (Eesti)“.',
         'Intra-Community supply / EU reverse charge needs a VAT number from another Member State; use "domestic" for Estonian buyers.',
         vatScheme === 'eu-goods' ? L.KMS15 : 'KMS § 10',
       )
@@ -244,7 +244,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       add(
         'buyer.vatNumber',
         'error',
-        'Ostja KMKR number ei ole EL liikmesriigi number; väljapoole EL-i müügi korral kasuta "Eksport".',
+        'Ostja KMKR number ei ole ELi liikmesriigi number; väljapoole ELi müües vali „Eksport väljapoole ELi“ või „Teenus väljapoole ELi (ei maksustata Eestis)“.',
         'Buyer VAT number is not from an EU Member State; use "export" for non-EU customers.',
         vatScheme === 'eu-goods' ? L.KMS15 : 'KMS § 10',
       )
@@ -265,7 +265,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'vatScheme',
       'warning',
-      'Ostja asub EL-is – eksport on kauba väljavedu EL-ist. Kontrolli, kas sobib "EL kaup" või "EL teenus (pöördmaksustamine)".',
+      'Ostja asub ELis, kuid eksport tähendab kauba väljavedu Euroopa Liidust. Kontrolli, kas sobib „Kaup ELi ettevõttele (ühendusesisene käive)“ või „Teenus ELi ettevõttele (pöördmaksustamine)“.',
       'The buyer is in the EU – export means goods leaving the EU. Check whether "EU goods" or "EU services (reverse charge)" fits.',
       L.KMS15,
     )
@@ -274,7 +274,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'vatScheme',
       'warning',
-      'Ostja asub EL-is – teenuse müügil ELi ettevõttele kasuta "EL teenus (pöördmaksustamine)", Eesti ostjale tavalist käibemaksu.',
+      'Ostja asub ELis – ELi ettevõttele teenust müües vali „Teenus ELi ettevõttele (pöördmaksustamine)“, Eesti ostja puhul „Tavaline käibemaks (Eesti)“.',
       'The buyer is in the EU – for services to an EU business use "EU services (reverse charge)", for an Estonian buyer use normal VAT.',
       L.KMS10,
     )
@@ -283,7 +283,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'vatScheme',
       'warning',
-      'Ostja on teise riigi ettevõte – kontrolli, kas peaks kasutama pöördmaksustamist, ühendusesisest käivet või eksporti.',
+      'Ostja on välisriigi ettevõte – kontrolli, kas kohaldub pöördmaksustamine, ühendusesisene käive või eksport.',
       'The buyer is a foreign business – check whether reverse charge, intra-Community supply or export applies.',
     )
   }
@@ -293,7 +293,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'vatExemptionNote',
       'warning',
-      'Maksuvaba käibe korral täpsusta maksuvabastuse alus (nt "KMS § 16 lg 2 p 1"); vaikimisi trükitakse üldviide KMS § 16-le.',
+      'Maksuvaba käibe korral täpsusta maksuvabastuse alus (nt „KMS § 16 lg 2 p 1“); muidu trükitakse arvele üldine viide sättele KMS § 16.',
       'For an exempt supply specify the exact exemption (e.g. "KMS § 16 lg 2 p 1"); by default a generic reference to KMS § 16 is printed.',
       L.KMS16,
     )
@@ -305,7 +305,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       add(
         'creditedInvoiceNumber',
         'error',
-        'Kreeditarvel peab olema viide algsele arvele (arve number).',
+        'Kreeditarvel peab olema viide algsele arvele (algse arve number).',
         'A credit note must refer to the original invoice (invoice number).',
         L.KMS37_CREDIT,
       )
@@ -328,17 +328,17 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       add(`${f}.quantity`, 'error', `Rida ${i + 1}: kogus puudub või on null.`, `Line ${i + 1}: quantity is missing or zero.`, `${L.KMS37_5}; ${L.RPS7}`)
     }
     if (typeof line.unitPrice !== 'number' || !Number.isFinite(line.unitPrice)) {
-      add(`${f}.unitPrice`, 'error', `Rida ${i + 1}: ühiku hind puudub.`, `Line ${i + 1}: unit price is missing.`, `${L.KMS37_7}; ${L.RPS7}`)
+      add(`${f}.unitPrice`, 'error', `Rida ${i + 1}: ühikuhind puudub.`, `Line ${i + 1}: unit price is missing.`, `${L.KMS37_7}; ${L.RPS7}`)
     } else if (line.unitPrice === 0) {
-      add(`${f}.unitPrice`, 'warning', `Rida ${i + 1}: ühiku hind on 0.`, `Line ${i + 1}: unit price is 0.`)
+      add(`${f}.unitPrice`, 'warning', `Rida ${i + 1}: ühikuhind on 0.`, `Line ${i + 1}: unit price is 0.`)
     }
     if (isBlank(line.unit)) {
-      add(`${f}.unit`, 'warning', `Rida ${i + 1}: mõõtühik puudub.`, `Line ${i + 1}: unit of measure is missing.`, L.KMS37_5)
+      add(`${f}.unit`, 'warning', `Rida ${i + 1}: ühik puudub.`, `Line ${i + 1}: unit of measure is missing.`, L.KMS37_5)
     }
     if (line.discountPercent !== undefined && line.discountPercent !== null) {
       const d = line.discountPercent
       if (typeof d !== 'number' || !Number.isFinite(d) || d < 0 || d > 100) {
-        add(`${f}.discountPercent`, 'error', `Rida ${i + 1}: allahindlus peab olema 0–100%.`, `Line ${i + 1}: discount must be 0–100%.`, L.KMS37_7)
+        add(`${f}.discountPercent`, 'error', `Rida ${i + 1}: allahindlus peab olema vahemikus 0–100%.`, `Line ${i + 1}: discount must be 0–100%.`, L.KMS37_7)
       }
     }
     if (vatScheme === 'domestic') {
@@ -349,7 +349,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
         add(
           `${f}.vatRate`,
           'warning',
-          `Rida ${i + 1}: ${rate}% ei ole 2026. aastal kehtiv määr (lubatud ainult varasema käibe korrigeerimisel).`,
+          `Rida ${i + 1}: käibemaksumäär ${rate}% ei kehti 2026. aastal (lubatud ainult varasema käibe korrigeerimisel).`,
           `Line ${i + 1}: ${rate}% is not a current rate (only for corrections of earlier supplies).`,
           L.KMS15_RATES,
         )
@@ -357,7 +357,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
         add(
           `${f}.vatRate`,
           'error',
-          `Rida ${i + 1}: lubamatu käibemaksumäär ${rate}% (lubatud ${ESTONIAN_VAT_RATES.join(', ')}%).`,
+          `Rida ${i + 1}: käibemaksumäär ${rate}% ei ole lubatud (lubatud määrad: ${ESTONIAN_VAT_RATES.join(', ')}%).`,
           `Line ${i + 1}: invalid VAT rate ${rate}% (allowed ${ESTONIAN_VAT_RATES.join(', ')}%).`,
           L.KMS37_8,
         )
@@ -368,7 +368,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       add(
         `${f}.vatRate`,
         'warning',
-        `Rida ${i + 1}: käibemaksumäära ei arvestata valitud režiimi puhul (arvel 0% / käibemaksuta).`,
+        `Rida ${i + 1}: valitud käibemaksurežiimi puhul käibemaksumäära ei arvestata (arvel 0% / käibemaksuta).`,
         `Line ${i + 1}: the VAT rate is ignored for the selected scheme (0% / no VAT on the invoice).`,
       )
     }
@@ -377,7 +377,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'vatExemptionNote',
       'warning',
-      '0% määraga käibe korral tuleb arvele märkida viide KMS-i või direktiivi vastavale sättele.',
+      '0% määraga maksustatava käibe korral tuleb arvele märkida viide käibemaksuseaduse või käibemaksudirektiivi vastavale sättele.',
       'For a 0% supply the invoice must state the relevant provision of the VAT Act or the Directive.',
       L.KMS37_REF,
     )
@@ -395,7 +395,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       )
     }
     if (invoice.type !== 'credit-note' && totals.gross < 0) {
-      add('lines', 'warning', 'Arve summa on negatiivne – kasuta kreeditarvet.', 'The invoice total is negative – use a credit note.')
+      add('lines', 'warning', 'Arve summa on negatiivne – koosta selle asemel kreeditarve.', 'The invoice total is negative – use a credit note.')
     }
     if (isBlank(invoice.currency)) {
       add('currency', 'error', 'Valuuta puudub.', 'Currency is missing.')
@@ -415,7 +415,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'referenceNumber',
       'error',
-      'Viitenumber on vigane (2–20 numbrit, kontrollnumber 7-3-1 meetodil).',
+      'Viitenumber on vigane (2–20 numbrit, kontrollnumber meetodil 7-3-1).',
       'Reference number is invalid (2–20 digits with a 7-3-1 check digit).',
     )
   }
@@ -424,7 +424,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     if (!Number.isFinite(r) || r < 0) {
       add('lateInterestPercentPerDay', 'error', 'Viivise määr on vigane.', 'Late interest rate is invalid.')
     } else if (r > 0.5) {
-      add('lateInterestPercentPerDay', 'warning', 'Viivise määr tundub ebatavaliselt kõrge.', 'Late interest rate looks unusually high.')
+      add('lateInterestPercentPerDay', 'warning', 'Viivise määr on ebatavaliselt kõrge.', 'Late interest rate looks unusually high.')
     }
   }
 
@@ -444,10 +444,10 @@ function checkAddress(
     add(field, severity, `${whoEt} aadress puudub.`, `${whoEn} address is missing.`, legalBasis)
     return
   }
-  if (isBlank(address.street)) add(`${field}.street`, severity, `${whoEt} aadressil puudub tänav ja maja.`, `${whoEn} address has no street.`, legalBasis)
-  if (isBlank(address.city)) add(`${field}.city`, severity, `${whoEt} aadressil puudub linn/asula.`, `${whoEn} address has no city.`, legalBasis)
-  if (isBlank(address.country)) add(`${field}.country`, severity, `${whoEt} aadressil puudub riik.`, `${whoEn} address has no country.`, legalBasis)
-  if (isBlank(address.postalCode)) add(`${field}.postalCode`, 'warning', `${whoEt} aadressil puudub postiindeks.`, `${whoEn} address has no postal code.`)
+  if (isBlank(address.street)) add(`${field}.street`, severity, `${whoEt} aadressist puudub tänav ja majanumber.`, `${whoEn} address has no street.`, legalBasis)
+  if (isBlank(address.city)) add(`${field}.city`, severity, `${whoEt} aadressist puudub linn või asula.`, `${whoEn} address has no city.`, legalBasis)
+  if (isBlank(address.country)) add(`${field}.country`, severity, `${whoEt} aadressist puudub riik.`, `${whoEn} address has no country.`, legalBasis)
+  if (isBlank(address.postalCode)) add(`${field}.postalCode`, 'warning', `${whoEt} aadressist puudub postiindeks.`, `${whoEn} address has no postal code.`)
 }
 
 /** True when there are no 'error' severity issues. */
