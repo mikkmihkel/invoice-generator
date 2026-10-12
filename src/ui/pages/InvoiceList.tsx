@@ -7,7 +7,7 @@ import { useApp } from '../AppContext'
 import { StatusChip } from '../components/misc'
 import { formatDate, formatMoney } from '../format'
 import { useToast } from '../Toasts'
-import { displayStatus, errorMessage, localTodayISO, safeTotals, sumByCurrency, type DisplayStatus } from '../util'
+import { daysBetween, displayStatus, errorMessage, getLastBackupAt, localTodayISO, safeTotals, sumByCurrency, type DisplayStatus } from '../util'
 import { MarkPaidDialog } from './editor/StatusDialogs'
 
 type StatusFilter = 'all' | 'unpaid' | DisplayStatus
@@ -130,6 +130,8 @@ export default function InvoiceList() {
         </div>
       </div>
 
+      <BackupReminder count={invoices.length} />
+
       <div className="toolbar">
         <input type="search" className="search-input" placeholder={t('list.search')} aria-label={t('list.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
         <select aria-label={t('list.filterStatus')} value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
@@ -221,5 +223,18 @@ export default function InvoiceList() {
         />
       )}
     </div>
+  )
+}
+
+/** Data lives only in this browser and invoices must be kept for 7 years (RPS § 12) — nudge towards backups. */
+function BackupReminder({ count }: { count: number }) {
+  const { t } = useApp()
+  const last = getLastBackupAt()
+  const age = last ? daysBetween(last.slice(0, 10), localTodayISO()) : null
+  if (count === 0 || (age !== null && age < 30)) return null
+  return (
+    <p className="notice notice-info backup-reminder">
+      {last ? t('list.backupOld', { days: age ?? 0 }) : t('list.backupNever')} <Link to="/settings">{t('list.backupLink')}</Link>
+    </p>
   )
 }

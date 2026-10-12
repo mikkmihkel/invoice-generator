@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BackupFile } from '../../domain'
+import { RegistryAttribution } from '../components/CompanySearch'
 import { backupToDrive, downloadBlob, getGoogleStatus, googleSignIn, googleSignOut, restoreFromDrive, type GoogleStatus } from '../../integrations'
-import { getIndexInfo } from '../../registry'
-import { requestPersistentStorage } from '../../storage'
+import { getIndexInfo, type RegistryIndexInfo } from '../../registry'
+import { backupFileName, parseBackup as parseBackupFile, requestPersistentStorage, serializeBackup } from '../../storage'
 import { useApp } from '../AppContext'
 import { Dialog, useConfirm } from '../components/Dialog'
 import { CheckboxField, SelectField, TextField } from '../components/fields'
 import { Section } from '../components/misc'
 import { formatDateTime } from '../format'
 import { useToast } from '../Toasts'
-import { errorMessage, localTodayISO } from '../util'
+import { errorMessage, getLastBackupAt, markBackupDone } from '../util'
 
 export const REPO_URL = 'https://github.com/mikkmihkel/invoice-generator'
 export const GOOGLE_SETUP_URL = `${REPO_URL}/blob/main/docs/google-setup.md`
@@ -17,17 +18,15 @@ export const LEGAL_DOC_URL = `${REPO_URL}/blob/main/docs/legal-requirements.md`
 
 export function parseBackup(json: string): BackupFile | null {
   try {
-    const data = JSON.parse(json) as Partial<BackupFile>
-    if (data && data.app === 'invoice-generator' && data.version === 1 && Array.isArray(data.invoices) && Array.isArray(data.clients)) return data as BackupFile
+    return parseBackupFile(json)
   } catch {
-    /* not JSON */
+    return null
   }
-  return null
 }
 
-function safeGoogleStatus(): GoogleStatus {
+function safeGoogleStatus(clientId?: string): GoogleStatus {
   try {
-    return getGoogleStatus()
+    return getGoogleStatus(clientId)
   } catch {
     return { configured: false, signedIn: false }
   }
@@ -47,9 +46,10 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
     }
     setBusy(true)
     try {
-      await repo.importBackup(backup, mode)
+      const res = await repo.importBackup(backup, mode)
       await reload()
       toast.success(t('backup.imported'))
+      if (res?.duplicateNumbers?.length) toast.error(t('backup.duplicates', { numbers: res.duplicateNumbers.join(', ') }))
       onClose()
     } catch (e) {
       toast.error(t('backup.importFailed') + ' ' + errorMessage(e))
@@ -120,9 +120,10 @@ export default function SettingsPage() {
   const toast = useToast()
   const [clientId, setClientId] = useState(settings.googleClientId ?? '')
   const [folder, setFolder] = useState(settings.driveFolderName)
-  const [google, setGoogle] = useState<GoogleStatus>(safeGoogleStatus)
+  const [google, setGoogle] = useState<GoogleStatus>(() => safeGoogleStatus(settings.googleClientId))
+  const [lastBackup, setLastBackup] = useState(getLastBackupAt)
   const [persisted, setPersisted] = useState<boolean | null>(null)
-  const [indexInfo, setIndexInfo] = useState<{ builtAt: string; count: number; source: string } | null | 'error'>(null)
+  const [indexInfo, setIndexInfo] = useState<RegistryIndexInfo | null | 'loading'>('loading')
   const [busy, setBusy] = useState<string | null>(null)
   const [driveBackup, setDriveBackup] = useState<BackupFile | null>(null)
 
@@ -137,7 +138,7 @@ export default function SettingsPage() {
       .catch(() => undefined)
     getIndexInfo()
       .then((info) => alive && setIndexInfo(info))
-      .catch(() => alive && setIndexInfo('error'))
+      .catch(() => alive && setIndexInfo(null))
     return () => {
       alive = false
     }
@@ -156,8 +157,9 @@ export default function SettingsPage() {
 
   const saveGoogle = () =>
     withBusy('google-save', async () => {
-      await saveSettings({ googleClientId: clientId.trim() || undefined, driveFolderName: folder.trim() || settings.driveFolderName })
-      setGoogle(safeGoogleStatus())
+      const id = clientId.trim() || undefined
+      await saveSettings({ googleClientId: id, driveFolderName: folder.trim() || settings.driveFolderName })
+      setGoogle(safeGoogleStatus(id))
       toast.success(t('common.saved'))
     })
 
@@ -171,24 +173,29 @@ export default function SettingsPage() {
   const disconnect = () =>
     withBusy('google-disconnect', async () => {
       await googleSignOut()
-      setGoogle(safeGoogleStatus())
+      setGoogle(safeGoogleStatus(settings.googleClientId))
       toast.info(t('google.disconnected'))
     })
 
   const exportBackup = () =>
     withBusy('export', async () => {
       const backup = await repo.exportBackup()
-      downloadBlob(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), `invoice-generator-backup-${localTodayISO()}.json`)
+      downloadBlob(new Blob([serializeBackup(backup)], { type: 'application/json' }), backupFileName())
+      markBackupDone()
+      setLastBackup(getLastBackupAt())
       toast.success(t('backup.exported'))
     })
 
   const toDrive = () =>
     withBusy('drive-backup', async () => {
       if (!settings.googleClientId) throw new Error(t('google.needClientId'))
+      // Sign in first: the consent popup must open directly from the click.
       await googleSignIn(settings.googleClientId, ['drive'])
       const backup = await repo.exportBackup()
-      const res = await backupToDrive(settings.googleClientId, JSON.stringify(backup), settings.driveFolderName)
-      setGoogle(safeGoogleStatus())
+      const res = await backupToDrive(settings.googleClientId, serializeBackup(backup), settings.driveFolderName)
+      markBackupDone()
+      setLastBackup(getLastBackupAt())
+      setGoogle(safeGoogleStatus(settings.googleClientId))
       toast.success(t('backup.driveSaved', { time: formatDateTime(res.modifiedTime) }))
     })
 
@@ -284,6 +291,7 @@ export default function SettingsPage() {
             <div>
               <strong>{t('backup.fileTitle')}</strong>
               <p className="muted small">{t('backup.fileHint')}</p>
+              <p className="muted small">{lastBackup ? t('backup.last', { date: formatDateTime(lastBackup) }) : t('backup.never')}</p>
             </div>
             <div className="btn-row">
               <button type="button" className="btn" onClick={() => void exportBackup()} disabled={busy !== null}>
@@ -310,18 +318,14 @@ export default function SettingsPage() {
 
         <Section id="set-registry" title={t('registry.title')}>
           <p>
-            {indexInfo === 'error' || indexInfo === null
-              ? t('registry.indexMissing')
-              : t('registry.indexInfo', { count: indexInfo.count.toLocaleString('et-EE'), date: formatDateTime(indexInfo.builtAt) })}
+            {indexInfo === 'loading'
+              ? t('common.loading')
+              : indexInfo === null
+                ? t('registry.indexMissing')
+                : t('registry.indexInfo', { count: indexInfo.count.toLocaleString('et-EE'), date: formatDateTime(indexInfo.dataDate || indexInfo.builtAt) })}
           </p>
           <CheckboxField label={t('registry.live')} hint={t('registry.liveHint')} checked={settings.registryLiveLookup} onChange={(registryLiveLookup) => void saveSettings({ registryLiveLookup })} />
-          <p className="muted small">
-            {t('registry.attribution')}
-            {indexInfo && indexInfo !== 'error' && indexInfo.source ? ` (${indexInfo.source})` : ''}{' '}
-            <a href="https://avaandmed.ariregister.rik.ee/" target="_blank" rel="noreferrer">
-              avaandmed.ariregister.rik.ee ↗
-            </a>
-          </p>
+          <RegistryAttribution lang={lang} />
         </Section>
 
         <Section id="set-about" title={t('about.title')}>

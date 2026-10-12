@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { RegistryCompany } from '../../domain'
-import { getCompanyByCode, searchCompanies } from '../../registry'
+import { getCompanyByCode, REGISTRY_ATTRIBUTION, searchCompanies } from '../../registry'
 import { useApp } from '../AppContext'
 import { formatAddress, addressFromRegistry } from '../util'
 
@@ -13,7 +13,7 @@ interface Props {
 
 /** Debounced autocomplete over the e-Business Register (bundled index + optional live API). */
 export function CompanySearch({ onPick, label, autoFocus, placeholder }: Props) {
-  const { t, settings } = useApp()
+  const { t, settings, lang } = useApp()
   const id = useId()
   const listId = id + '-list'
   const [query, setQuery] = useState('')
@@ -153,6 +153,22 @@ export function CompanySearch({ onPick, label, autoFocus, placeholder }: Props) 
       <div className="field-hint" aria-live="polite">
         {failed ? t('registry.failed') : searched && !loading && results.length === 0 ? t('registry.noResults') : t('registry.hint')}
       </div>
+      <RegistryAttribution lang={lang} />
     </div>
+  )
+}
+
+export function RegistryAttribution({ lang }: { lang: 'et' | 'en' }) {
+  return (
+    <p className="attribution">
+      <a href={REGISTRY_ATTRIBUTION.sourceUrl} target="_blank" rel="noreferrer">
+        {REGISTRY_ATTRIBUTION[lang]}
+      </a>{' '}
+      (
+      <a href={REGISTRY_ATTRIBUTION.licenceUrl} target="_blank" rel="noreferrer">
+        CC BY 4.0
+      </a>
+      )
+    </p>
   )
 }

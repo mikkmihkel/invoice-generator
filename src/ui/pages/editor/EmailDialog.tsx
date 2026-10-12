@@ -89,6 +89,7 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
   const gmail = () =>
     run('gmail', async () => {
       if (!settings.googleClientId) return
+      // Sign in first: the consent popup must open directly from the click.
       await googleSignIn(settings.googleClientId, ['gmail'])
       await sendViaGmail(settings.googleClientId, draft())
       toast.success(t('email.sent', { to: recipients.join(', ') }))
@@ -97,7 +98,8 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
 
   const share = () =>
     run('share', async () => {
-      await shareFiles(draft())
+      const shared = await shareFiles(draft())
+      if (!shared) return // dismissed by the user
       toast.success(t('email.shared'))
       onClose()
     })

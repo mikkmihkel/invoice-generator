@@ -1,6 +1,8 @@
 import {
+  buyerSnapshot,
   computeTotals,
   newId,
+  sellerSnapshot as domainSellerSnapshot,
   type Address,
   type BuyerSnapshot,
   type Client,
@@ -56,8 +58,7 @@ export function safeTotals(inv: Pick<Invoice, 'lines' | 'vatScheme'>): InvoiceTo
 }
 
 export function sellerSnapshot(profile: CompanyProfile): SellerSnapshot {
-  const { defaults: _d, numbering: _n, updatedAt: _u, ...rest } = profile
-  return structuredCloneSafe(rest)
+  return domainSellerSnapshot(profile)
 }
 
 /** Drafts always show the current company profile; issued invoices keep their frozen snapshot. */
@@ -67,18 +68,7 @@ export function effectiveInvoice(inv: Invoice, profile: CompanyProfile | null): 
 }
 
 export function buyerFromClient(c: Client): BuyerSnapshot {
-  return {
-    clientId: c.id,
-    kind: c.kind,
-    name: c.name,
-    registryCode: c.registryCode,
-    personalCode: c.personalCode,
-    vatNumber: c.vatNumber,
-    address: { ...c.address },
-    email: c.email,
-    phone: c.phone,
-    contactPerson: c.contactPerson,
-  }
+  return buyerSnapshot(c)
 }
 
 export function emptyAddress(): Address {
