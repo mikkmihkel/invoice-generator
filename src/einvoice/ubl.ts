@@ -256,11 +256,19 @@ export function eInvoiceIssues(invoice: Invoice): UblIssue[] {
     add('seller.registryCode', 'Müüjal puudub e-arve aadress (registrikood või KMKR nr).', 'Seller has no e-invoice address (registry code or VAT number).')
   }
   if (!endpointFor(invoice.buyer)) {
-    add(
-      'buyer.registryCode',
-      'Ostjal puudub e-arve aadress (Eesti registrikood või KMKR nr). Eraisikutele e-arvet Peppol-võrgu kaudu ei saadeta.',
-      'Buyer has no e-invoice address (Estonian registry code or VAT number). Private persons cannot receive Peppol e-invoices.',
-    )
+    if (invoice.buyer.kind === 'person') {
+      add(
+        'buyer.registryCode',
+        'Ostjal puudub e-arve aadress (Eesti registrikood või KMKR nr). Eraisikutele e-arvet Peppol-võrgu kaudu ei saadeta.',
+        'Buyer has no e-invoice address (Estonian registry code or VAT number). Private persons cannot receive Peppol e-invoices.',
+      )
+    } else {
+      add(
+        'buyer.registryCode',
+        'Ostjal puudub Peppoli elektrooniline aadress (Eesti registrikood või ELi KMKR number). XML-fail sobib arhiveerimiseks ja käsitsi saatmiseks, kuid e-arve operaator ei pruugi seda ostjale edastada.',
+        'The buyer has no Peppol electronic address (Estonian registry code or EU VAT number) – the XML is valid for archiving/manual sending, but an operator may not be able to deliver it.',
+      )
+    }
   }
   if (invoice.vatScheme !== 'not-registered' && !invoice.seller.vatNumber?.trim()) {
     add('seller.vatNumber', 'Käibemaksuga arvel peab olema müüja KMKR number.', 'A VAT invoice must contain the seller VAT number.')

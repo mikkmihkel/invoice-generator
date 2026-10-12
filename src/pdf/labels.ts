@@ -1,5 +1,6 @@
 // Document labels for invoice PDFs. `et-en` renders "Estonian / English".
 import type { InvoiceLanguage } from '../domain/types'
+import { formatPercent } from './format'
 
 type Pair = { et: string; en: string }
 
@@ -79,9 +80,10 @@ export function translator(lang: InvoiceLanguage): Translator {
 }
 
 /** Sentence-like texts with values. */
-export function lateInterestText(formatted: string, lang: InvoiceLanguage): string {
-  const et = `Tähtaegselt tasumata arve korral arvestatakse viivist ${formatted} päevas.`
-  const en = `Late payment interest of ${formatted} per day is charged on overdue amounts.`
+export function lateInterestText(percentPerDay: number, lang: InvoiceLanguage): string {
+  // Each language half uses its own decimal separator ("0,05%" / "0.05%"), also on bilingual documents.
+  const et = `Tähtaegselt tasumata arve korral arvestatakse viivist ${formatPercent(percentPerDay, 'et')} päevas.`
+  const en = `Late payment interest of ${formatPercent(percentPerDay, 'en')} per day is charged on overdue amounts.`
   return lang === 'et' ? et : lang === 'en' ? en : `${et}\n${en}`
 }
 

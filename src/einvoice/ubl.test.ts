@@ -256,6 +256,18 @@ describe('eInvoiceIssues', () => {
     ).map((i) => i.field)
     expect(fields).toEqual(['number', 'buyer.registryCode'])
   })
+
+  it('explains the missing address differently for private persons and foreign companies', () => {
+    const person = eInvoiceIssues(
+      sampleInvoice({ buyer: { kind: 'person', name: 'Jaan Tamm', address: { street: 'A', city: 'B', postalCode: '1', country: 'EE' } } }),
+    )
+    expect(person[0].message.en).toContain('Private persons')
+    const us = eInvoiceIssues(sampleInvoice({ buyer: { kind: 'company', name: 'Acme Inc.', address: { street: '1 Main St', city: 'Austin', postalCode: '78701', country: 'US' } } }))
+    expect(us.map((i) => i.field)).toEqual(['buyer.registryCode'])
+    expect(us[0].message.en).not.toContain('Private persons')
+    expect(us[0].message.en).toContain('no Peppol electronic address')
+    expect(us[0].message.et).toContain('elektrooniline aadress')
+  })
 })
 
 describe('buildUblXml — foreign currency', () => {
