@@ -1,4 +1,4 @@
-import forceCloseDatabase from 'fake-indexeddb/lib/forceCloseDatabase'
+import { forceCloseDatabase } from 'fake-indexeddb'
 import { describe, expect, it } from 'vitest'
 import { getDb } from './db'
 
@@ -15,7 +15,7 @@ describe('getDb', () => {
     const name = unique()
     const first = await getDb(name)
     // simulates an abnormal close (fires "close", which idb maps to terminated())
-    forceCloseDatabase(first as unknown as IDBDatabase)
+    forceCloseDatabase(first as unknown as Parameters<typeof forceCloseDatabase>[0])
     const second = await getDb(name)
     expect(second).not.toBe(first)
     await second.put('meta', 'ok', 'probe')

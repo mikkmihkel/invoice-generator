@@ -40,9 +40,18 @@ export function utf8ToBase64(text: string): string {
   return bytesToBase64(new TextEncoder().encode(text))
 }
 
-/** base64url without padding (RFC 4648 §5), as required for Gmail `raw`. Input must be ASCII/Latin-1. */
-export function toBase64Url(ascii: string): string {
-  return btoa(ascii).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+/**
+ * base64url without padding (RFC 4648 §5), as required for Gmail `raw`. Never throws on content:
+ * bytes are encoded as-is; a string whose code units are all ≤ 0xFF is treated as a binary (Latin-1)
+ * string, any other string is encoded as UTF-8. (A MIME message from buildMimeMessage is pure ASCII,
+ * where both readings agree.)
+ */
+export function toBase64Url(input: string | Uint8Array): string {
+  let bytes: Uint8Array
+  if (typeof input !== 'string') bytes = input
+  else if (/^[\x00-\xff]*$/.test(input)) bytes = Uint8Array.from(input, (c) => c.charCodeAt(0))
+  else bytes = new TextEncoder().encode(input)
+  return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 /** Wrap base64 (or any) text at `width` chars with CRLF (RFC 2045 §6.8: max 76). */
@@ -79,17 +88,66 @@ function assertNoLineBreaks(value: string, field: string) {
   if (/[\r\n]/.test(value)) throw new Error(`Invalid ${field}: line breaks are not allowed`)
 }
 
-/** Format one address: "Name <a@b>" (name encoded if non-ASCII, quoted if needed) or bare "a@b". */
-export function formatAddress(address: string): string {
-  const trimmed = address.trim()
+/** Raised for an email address that cannot be put into a message header. Carries a bilingual message. */
+export class InvalidEmailAddressError extends Error {
+  readonly address: string
+  readonly messages: { et: string; en: string }
+  constructor(address: string, nonAscii: boolean) {
+    const messages = nonAscii
+      ? {
+          et: `E-posti aadress „${address}“ sisaldab täpitähti või muid märke, mida e-posti aadressis kasutada ei saa. Kontrolli aadressi.`,
+          en: `The email address "${address}" contains accented or other non-ASCII characters, which are not supported. Please check the address.`,
+        }
+      : {
+          et: `E-posti aadress „${address}“ ei ole korrektne.`,
+          en: `"${address}" is not a valid email address.`,
+        }
+    super(messages.en)
+    this.name = 'InvalidEmailAddressError'
+    this.address = address
+    this.messages = messages
+  }
+}
+
+// RFC 5322 dot-atom local part and an LDH domain (ASCII only; IDN / SMTPUTF8 addresses are not supported).
+const LOCAL_PART = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/
+const DOMAIN = /^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/
+
+/** Throws InvalidEmailAddressError unless `email` is a plain ASCII addr-spec ("local@domain"). */
+export function assertValidEmail(email: string): void {
+  if (!isAscii(email)) throw new InvalidEmailAddressError(email, true)
+  const at = email.lastIndexOf('@')
+  const local = email.slice(0, at)
+  const domain = email.slice(at + 1)
+  if (at < 1 || email.length > 254 || local.length > 64 || !LOCAL_PART.test(local) || !DOMAIN.test(domain)) {
+    throw new InvalidEmailAddressError(email, false)
+  }
+}
+
+/** Split `Name <addr>`, `"Name, Quoted" <addr>`, `<addr>` or a bare `addr` into display name and address. */
+export function parseAddress(input: string): { name: string; email: string } {
+  const trimmed = input.trim()
   assertNoLineBreaks(trimmed, 'address')
-  const m = /^(.*?)\s*<([^<>\s]+@[^<>\s]+)>$/.exec(trimmed)
-  if (!m) return trimmed
-  let name = m[1].trim().replace(/^"(.*)"$/, '$1')
-  if (!name) return `<${m[2]}>`
-  if (!isAscii(name)) name = encodeHeaderWord(name)
-  else if (/[()<>[\]:;@\\,."]/.test(name)) name = `"${name.replace(/(["\\])/g, '\\$1')}"`
-  return `${name} <${m[2]}>`
+  const open = trimmed.lastIndexOf('<')
+  if (open === -1 || !trimmed.endsWith('>')) return { name: '', email: trimmed }
+  let name = trimmed.slice(0, open).trim()
+  const q = /^"((?:[^"\\]|\\.)*)"$/.exec(name)
+  if (q) name = q[1].replace(/\\(.)/g, '$1')
+  return { name, email: trimmed.slice(open + 1, -1).trim() }
+}
+
+/**
+ * Format one address for a header: `Name <a@b>` (name RFC 2047-encoded if non-ASCII, quoted if it has
+ * specials) or a bare `a@b`. The address itself must be ASCII; otherwise InvalidEmailAddressError is thrown.
+ */
+export function formatAddress(address: string): string {
+  const { name, email } = parseAddress(address)
+  assertValidEmail(email)
+  if (!name) return email
+  let display = name
+  if (!isAscii(display)) display = encodeHeaderWord(display)
+  else if (/[()<>[\]:;@\\,."]|=\?/.test(display)) display = `"${display.replace(/(["\\])/g, '\\$1')}"`
+  return `${display} <${email}>`
 }
 
 function addressList(list: string[] | undefined): string {

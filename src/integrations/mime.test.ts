@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { asciiFileName, buildMimeMessage, encodeHeaderWord, formatAddress, toBase64Url, wrapLines } from './mime'
+import {
+  asciiFileName,
+  buildMimeMessage,
+  encodeHeaderWord,
+  formatAddress,
+  InvalidEmailAddressError,
+  parseAddress,
+  toBase64Url,
+  wrapLines,
+} from './mime'
 
 const utf8 = (s: string) => new TextEncoder().encode(s)
 const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64.replace(/\s+/g, '')), (c) => c.charCodeAt(0))
@@ -71,6 +80,55 @@ describe('formatAddress', () => {
 
   it('rejects header injection', () => {
     expect(() => formatAddress('a@b.ee\r\nBcc: evil@x.com')).toThrow()
+  })
+
+  it('parses "Name <addr>", quoted names and bare addresses', () => {
+    expect(parseAddress('  Mari Mets <mari@example.ee> ')).toEqual({ name: 'Mari Mets', email: 'mari@example.ee' })
+    expect(parseAddress('"Mets, \\"Mari\\"" <mari@example.ee>')).toEqual({ name: 'Mets, "Mari"', email: 'mari@example.ee' })
+    expect(parseAddress('<mari@example.ee>')).toEqual({ name: '', email: 'mari@example.ee' })
+    expect(parseAddress('mari@example.ee')).toEqual({ name: '', email: 'mari@example.ee' })
+    expect(formatAddress('<mari@example.ee>')).toBe('mari@example.ee')
+    expect(formatAddress('"Mets, \\"Mari\\"" <mari@example.ee>')).toBe('"Mets, \\"Mari\\"" <mari@example.ee>')
+  })
+
+  it('RFC 2047-encodes non-ASCII display names, also when quoted or long', () => {
+    expect(decodeWords(formatAddress('"Õunapuu, Jüri" <juri@example.ee>'))).toBe('Õunapuu, Jüri <juri@example.ee>')
+    const long = 'Šokolaadivabriku Žürii Õunapuu Äriühing ' + 'Ü'.repeat(40)
+    const formatted = formatAddress(`${long} <x@example.ee>`)
+    expect(formatted).toMatch(/^[\x20-\x7e\r\n]*$/)
+    expect(formatted.split('\r\n ').length).toBeGreaterThan(1)
+    expect(decodeWords(formatted)).toBe(`${long} <x@example.ee>`)
+  })
+
+  it('quotes ASCII names that look like encoded words', () => {
+    expect(formatAddress('=?UTF-8?B?eA==?= <a@b.ee>')).toBe('"=?UTF-8?B?eA==?=" <a@b.ee>')
+  })
+
+  it('rejects non-ASCII addresses with a clear bilingual error instead of a btoa crash', () => {
+    for (const input of ['jüri@example.ee', 'Jüri <juri@näide.ee>']) {
+      const err = (() => {
+        try {
+          formatAddress(input)
+        } catch (e) {
+          return e
+        }
+      })()
+      expect(err).toBeInstanceOf(InvalidEmailAddressError)
+      expect((err as InvalidEmailAddressError).messages.et).toMatch(/täpitähti/)
+      expect((err as InvalidEmailAddressError).message).toMatch(/non-ASCII/)
+    }
+    expect(() => buildMimeMessage({ to: ['Jüri <jüri@example.ee>'], subject: 'x', body: '' })).toThrow(InvalidEmailAddressError)
+  })
+
+  it.each(['mari', 'mari@', '@example.ee', 'mari mets@example.ee', 'mari@example..ee', 'a@-b.ee', 'Mari <>', 'a,b@example.ee', 'a@b.ee, c@d.ee'])(
+    'rejects the malformed address %s',
+    (input) => {
+      expect(() => formatAddress(input)).toThrow(InvalidEmailAddressError)
+    },
+  )
+
+  it('accepts ordinary addresses', () => {
+    for (const a of ['first.last+tag@sub.example.co.uk', "o'brien@example.com", 'x@localhost']) expect(formatAddress(a)).toBe(a)
   })
 })
 
@@ -159,6 +217,17 @@ describe('helpers', () => {
     const raw = toBase64Url('\xfb\xff\xfe?>')
     expect(raw).not.toMatch(/[+/=]/)
     expect(atob(raw.replace(/-/g, '+').replace(/_/g, '/'))).toBe('\xfb\xff\xfe?>')
+  })
+
+  it('base64url-encodes bytes and any string without throwing', () => {
+    const decode = (raw: string) => b64ToBytes(raw.replace(/-/g, '+').replace(/_/g, '/'))
+    const bytes = Uint8Array.from({ length: 300 }, (_, i) => (i * 7) % 256)
+    expect(decode(toBase64Url(bytes))).toEqual(bytes)
+    // characters above U+00FF would make btoa throw; they are encoded as UTF-8
+    const text = 'Arve – Õunapuu € 🧾'
+    expect(() => toBase64Url(text)).not.toThrow()
+    expect(new TextDecoder().decode(decode(toBase64Url(text)))).toBe(text)
+    expect(toBase64Url('')).toBe('')
   })
 
   it('wraps lines', () => {
