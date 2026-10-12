@@ -48,7 +48,7 @@ function ErrorScreen({ error, lang, scope, onReset }: { error: Error; lang: UiLa
   const Heading = scope === 'app' ? 'h1' : 'h2'
   return (
     <div className={scope === 'app' ? 'boot' : 'page'}>
-      <div className="card error-screen" role="alert" lang={lang}>
+      <div className="panel error-screen" role="alert" lang={lang}>
         <Heading>{t('error.title')}</Heading>
         <p>{t(scope === 'app' ? 'error.text' : 'error.pageText')}</p>
         <div className="btn-row">

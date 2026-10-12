@@ -18,7 +18,7 @@ export function AddressFields({ value, onChange, pathPrefix, disabled }: { value
   const { t } = useApp()
   const set = (patch: Partial<Address>) => onChange({ ...value, ...patch })
   return (
-    <div className="grid grid-addr">
+    <div className="grid">
       <TextField className="span-2" label={t('field.street')} path={`${pathPrefix}.street`} value={value.street} onChange={(v) => set({ street: v })} autoComplete="street-address" disabled={disabled} />
       <TextField label={t('field.postalCode')} path={`${pathPrefix}.postalCode`} value={value.postalCode} onChange={(v) => set({ postalCode: v })} autoComplete="postal-code" inputMode="numeric" disabled={disabled} />
       <TextField label={t('field.city')} path={`${pathPrefix}.city`} value={value.city} onChange={(v) => set({ city: v })} autoComplete="address-level2" disabled={disabled} />
@@ -44,6 +44,7 @@ export function PartyFields<T extends Party>({
   person,
   disabled,
   showContacts = true,
+  nameError,
 }: {
   value: T
   onChange: (p: T) => void
@@ -51,6 +52,8 @@ export function PartyFields<T extends Party>({
   person?: boolean
   disabled?: boolean
   showContacts?: boolean
+  /** Shown below the name field (e.g. after a submit with an empty name). */
+  nameError?: string
 }) {
   const { t } = useApp()
   const set = (patch: Partial<Party>) => onChange({ ...value, ...patch })
@@ -58,7 +61,7 @@ export function PartyFields<T extends Party>({
   return (
     <>
       <div className="grid">
-        <TextField className="span-2" label={person ? t('field.personName') : t('field.companyName')} path={`${p}name`} value={value.name} onChange={(v) => set({ name: v })} required disabled={disabled} />
+        <TextField className="span-2" label={person ? t('field.personName') : t('field.companyName')} path={`${p}name`} value={value.name} onChange={(v) => set({ name: v })} required disabled={disabled} error={nameError} />
         {person ? (
           <TextField label={t('field.personalCode')} path={`${p}personalCode`} value={value.personalCode} onChange={(v) => set({ personalCode: v.trim() || undefined })} inputMode="numeric" disabled={disabled} />
         ) : (

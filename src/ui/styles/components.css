@@ -1,0 +1,541 @@
+/* Composite components: panels, sections, notices, banners, dialogs, toasts, empty states, disclosure. */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.panel-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+/* Form section: heading + description, then the fields. Side-by-side on form pages (see forms.css). */
+.section {
+  padding: var(--s-5) var(--s-6);
+}
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.section-head h2 {
+  font-size: var(--fs-lg);
+}
+.section-desc {
+  margin-top: 4px;
+  max-width: 62ch;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+.subhead {
+  margin-top: var(--s-2);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+/* ---------- Notices and banners ---------- */
+
+.notice {
+  padding: 10px 12px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.notice ul {
+  padding-left: 18px;
+}
+.notice details {
+  margin-top: 6px;
+}
+.notice-info {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft-border);
+}
+.notice-warn {
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+}
+.notice-error {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+}
+
+.inline-banner,
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 10px 12px 10px 14px;
+  margin-bottom: var(--s-4);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.inline-banner > svg,
+.status-strip > .strip-icon {
+  flex: none;
+  color: var(--text-3);
+}
+.inline-banner p,
+.strip-text {
+  flex: 1;
+  min-width: 0;
+}
+.strip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+@media (max-width: 639px) {
+  .inline-banner,
+  .status-strip {
+    flex-wrap: wrap;
+  }
+  .inline-banner p,
+  .strip-text {
+    flex-basis: calc(100% - 40px);
+  }
+  .inline-banner > .btn,
+  .status-strip > .btn {
+    margin-left: 30px;
+  }
+}
+.strip-warn {
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+  color: var(--text);
+}
+.strip-warn > .strip-icon {
+  color: var(--warning);
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.status-ok {
+  color: var(--success);
+}
+
+.attribution {
+  margin-top: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.attribution a {
+  color: var(--text-3);
+}
+
+.ext-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ---------- Disclosure ---------- */
+
+.disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure > summary .caret {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--dur) var(--ease);
+}
+.disclosure[open] > summary .caret {
+  transform: rotate(90deg);
+}
+.disclosure > summary .caret-static {
+  flex: none;
+  color: var(--text-3);
+}
+.disclosure-title {
+  font-weight: 500;
+  color: var(--text);
+}
+.disclosure-hint {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.disclosure[open] .disclosure-hint {
+  display: none;
+}
+.disclosure > summary:hover .disclosure-title {
+  color: var(--accent-text);
+}
+.disclosure-body {
+  padding-top: var(--s-3);
+}
+
+/* ---------- Empty states ---------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 520px;
+  margin: var(--s-10) auto;
+  padding: var(--s-8) var(--s-6);
+  text-align: center;
+}
+.panel.empty {
+  max-width: 560px;
+}
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--s-4);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-radius: var(--r-md);
+}
+.empty-title {
+  font-size: var(--fs-xl);
+}
+.empty-body {
+  margin-top: var(--s-2);
+  color: var(--text-2);
+}
+.empty-steps {
+  display: grid;
+  gap: 8px;
+  margin: var(--s-5) auto 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  text-align: left;
+  width: fit-content;
+}
+.empty-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  counter-increment: step;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.empty-steps li::before {
+  content: counter(step);
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+}
+.empty-actions {
+  justify-content: center;
+  margin-top: var(--s-6);
+}
+.empty-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--s-6);
+  color: var(--text-2);
+}
+
+/* ---------- Dialog ---------- */
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: var(--s-4);
+  background: var(--backdrop);
+  animation: fade-in var(--dur) var(--ease);
+}
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: calc(100svh - 32px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-overlay);
+  animation: dialog-in var(--dur) var(--ease);
+}
+.dialog:focus {
+  outline: none;
+}
+.dialog-wide {
+  width: min(760px, 100%);
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 14px 14px 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-head h2 {
+  font-size: var(--fs-lg);
+}
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-5);
+  overflow: auto;
+  color: var(--text-2);
+}
+.dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.dialog-search {
+  padding-bottom: var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+.confirm-message {
+  color: var(--text-2);
+}
+.email-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: var(--fs-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.attachment > svg {
+  color: var(--text-3);
+}
+.attachment-label {
+  color: var(--text-3);
+}
+.attachment-error {
+  color: var(--danger);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+
+@media (max-width: 599px) {
+  .dialog-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+  .dialog,
+  .dialog-wide {
+    width: 100%;
+    max-height: 92svh;
+    border-radius: var(--r-md) var(--r-md) 0 0;
+  }
+  .dialog-foot {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .dialog-foot .btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---------- Toasts ---------- */
+
+.toasts {
+  position: fixed;
+  z-index: 200;
+  right: var(--s-4);
+  bottom: calc(var(--s-4) + var(--tabbar-h));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-2);
+  width: min(400px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 8px 10px 12px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-overlay);
+  pointer-events: auto;
+  animation: toast-in var(--dur) var(--ease);
+}
+.toast-icon {
+  display: grid;
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent-text);
+}
+.toast-success .toast-icon {
+  color: var(--success);
+}
+.toast-error .toast-icon {
+  color: var(--danger);
+}
+.toast-warning .toast-icon {
+  color: var(--warning);
+}
+.toast-msg {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+  overflow-wrap: anywhere;
+}
+.toast-action {
+  flex: none;
+  padding-top: 1px;
+  font-weight: 500;
+}
+.toast-close {
+  margin: -3px 0;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (max-width: 767px) {
+  .toasts {
+    left: var(--s-4);
+    right: var(--s-4);
+    width: auto;
+    bottom: calc(var(--s-3) + var(--tabbar-h) + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------- Error screens ---------- */
+
+.error-screen,
+.boot-error {
+  max-width: 560px;
+  margin: var(--s-6) auto;
+  padding: var(--s-6);
+  color: var(--text-2);
+}
+.error-screen h1,
+.error-screen h2,
+.boot-error h1 {
+  margin-bottom: var(--s-2);
+}
+.error-screen .btn-row {
+  margin: var(--s-4) 0 var(--s-2);
+}
+.error-message {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Backup review ---------- */
+
+.backup-changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.change-list {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0;
+}
+.change-list > div {
+  display: grid;
+  gap: 2px;
+}
+.change-list dt {
+  font-weight: 600;
+}
+.change-list dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+.change-from {
+  text-decoration: line-through;
+  color: var(--text-3);
+}

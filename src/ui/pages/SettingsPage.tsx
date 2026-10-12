@@ -1,3 +1,4 @@
+import { ArrowSquareOutIcon, CheckCircleIcon, CircleIcon, CloudArrowDownIcon, CloudArrowUpIcon, DownloadSimpleIcon, PlugsConnectedIcon, ShieldCheckIcon, SignOutIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
 import type { BackupFile } from '../../domain'
 import { RegistryAttribution } from '../components/CompanySearch'
@@ -7,8 +8,9 @@ import { backupFileName, requestPersistentStorage, serializeBackup } from '../..
 import { useApp } from '../AppContext'
 import { GOOGLE_CLIENT_ID_RE, keepClientId, paymentDetailChanges, readBackupText } from './backupReview'
 import { Dialog, useConfirm } from '../components/Dialog'
-import { CheckboxField, SelectField, TextField } from '../components/fields'
+import { CheckboxField, TextField } from '../components/fields'
 import { Section } from '../components/misc'
+import { Segmented } from '../components/ui'
 import { formatDateTime } from '../format'
 import { useToast } from '../Toasts'
 import { errorMessage, getLastBackupAt, markBackupDone } from '../util'
@@ -121,6 +123,7 @@ export function BackupImport({ compact }: { compact?: boolean }) {
   return (
     <>
       <label className={`btn${compact ? ' btn-sm' : ''}`}>
+        <UploadSimpleIcon />
         {t('backup.importFile')}
         <input ref={ref} type="file" accept="application/json,.json" className="visually-hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
       </label>
@@ -241,19 +244,27 @@ export default function SettingsPage() {
   const hasGoogle = !!settings.googleClientId
 
   return (
-    <div className="page page-narrow">
-      <h1>{t('nav.settings')}</h1>
+    <div className="page page-form form-page">
+      <div className="page-head">
+        <h1>{t('nav.settings')}</h1>
+      </div>
       <div className="stack">
         <Section id="set-lang" title={t('settings.general')}>
-          <SelectField
-            label={t('settings.uiLanguage')}
-            value={lang}
-            onChange={(uiLanguage) => void saveSettings({ uiLanguage })}
-            options={[
-              { value: 'et', label: 'Eesti' },
-              { value: 'en', label: 'English' },
-            ]}
-          />
+          <div className="field">
+            <span className="label">{t('settings.uiLanguage')}</span>
+            <div>
+              <Segmented
+                label={t('settings.uiLanguage')}
+                value={lang}
+                onChange={(uiLanguage) => void saveSettings({ uiLanguage })}
+                options={[
+                  { value: 'et', label: 'Eesti' },
+                  { value: 'en', label: 'English' },
+                ]}
+              />
+            </div>
+            <div className="field-hint">{t('settings.languageHint')}</div>
+          </div>
         </Section>
 
         <Section id="set-google" title={t('google.title')} description={t('google.intro')}>
@@ -263,8 +274,9 @@ export default function SettingsPage() {
             <li>{t('google.step3')}</li>
           </ol>
           <p>
-            <a href={GOOGLE_SETUP_URL} target="_blank" rel="noreferrer">
-              {t('google.guideLink')} ↗
+            <a href={GOOGLE_SETUP_URL} target="_blank" rel="noreferrer" className="ext-link">
+              {t('google.guideLink')}
+              <ArrowSquareOutIcon size={14} />
             </a>
           </p>
           <div className="grid">
@@ -277,17 +289,19 @@ export default function SettingsPage() {
             </button>
             {hasGoogle && !google.signedIn && (
               <button type="button" className="btn btn-primary" onClick={() => void connect()} disabled={busy !== null}>
+                <PlugsConnectedIcon />
                 {t('google.connect')}
               </button>
             )}
             {google.signedIn && (
               <button type="button" className="btn" onClick={() => void disconnect()} disabled={busy !== null}>
+                <SignOutIcon />
                 {t('google.disconnect')}
               </button>
             )}
           </div>
-          <p className="status-line">
-            <span className={`dot ${google.signedIn ? 'dot-ok' : hasGoogle ? 'dot-idle' : 'dot-off'}`} aria-hidden="true" />
+          <p className={`status-line${google.signedIn ? ' status-ok' : ''}`}>
+            {google.signedIn ? <CheckCircleIcon /> : <CircleIcon />}
             {google.signedIn ? t('google.statusSignedIn', { email: google.email ?? '' }) : hasGoogle ? t('google.statusConfigured') : t('google.statusOff')}
           </p>
         </Section>
@@ -296,10 +310,11 @@ export default function SettingsPage() {
           <div className="setting-row">
             <div>
               <strong>{t('data.persistTitle')}</strong>
-              <p className="muted small">{persisted === true ? t('data.persistOn') : persisted === false ? t('data.persistOff') : t('data.persistUnknown')}</p>
+              <p className="setting-desc">{persisted === true ? t('data.persistOn') : persisted === false ? t('data.persistOff') : t('data.persistUnknown')}</p>
             </div>
             {persisted !== true && (
               <button type="button" className="btn" onClick={() => void persist()} disabled={busy !== null}>
+                <ShieldCheckIcon />
                 {t('data.persistRequest')}
               </button>
             )}
@@ -307,11 +322,12 @@ export default function SettingsPage() {
           <div className="setting-row">
             <div>
               <strong>{t('backup.fileTitle')}</strong>
-              <p className="muted small">{t('backup.fileHint')}</p>
-              <p className="muted small">{lastBackup ? t('backup.last', { date: formatDateTime(lastBackup) }) : t('backup.never')}</p>
+              <p className="setting-desc">{t('backup.fileHint')}</p>
+              <p className={`setting-desc${lastBackup ? '' : ' setting-warn'}`}>{lastBackup ? t('backup.last', { date: formatDateTime(lastBackup) }) : t('backup.never')}</p>
             </div>
             <div className="btn-row">
               <button type="button" className="btn" onClick={() => void exportBackup()} disabled={busy !== null}>
+                <DownloadSimpleIcon />
                 {t('backup.export')}
               </button>
               <BackupImport />
@@ -320,13 +336,15 @@ export default function SettingsPage() {
           <div className="setting-row">
             <div>
               <strong>{t('backup.driveTitle')}</strong>
-              <p className="muted small">{hasGoogle ? t('backup.driveHint', { folder: settings.driveFolderName }) : t('google.needClientId')}</p>
+              <p className="setting-desc">{hasGoogle ? t('backup.driveHint', { folder: settings.driveFolderName }) : t('google.needClientId')}</p>
             </div>
             <div className="btn-row">
               <button type="button" className="btn" onClick={() => void toDrive()} disabled={!hasGoogle || busy !== null}>
+                <CloudArrowUpIcon />
                 {busy === 'drive-backup' ? t('common.working') : t('backup.toDrive')}
               </button>
               <button type="button" className="btn" onClick={() => void fromDrive()} disabled={!hasGoogle || busy !== null}>
+                <CloudArrowDownIcon />
                 {busy === 'drive-restore' ? t('common.working') : t('backup.fromDrive')}
               </button>
             </div>
@@ -347,14 +365,15 @@ export default function SettingsPage() {
 
         <Section id="set-about" title={t('about.title')}>
           <p>{t('about.text')}</p>
-          <p className="notice notice-warn">{t('about.notLegalAdvice')}</p>
-          <p>
-            <a href={LEGAL_DOC_URL} target="_blank" rel="noreferrer">
-              {t('about.legalLink')} ↗
+          <p className="notice notice-info">{t('about.notLegalAdvice')}</p>
+          <p className="link-row">
+            <a href={LEGAL_DOC_URL} target="_blank" rel="noreferrer" className="ext-link">
+              {t('about.legalLink')}
+              <ArrowSquareOutIcon size={14} />
             </a>
-            {' · '}
-            <a href={REPO_URL} target="_blank" rel="noreferrer">
-              {t('about.source')} ↗
+            <a href={REPO_URL} target="_blank" rel="noreferrer" className="ext-link">
+              {t('about.source')}
+              <ArrowSquareOutIcon size={14} />
             </a>
           </p>
         </Section>

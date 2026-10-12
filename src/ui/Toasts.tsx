@@ -1,3 +1,4 @@
+import { CheckCircleIcon, InfoIcon, WarningCircleIcon, WarningIcon, XIcon } from '@phosphor-icons/react'
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { errorMessage } from './util'
 
@@ -17,6 +18,13 @@ export interface ToastApi {
 }
 
 const ToastContext = createContext<ToastApi | null>(null)
+
+const ICON: Record<ToastKind, ReactNode> = {
+  success: <CheckCircleIcon size={18} />,
+  error: <WarningCircleIcon size={18} />,
+  warning: <WarningIcon size={18} />,
+  info: <InfoIcon size={18} />,
+}
 
 export function ToastProvider({ children, closeLabel = 'Close' }: { children: ReactNode; closeLabel?: string }) {
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -49,14 +57,15 @@ export function ToastProvider({ children, closeLabel = 'Close' }: { children: Re
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.kind}`} role={t.kind === 'error' ? 'alert' : undefined}>
+            <span className="toast-icon">{ICON[t.kind]}</span>
             <span className="toast-msg">{t.message}</span>
             {t.action && (
               <a href={t.action.href} target="_blank" rel="noreferrer" className="toast-action">
                 {t.action.label}
               </a>
             )}
-            <button type="button" className="toast-close" aria-label={closeLabel} onClick={() => dismiss(t.id)}>
-              ×
+            <button type="button" className="icon-btn icon-btn-sm toast-close" aria-label={closeLabel} title={closeLabel} onClick={() => dismiss(t.id)}>
+              <XIcon size={14} />
             </button>
           </div>
         ))}

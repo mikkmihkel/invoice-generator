@@ -1,11 +1,12 @@
 // OWNER: UI agent.
+import { IconContext } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import type { Repository } from './storage'
 import { AppProvider, useApp } from './ui/AppContext'
 import { ConfirmProvider } from './ui/components/Dialog'
 import { ErrorBoundary } from './ui/ErrorBoundary'
-import { Layout } from './ui/Layout'
+import { BootSkeleton, Layout } from './ui/Layout'
 import ClientsPage from './ui/pages/ClientsPage'
 import CompanyPage from './ui/pages/CompanyPage'
 import InvoiceEditorRoute from './ui/pages/InvoiceEditor'
@@ -37,17 +38,11 @@ function RouteBoundary({ children }: { children: ReactNode }) {
  */
 function Gate() {
   const { ready, profile, loadError, t } = useApp()
-  if (!ready) {
-    return (
-      <div className="boot" role="status">
-        <span className="spinner" /> {t('common.loading')}
-      </div>
-    )
-  }
+  if (!ready) return <BootSkeleton label={t('common.loading')} />
   if (loadError && !profile) {
     return (
       <div className="boot">
-        <div className="card notice notice-error" role="alert">
+        <div className="panel boot-error" role="alert">
           <h1>{t('app.loadErrorTitle')}</h1>
           <p>{t('app.loadErrorText')}</p>
           <code className="small">{loadError}</code>
@@ -81,16 +76,21 @@ function Providers({ children }: { children: ReactNode }) {
   )
 }
 
+/** One icon style everywhere: Phosphor regular, 16 px, decorative (labels carry the meaning). */
+const ICONS = { size: 16, weight: 'regular', 'aria-hidden': true, focusable: false } as const
+
 export default function App({ repository }: { repository?: Repository } = {}) {
   return (
     <ErrorBoundary scope="app">
-      <AppProvider repository={repository}>
-        <HashRouter>
-          <Providers>
-            <Gate />
-          </Providers>
-        </HashRouter>
-      </AppProvider>
+      <IconContext.Provider value={ICONS}>
+        <AppProvider repository={repository}>
+          <HashRouter>
+            <Providers>
+              <Gate />
+            </Providers>
+          </HashRouter>
+        </AppProvider>
+      </IconContext.Provider>
     </ErrorBoundary>
   )
 }

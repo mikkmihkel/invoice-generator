@@ -5,15 +5,15 @@ import { ACCENT_PRESETS, templates } from '../options'
 import { accentColor } from '../util'
 
 /** Template cards with a tiny schematic thumbnail in the chosen accent colour. */
-export function TemplatePicker({ value, onChange, accent, disabled }: { value: TemplateId; onChange: (v: TemplateId) => void; accent: string; disabled?: boolean }) {
+export function TemplatePicker({ value, onChange, accent, disabled, compact }: { value: TemplateId; onChange: (v: TemplateId) => void; accent: string; disabled?: boolean; compact?: boolean }) {
   const { t, lang } = useApp()
   const name = useId()
   return (
-    <fieldset className="template-picker" disabled={disabled}>
+    <fieldset className={`template-picker${compact ? ' template-compact' : ''}`} disabled={disabled}>
       <legend className="label">{t('appearance.template')}</legend>
       <div className="template-grid">
         {templates().map((tpl) => (
-          <label key={tpl.id} className={`template-card${value === tpl.id ? ' selected' : ''}`}>
+          <label key={tpl.id} className={`template-card${value === tpl.id ? ' selected' : ''}`} title={compact ? tpl.description[lang] : undefined}>
             <input type="radio" name={name} value={tpl.id} checked={value === tpl.id} onChange={() => onChange(tpl.id)} className="visually-hidden" />
             <span className={`tpl-thumb tpl-${tpl.id}`} style={{ ['--tpl-accent' as string]: accentColor(accent) }} aria-hidden="true">
               <span className="tpl-head" />
@@ -23,7 +23,7 @@ export function TemplatePicker({ value, onChange, accent, disabled }: { value: T
               <span className="tpl-total" />
             </span>
             <span className="tpl-name">{tpl.name[lang]}</span>
-            <span className="tpl-desc">{tpl.description[lang]}</span>
+            {!compact && <span className="tpl-desc">{tpl.description[lang]}</span>}
           </label>
         ))}
       </div>

@@ -1,3 +1,4 @@
+import { AppWindowIcon, EnvelopeSimpleIcon, PaperclipIcon, ShareNetworkIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import type { Invoice } from '../../../domain'
 import { buildMailtoUrl, canShareFiles, downloadBlob, googleSignIn, sendViaGmail, shareFiles, type EmailDraft } from '../../../integrations'
@@ -101,15 +102,18 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
         <div className="email-actions">
           {hasGmail && (
             <button type="button" className="btn btn-primary" onClick={() => void gmail()} disabled={!ready}>
+              <EnvelopeSimpleIcon />
               {busy === 'gmail' ? t('common.working') : t('email.gmail')}
             </button>
           )}
           {shareable && (
             <button type="button" className={`btn${hasGmail ? '' : ' btn-primary'}`} onClick={() => void share()} disabled={!pdf || !addressesOk || busy !== null}>
+              <ShareNetworkIcon />
               {t('email.share')}
             </button>
           )}
           <button type="button" className={`btn${hasGmail || shareable ? '' : ' btn-primary'}`} onClick={() => void mailApp()} disabled={!pdf || !addressesOk || busy !== null}>
+            <AppWindowIcon />
             {t('email.mailApp')}
           </button>
         </div>
@@ -138,8 +142,9 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
         <TextField label={t('email.subject')} value={subject} onChange={setSubject} />
         <TextAreaField label={t('email.body')} value={body} onChange={setBody} rows={8} />
         <p className="attachment">
-          <strong>{t('email.attachment')}: </strong>
-          {pdf ? fileName : pdfError ? t('pdf.failed') + ' ' + pdfError : t('email.preparingPdf')}
+          <PaperclipIcon />
+          <span className="attachment-label">{t('email.attachment')}</span>
+          <span className={pdf ? 'mono' : pdfError ? 'attachment-error' : 'muted'}>{pdf ? fileName : pdfError ? t('pdf.failed') + ' ' + pdfError : t('email.preparingPdf')}</span>
         </p>
         <p className="muted small">{hasGmail ? t('email.gmailHint') : t('email.noGmailHint')}</p>
       </div>

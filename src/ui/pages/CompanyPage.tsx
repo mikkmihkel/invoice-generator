@@ -1,3 +1,4 @@
+import { ArrowsClockwiseIcon } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { CompanyProfile, RegistryCompany } from '../../domain'
@@ -76,19 +77,20 @@ export default function CompanyPage() {
 
   return (
     <>
-    <form className="page page-narrow" onSubmit={save} noValidate>
+    <form className="page page-form form-page" onSubmit={save} noValidate>
       <div className="page-head">
         <div>
           <h1>{t('nav.company')}</h1>
-          <p className="muted">{t('company.intro')}</p>
+          <p className="page-sub">{t('company.intro')}</p>
         </div>
         <button type="button" className="btn" onClick={() => setLookup(true)}>
+          <ArrowsClockwiseIcon />
           {t('company.refresh')}
         </button>
       </div>
       <ProfileForm value={draft} onChange={change} sections={['company', 'vat', 'bank', 'logo', 'defaults', 'numbering', 'email']} />
-      <div className="form-actions sticky-actions">
-        {dirty && <span className="muted">{t('common.unsavedChanges')}</span>}
+      <div className={`form-actions sticky-actions${dirty ? ' is-dirty' : ''}`}>
+        {dirty && <span className="unsaved">{t('common.unsavedChanges')}</span>}
         <button
           type="button"
           className="btn btn-ghost"

@@ -1,8 +1,10 @@
+import { FilePlusIcon, MagnifyingGlassIcon, PencilSimpleIcon, PlusIcon, TrashIcon, UsersIcon } from '@phosphor-icons/react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Client } from '../../domain'
 import { useApp } from '../AppContext'
 import { useConfirm } from '../components/Dialog'
+import { EmptyState, IconButton, SearchField } from '../components/ui'
 import { useToast } from '../Toasts'
 import { errorMessage, formatAddress } from '../util'
 import { ClientDialog } from './ClientForm'
@@ -43,59 +45,101 @@ export default function ClientsPage() {
     }
   }
 
+  const addButtons = (
+    <>
+      <button type="button" className="btn btn-primary" onClick={() => setEditing({ search: true })}>
+        <MagnifyingGlassIcon />
+        {t('clients.addFromRegister')}
+      </button>
+      <button type="button" className="btn" onClick={() => setEditing({ search: false })}>
+        <PlusIcon />
+        {t('clients.addManually')}
+      </button>
+    </>
+  )
+
   return (
     <div className="page">
       <div className="page-head">
-        <h1>{t('nav.clients')}</h1>
-        <div className="btn-row">
-          <button type="button" className="btn btn-primary" onClick={() => setEditing({ search: true })}>
-            + {t('clients.addFromRegister')}
-          </button>
-          <button type="button" className="btn" onClick={() => setEditing({ search: false })}>
-            {t('clients.addManually')}
-          </button>
+        <div>
+          <h1>{t('nav.clients')}</h1>
+          {clients.length > 0 && <p className="page-sub">{t('clients.count', { count: clients.length })}</p>}
         </div>
+        {clients.length > 0 && <div className="btn-row">{addButtons}</div>}
       </div>
 
       {clients.length === 0 ? (
-        <div className="empty card">
-          <h2>{t('clients.emptyTitle')}</h2>
-          <p className="muted">{t('clients.emptyText')}</p>
-        </div>
+        <EmptyState icon={<UsersIcon size={28} />} title={t('clients.emptyTitle')} actions={addButtons}>
+          <p>{t('clients.emptyText')}</p>
+        </EmptyState>
       ) : (
         <>
-          <div className="toolbar">
-            <input type="search" className="search-input" aria-label={t('clients.search')} placeholder={t('clients.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
-            <span className="muted">{t('clients.count', { count: list.length })}</span>
+          <div className="list-toolbar">
+            <SearchField value={query} onChange={setQuery} label={t('clients.search')} shortcutHint={t('common.searchShortcut')} />
+            {q && <span className="toolbar-note">{t('list.shown', { count: list.length })}</span>}
           </div>
-          <ul className="client-list">
-            {list.map((c) => (
-              <li key={c.id} className="card client-card">
-                <div className="client-main">
-                  <div className="client-name">
-                    {c.name}
-                    {c.kind === 'person' && <span className="chip">{t('clients.kind.person')}</span>}
-                  </div>
-                  <div className="muted small">
-                    {[c.registryCode || c.personalCode, c.vatNumber, formatAddress(c.address)].filter(Boolean).join(' · ')}
-                  </div>
-                  {(c.email || c.contactPerson) && <div className="muted small">{[c.contactPerson, c.email].filter(Boolean).join(' · ')}</div>}
-                  <div className="muted small">{t('clients.invoiceCount', { count: usage.get(c.id) ?? 0 })}</div>
-                </div>
-                <div className="btn-row">
-                  <Link className="btn btn-sm btn-primary" to={`/invoices/new?client=${encodeURIComponent(c.id)}`}>
-                    {t('clients.newInvoice')}
-                  </Link>
-                  <button type="button" className="btn btn-sm" onClick={() => setEditing({ client: c, search: false })}>
-                    {t('common.edit')}
-                  </button>
-                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => void remove(c)} aria-label={t('clients.deleteTitle', { name: c.name })}>
-                    {t('common.delete')}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {list.length === 0 ? (
+            <div className="panel empty-filter">
+              <p>{t('clients.noMatches')}</p>
+              <button type="button" className="btn btn-sm" onClick={() => setQuery('')}>
+                {t('list.clearFilters')}
+              </button>
+            </div>
+          ) : (
+            <div className="panel table-panel">
+              <table className="ledger client-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t('clients.colName')}</th>
+                    <th scope="col" className="col-code">
+                      {t('clients.colCode')}
+                    </th>
+                    <th scope="col" className="col-vat">
+                      {t('clients.colVat')}
+                    </th>
+                    <th scope="col" className="col-contact">
+                      {t('clients.colContact')}
+                    </th>
+                    <th scope="col" className="num col-count">
+                      {t('clients.colInvoices')}
+                    </th>
+                    <th scope="col" className="col-actions">
+                      <span className="visually-hidden">{t('list.colActions')}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((c) => (
+                    <tr key={c.id}>
+                      <td className="col-name">
+                        <span className="client-name">
+                          {c.name}
+                          {c.kind === 'person' && <span className="chip chip-neutral">{t('clients.kind.person')}</span>}
+                        </span>
+                        {formatAddress(c.address) && <span className="client-addr">{formatAddress(c.address)}</span>}
+                      </td>
+                      <td className="col-code mono">{c.registryCode || c.personalCode}</td>
+                      <td className="col-vat mono">{c.vatNumber}</td>
+                      <td className="col-contact">{[c.contactPerson, c.email].filter(Boolean).join(', ')}</td>
+                      <td className="num col-count">{usage.get(c.id) ?? 0}</td>
+                      <td className="col-actions">
+                        <div className="row-actions row-actions-visible">
+                          <Link className="btn btn-sm" to={`/invoices/new?client=${encodeURIComponent(c.id)}`} aria-label={t('clients.newInvoiceFor', { name: c.name })} title={t('clients.newInvoiceFor', { name: c.name })}>
+                            <FilePlusIcon />
+                            <span className="collapse-label" aria-hidden="true">
+                              {t('clients.newInvoice')}
+                            </span>
+                          </Link>
+                          <IconButton label={t('clients.editNamed', { name: c.name })} icon={<PencilSimpleIcon />} onClick={() => setEditing({ client: c, search: false })} />
+                          <IconButton className="icon-btn-danger" label={t('clients.deleteNamed', { name: c.name })} icon={<TrashIcon />} onClick={() => void remove(c)} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
       {editing && <ClientDialog initial={editing.client} withSearch={editing.search} onClose={() => setEditing(null)} />}

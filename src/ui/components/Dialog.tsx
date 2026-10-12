@@ -1,3 +1,4 @@
+import { XIcon } from '@phosphor-icons/react'
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -66,8 +67,8 @@ export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'C
       >
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="icon-btn" aria-label={closeLabel} onClick={onClose} disabled={!dismissible}>
-            ×
+          <button type="button" className="icon-btn" aria-label={closeLabel} title={closeLabel} onClick={onClose} disabled={!dismissible}>
+            <XIcon size={18} />
           </button>
         </div>
         <div className="dialog-body">{children}</div>

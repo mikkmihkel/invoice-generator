@@ -47,18 +47,27 @@ describe('onboarding', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Sisesta andmed käsitsi' }))
 
-    // Required fields are enforced before saving.
-    fireEvent.click(screen.getByRole('button', { name: 'Salvesta ja alusta' }))
+    // Step 1 (company): required fields are enforced before moving on.
+    fireEvent.click(screen.getByRole('button', { name: 'Edasi' }))
     expect(await screen.findByText('Sisesta ettevõtte nimi.')).toBeInTheDocument()
-    expect(repo.saveProfile).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText(/^Nimi/), { target: { value: 'Minu Firma OÜ' } })
     fireEvent.change(screen.getByLabelText(/^Registrikood/), { target: { value: '12345678' } })
     fireEvent.change(screen.getByLabelText(/^Tänav/), { target: { value: 'Pikk 1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Edasi' }))
+
+    // Step 2 (bank account and logo): an IBAN is required.
+    expect(await screen.findByRole('heading', { name: 'Pangakonto ja logo' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edasi' }))
+    expect(await screen.findByText('Lisa vähemalt üks pangakonto (IBAN).')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(/^IBAN/), { target: { value: 'EE38 2200 2210 2014 5685' } })
     // Estonian IBANs prefill bank name / BIC.
     expect(screen.getByLabelText(/^BIC/)).toHaveValue('HABAEE2X')
+    fireEvent.click(screen.getByRole('button', { name: 'Edasi' }))
 
+    // Step 3 (invoice defaults): save.
+    expect(await screen.findByRole('heading', { name: 'Arve vaikeväärtused' })).toBeInTheDocument()
+    expect(repo.saveProfile).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Salvesta ja alusta' }))
 
     expect(await screen.findByText('Esimene arve ootab')).toBeInTheDocument()
@@ -104,12 +113,13 @@ describe('onboarding', () => {
     renderAt('#/', repo)
     fireEvent.click(await screen.findByRole('button', { name: 'Sisesta andmed käsitsi' }))
     fireEvent.change(screen.getByLabelText(/^Nimi/), { target: { value: 'Minu Firma OÜ' } })
-    fireEvent.change(screen.getByLabelText(/^IBAN/), { target: { value: 'EE38 2200 2210 2014 5685' } })
     // Empty registry code: a warning, not a blocker.
     expect(screen.getByText(/Registrikood on lisamata/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(/^Registrikood/), { target: { value: '12345679' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Salvesta ja alusta' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edasi' }))
     expect(await screen.findByText(/Registrikood on vigane/)).toBeInTheDocument()
+    // Still on the company step, nothing saved.
+    expect(screen.queryByLabelText(/^IBAN/)).not.toBeInTheDocument()
     expect(repo.saveProfile).not.toHaveBeenCalled()
   })
 })
@@ -135,7 +145,7 @@ describe('invoice editor', () => {
     expect(screen.getByTestId('total-gross')).toHaveTextContent('249,24')
     expect(screen.getByText(/Käibemaks 24%/)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '+ Lisa rida' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lisa rida' }))
     const prices = screen.getAllByLabelText('Ühikuhind')
     expect(prices).toHaveLength(2)
     fireEvent.change(prices[1], { target: { value: '10' } })
@@ -181,7 +191,9 @@ describe('invoice editor', () => {
     expect(within(panel).getAllByRole('listitem').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Väljasta arve' })).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Klient'), { target: { value: client.id } })
+    // The buyer picker searches saved clients (and the register) as you type.
+    fireEvent.change(screen.getByLabelText('Klient'), { target: { value: 'ostja' } })
+    fireEvent.click(await screen.findByRole('option', { name: /Ostja AS/ }))
     expect(await screen.findByText('Ostja AS')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Kirjeldus 1'), { target: { value: 'Veebilehe arendus' } })
     fireEvent.change(screen.getByLabelText('Ühikuhind'), { target: { value: '400' } })
@@ -198,6 +210,11 @@ describe('invoice editor', () => {
 
     expect(await screen.findByText(/väljastatud ja lukustatud/)).toBeInTheDocument()
     expect(repo.issueInvoice).toHaveBeenCalledTimes(1)
+    // The next step is offered right away: the issued number and the ways to send it.
+    const next = screen.getByRole('region', { name: /^Arve \d{4}-\d{4} on väljastatud$/ })
+    expect(within(next).getByRole('button', { name: /Saada e-kirjaga/ })).toHaveTextContent('arved@ostja.ee')
+    expect(within(next).getByRole('button', { name: /Laadi PDF/ })).toBeInTheDocument()
+    expect(within(next).getByRole('button', { name: /Salvesta Drive’i/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Märgi tasutuks' })).toBeInTheDocument()
     expect(screen.getByLabelText('Kirjeldus 1')).toBeDisabled()
   })
@@ -339,7 +356,7 @@ describe('issue button summary', () => {
   it('explains a disabled issue button and points to the requirements check', async () => {
     const repo = createMemoryRepo({ profile: sampleProfile() })
     renderAt('#/invoices/new', repo)
-    const summary = await screen.findByRole('button', { name: /^Vigu: \d+ – vaata nõuete kontrolli$/ })
+    const summary = await screen.findByRole('button', { name: /^Vigu enne väljastamist: \d+$/ })
     expect(screen.getByRole('button', { name: 'Väljasta arve' })).toHaveAttribute('aria-describedby', 'issue-summary')
     fireEvent.click(summary)
     expect(document.getElementById('validation-panel')).toHaveFocus()

@@ -1,9 +1,11 @@
+import { ArrowDownIcon, ArrowUpIcon, PercentIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
 import { useState } from 'react'
 import { newId, vatSchemeAllowsRates, type InvoiceLine, type InvoiceTotals, type VatScheme } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { DecimalInput, fieldId } from '../../components/fields'
+import { IconButton } from '../../components/ui'
 import { formatMoney } from '../../format'
-import { vatRates } from '../../options'
+import { UNIT_SUGGESTIONS, vatRates } from '../../options'
 import { roundTo } from '../../util'
 
 // Same precision as the PDF prints (quantity 3, unit price 4 decimals), so printed qty × price matches the line total.
@@ -26,6 +28,12 @@ interface Props {
   disabled?: boolean
 }
 
+const focusById = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.focus())
+
+/**
+ * Spreadsheet-like line editor: Tab walks the cells in reading order, Enter in a cell of the last line adds
+ * a new line (in other lines it moves down to the next description). Amounts are right-aligned tabular figures.
+ */
 export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defaultUnit, defaultVatRate, disabled }: Props) {
   const { t } = useApp()
   const showRates = vatSchemeAllowsRates(vatScheme)
@@ -40,20 +48,30 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
     const next = [...lines]
     ;[next[i], next[j]] = [next[j], next[i]]
     onChange(next)
-    requestAnimationFrame(() => document.getElementById(`line-${dir < 0 ? 'up' : 'down'}-${next[j].id}`)?.focus())
+    focusById(`line-${dir < 0 ? 'up' : 'down'}-${next[j].id}`)
   }
   const add = () => {
     const l = newLine(defaultUnit, showRates ? defaultVatRate : 0)
     onChange([...lines, l])
-    requestAnimationFrame(() => document.getElementById(fieldId(`lines.${lines.length}.description`))?.focus())
+    focusById(fieldId(`lines.${lines.length}.description`))
   }
   const remove = (i: number) => onChange(lines.filter((_, j) => j !== i))
 
-  const cls = `lines${showRates ? ' with-vat' : ''}${discountCol ? ' with-discount' : ''}`
+  const onCellKey = (i: number) => (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
+    const target = e.target as HTMLElement
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'BUTTON') return
+    e.preventDefault()
+    if (i === lines.length - 1) add()
+    else focusById(fieldId(`lines.${i + 1}.description`))
+  }
+
+  const cls = `lines${showRates ? ' with-vat' : ''}${discountCol ? ' with-discount' : ''}${disabled ? ' lines-readonly' : ''}`
 
   return (
     <div className={cls}>
       <div className="line line-header" aria-hidden="true">
+        <span className="c-no">{t('lines.number')}</span>
         <span className="c-desc">{t('lines.description')}</span>
         <span className="c-qty">{t('lines.quantity')}</span>
         <span className="c-unit">{t('lines.unit')}</span>
@@ -68,37 +86,41 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
           const lt = lineTotal.get(l.id)
           const p = `lines.${i}`
           return (
-            <li key={l.id} className="line" aria-label={t('lines.lineN', { n: i + 1 })}>
+            <li key={l.id} className="line" aria-label={t('lines.lineN', { n: i + 1 })} onKeyDown={onCellKey(i)}>
+              <span className="c-no" aria-hidden="true">
+                {i + 1}
+              </span>
               <div className="c-desc">
                 <label className="line-label" htmlFor={fieldId(`${p}.description`)}>
                   {t('lines.description')} {i + 1}
                 </label>
                 <textarea
                   id={fieldId(`${p}.description`)}
+                  className="cell"
                   rows={1}
                   value={l.description}
                   onChange={(e) => update(i, { description: e.target.value })}
                   disabled={disabled}
-                  placeholder={t('lines.descriptionPlaceholder')}
+                  placeholder={disabled ? undefined : t('lines.descriptionPlaceholder')}
                 />
               </div>
               <div className="c-qty">
                 <label className="line-label" htmlFor={fieldId(`${p}.quantity`)}>
                   {t('lines.quantity')}
                 </label>
-                <DecimalInput id={fieldId(`${p}.quantity`)} value={l.quantity} onChange={(v) => update(i, { quantity: roundTo(v ?? 0, QTY_DECIMALS) })} disabled={disabled} />
+                <DecimalInput id={fieldId(`${p}.quantity`)} className="cell num" value={l.quantity} onChange={(v) => update(i, { quantity: roundTo(v ?? 0, QTY_DECIMALS) })} disabled={disabled} />
               </div>
               <div className="c-unit">
                 <label className="line-label" htmlFor={fieldId(`${p}.unit`)}>
                   {t('lines.unit')}
                 </label>
-                <input id={fieldId(`${p}.unit`)} type="text" list="unit-suggestions-lines" value={l.unit} onChange={(e) => update(i, { unit: e.target.value })} disabled={disabled} />
+                <input id={fieldId(`${p}.unit`)} className="cell" type="text" list="unit-suggestions-lines" value={l.unit} onChange={(e) => update(i, { unit: e.target.value })} disabled={disabled} />
               </div>
               <div className="c-price">
                 <label className="line-label" htmlFor={fieldId(`${p}.unitPrice`)}>
                   {t('lines.unitPrice')}
                 </label>
-                <DecimalInput id={fieldId(`${p}.unitPrice`)} value={l.unitPrice} onChange={(v) => update(i, { unitPrice: roundTo(v ?? 0, PRICE_DECIMALS) })} disabled={disabled} />
+                <DecimalInput id={fieldId(`${p}.unitPrice`)} className="cell num" value={l.unitPrice} onChange={(v) => update(i, { unitPrice: roundTo(v ?? 0, PRICE_DECIMALS) })} disabled={disabled} />
               </div>
               {discountCol && (
                 <div className="c-disc">
@@ -107,6 +129,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                   </label>
                   <DecimalInput
                     id={fieldId(`${p}.discountPercent`)}
+                    className="cell num"
                     value={l.discountPercent}
                     allowEmpty
                     onChange={(v) => update(i, { discountPercent: v == null || v === 0 ? undefined : roundTo(Math.min(100, Math.max(0, v)), DISCOUNT_DECIMALS) })}
@@ -120,7 +143,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                   <label className="line-label" htmlFor={fieldId(`${p}.vatRate`)}>
                     {t('lines.vat')}
                   </label>
-                  <select id={fieldId(`${p}.vatRate`)} value={String(l.vatRate)} onChange={(e) => update(i, { vatRate: Number(e.target.value) })} disabled={disabled}>
+                  <select id={fieldId(`${p}.vatRate`)} className="cell num" value={String(l.vatRate)} onChange={(e) => update(i, { vatRate: Number(e.target.value) })} disabled={disabled}>
                     {vatRates(l.vatRate).map((r) => (
                       <option key={r} value={String(r)}>
                         {r}%
@@ -129,21 +152,15 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                   </select>
                 </div>
               )}
-              <div className="c-total num">
+              <div className="c-total">
                 <span className="line-label">{t('lines.total')} </span>
-                {formatMoney(lt ? lt.net : 0, currency)}
+                <span className="amount">{formatMoney(lt ? lt.net : 0, currency)}</span>
               </div>
               {!disabled && (
                 <div className="c-tools">
-                  <button type="button" id={`line-up-${l.id}`} className="icon-btn" onClick={() => move(i, -1)} disabled={i === 0} aria-label={t('lines.moveUp', { n: i + 1 })}>
-                    ↑
-                  </button>
-                  <button type="button" id={`line-down-${l.id}`} className="icon-btn" onClick={() => move(i, 1)} disabled={i === lines.length - 1} aria-label={t('lines.moveDown', { n: i + 1 })}>
-                    ↓
-                  </button>
-                  <button type="button" className="icon-btn icon-danger" onClick={() => remove(i)} aria-label={t('lines.remove', { n: i + 1 })}>
-                    ×
-                  </button>
+                  <IconButton id={`line-up-${l.id}`} className="icon-btn-sm" onClick={() => move(i, -1)} disabled={i === 0} label={t('lines.moveUp', { n: i + 1 })} icon={<ArrowUpIcon size={14} />} />
+                  <IconButton id={`line-down-${l.id}`} className="icon-btn-sm" onClick={() => move(i, 1)} disabled={i === lines.length - 1} label={t('lines.moveDown', { n: i + 1 })} icon={<ArrowDownIcon size={14} />} />
+                  <IconButton className="icon-btn-sm icon-btn-danger" onClick={() => remove(i)} label={t('lines.remove', { n: i + 1 })} icon={<XIcon size={14} />} />
                 </div>
               )}
             </li>
@@ -151,23 +168,28 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
         })}
       </ol>
       <datalist id="unit-suggestions-lines">
-        {['tk', 'h', 'päev', 'kuu', 'km', 'kg', 'komplekt', 'teenus'].map((u) => (
+        {UNIT_SUGGESTIONS.map((u) => (
           <option key={u} value={u} />
         ))}
       </datalist>
-      {!disabled && (
-        <div className="btn-row lines-actions">
-          <button type="button" className="btn" onClick={add}>
-            + {t('lines.add')}
-          </button>
-          {!discountCol && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowDiscount(true)}>
-              {t('lines.addDiscount')}
+      <div className="lines-foot">
+        {!disabled && (
+          <div className="btn-row">
+            <button type="button" className="btn btn-sm" onClick={add}>
+              <PlusIcon />
+              {t('lines.add')}
             </button>
-          )}
-        </div>
-      )}
-      <TotalsTable totals={totals} currency={currency} />
+            {!discountCol && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowDiscount(true)}>
+                <PercentIcon />
+                {t('lines.addDiscount')}
+              </button>
+            )}
+            <span className="lines-hint">{t('lines.enterHint')}</span>
+          </div>
+        )}
+        <TotalsTable totals={totals} currency={currency} />
+      </div>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import { ImageIcon, PlusIcon, TrashIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import { useRef, useState, type ReactNode } from 'react'
 import { isValidIban, newId, type BankAccount } from '../../domain'
 import { useApp } from '../AppContext'
@@ -6,6 +7,7 @@ import { useToast } from '../Toasts'
 import type { DisplayStatus } from '../util'
 import { errorMessage, estonianBankFromIban, logoImageSrc, resizeImageToDataUrl } from '../util'
 import { TextField } from './fields'
+import { IconButton } from './ui'
 
 export function StatusChip({ status }: { status: DisplayStatus }) {
   const { t } = useApp()
@@ -14,15 +16,15 @@ export function StatusChip({ status }: { status: DisplayStatus }) {
 
 export function Section({ title, description, children, actions, id }: { title: ReactNode; description?: ReactNode; children: ReactNode; actions?: ReactNode; id?: string }) {
   return (
-    <section className="card section" id={id} aria-labelledby={id ? id + '-title' : undefined}>
+    <section className="panel section" id={id} aria-labelledby={id ? id + '-title' : undefined}>
       <div className="section-head">
         <div>
           <h2 id={id ? id + '-title' : undefined}>{title}</h2>
-          {description && <p className="muted">{description}</p>}
+          {description && <p className="section-desc">{description}</p>}
         </div>
         {actions && <div className="section-actions">{actions}</div>}
       </div>
-      {children}
+      <div className="section-body">{children}</div>
     </section>
   )
 }
@@ -56,14 +58,25 @@ export function LogoInput({ value, onChange }: { value: string | undefined; onCh
     <div className="field logo-input">
       <span className="label">{t('logo.label')}</span>
       <div className="logo-row">
-        <div className="logo-preview">{logoImageSrc(value) ? <img src={logoImageSrc(value)} alt={t('logo.preview')} /> : <span className="muted">{t('logo.none')}</span>}</div>
+        <div className="logo-preview">
+          {logoImageSrc(value) ? (
+            <img src={logoImageSrc(value)} alt={t('logo.preview')} />
+          ) : (
+            <span className="logo-none">
+              <ImageIcon size={20} />
+              {t('logo.none')}
+            </span>
+          )}
+        </div>
         <div className="btn-row">
           <label className="btn">
+            <UploadSimpleIcon />
             {busy ? t('common.loading') : value ? t('logo.change') : t('logo.upload')}
             <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="visually-hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
           </label>
           {value && (
             <button type="button" className="btn btn-ghost" onClick={() => onChange(undefined)}>
+              <TrashIcon />
               {t('logo.remove')}
             </button>
           )}
@@ -97,14 +110,15 @@ export function BankAccountsEditor({ value, onChange }: { value: BankAccount[]; 
           />
           <TextField label={t('bank.name')} value={acc.bankName} onChange={(v) => update(i, { bankName: v || undefined })} />
           <TextField label={t('bank.bic')} value={acc.bic} onChange={(v) => update(i, { bic: v.toUpperCase() || undefined })} />
-          <button type="button" className="btn btn-ghost btn-sm bank-remove" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={t('bank.remove')}>
-            {t('common.remove')}
-          </button>
+          {value.length > 1 && <IconButton className="bank-remove icon-btn-danger" label={t('bank.remove')} icon={<TrashIcon />} onClick={() => onChange(value.filter((_, j) => j !== i))} />}
         </div>
       ))}
-      <button type="button" className="btn btn-sm" onClick={() => onChange([...value, { id: newId(), iban: '' }])}>
-        + {t('bank.add')}
-      </button>
+      <div>
+        <button type="button" className="btn btn-sm" onClick={() => onChange([...value, { id: newId(), iban: '' }])}>
+          <PlusIcon />
+          {t('bank.add')}
+        </button>
+      </div>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import { CheckIcon, ClockCounterClockwiseIcon, DownloadSimpleIcon, PlusIcon, ReceiptIcon, UserPlusIcon } from '@phosphor-icons/react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { computeTotals, type Invoice } from '../../domain'
@@ -5,12 +6,14 @@ import { downloadBlob } from '../../integrations'
 import { invoiceFileName, renderInvoicePdf } from '../../pdf'
 import { useApp } from '../AppContext'
 import { StatusChip } from '../components/misc'
+import { EmptyState, IconButton, SearchField, Segmented } from '../components/ui'
 import { formatDate, formatMoney } from '../format'
+import type { Translate } from '../i18n'
 import { useToast } from '../Toasts'
 import { daysBetween, displayStatus, errorMessage, getLastBackupAt, isUnpaid, localTodayISO, normalizeInvoice, sumByCurrency, type DisplayStatus } from '../util'
 import { MarkPaidDialog } from './editor/StatusDialogs'
 
-type StatusFilter = 'all' | 'unpaid' | DisplayStatus
+type StatusFilter = 'all' | 'draft' | 'unpaid' | 'overdue' | 'paid'
 
 interface Row {
   inv: Invoice
@@ -23,13 +26,30 @@ function MoneySum({ sums }: { sums: Map<string, number> }) {
   return (
     <>
       {[...sums.entries()].map(([cur, amt], i) => (
-        <span key={cur}>
-          {i > 0 && ' · '}
+        <span key={cur} className="money-part">
+          {i > 0 && ' + '}
           {formatMoney(amt, cur)}
         </span>
       ))}
     </>
   )
+}
+
+/** "In 3 days" / "5 days overdue" for invoices that still await payment. */
+function dueRelative(inv: Invoice, status: DisplayStatus, today: string, t: Translate): { text: string; tone: 'danger' | 'muted' } | null {
+  if (status === 'paid' && inv.paidAt) return { text: t('list.paidOn', { date: formatDate(inv.paidAt) }), tone: 'muted' }
+  if (!isUnpaid(inv) || !/^\d{4}-\d{2}-\d{2}$/.test(inv.dueDate)) return null
+  const d = daysBetween(today, inv.dueDate)
+  if (d < 0) return { text: d === -1 ? t('list.overdueOne') : t('list.overdueBy', { days: -d }), tone: 'danger' }
+  if (d === 0) return { text: t('list.dueToday'), tone: 'muted' }
+  if (d === 1) return { text: t('list.dueTomorrow'), tone: 'muted' }
+  return { text: t('list.dueIn', { days: d }), tone: 'muted' }
+}
+
+function matches(r: Row, status: StatusFilter): boolean {
+  if (status === 'all') return true
+  if (status === 'unpaid') return isUnpaid(r.inv)
+  return r.status === status
 }
 
 export default function InvoiceList() {
@@ -65,12 +85,13 @@ export default function InvoiceList() {
   }, [rows, thisYear])
 
   const q = query.trim().toLowerCase()
-  const filtered = rows.filter((r) => {
-    if (status === 'unpaid' ? !isUnpaid(r.inv) : status !== 'all' && r.status !== status) return false
+  const inScope = rows.filter((r) => {
     if (year !== 'all' && !r.inv.issueDate.startsWith(year)) return false
     if (q && ![r.inv.number, r.inv.buyer.name, r.inv.orderReference, r.inv.buyer.registryCode].some((s) => s?.toLowerCase().includes(q))) return false
     return true
   })
+  const filtered = inScope.filter((r) => matches(r, status))
+  const count = (s: StatusFilter) => inScope.filter((r) => matches(r, s)).length
 
   const downloadPdf = async (inv: Invoice) => {
     setBusyId(inv.id)
@@ -85,23 +106,36 @@ export default function InvoiceList() {
 
   if (invoices.length === 0) {
     return (
-      <div className="page">
-        <div className="empty card empty-hero">
-          <div className="empty-icon" aria-hidden="true">
-            <svg viewBox="0 0 48 48" width="56" height="56">
-              <rect x="10" y="6" width="28" height="36" rx="3" fill="none" stroke="currentColor" strokeWidth="2.5" />
-              <path d="M16 16h16M16 23h16M16 30h9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
-          </div>
-          <h1>{t('list.emptyTitle')}</h1>
-          <p className="muted">{t('list.emptyText')}</p>
-          <Link to="/invoices/new" className="btn btn-primary btn-lg">
-            + {t('nav.newInvoice')}
-          </Link>
-        </div>
+      <div className="page page-empty">
+        <EmptyState
+          headingLevel={1}
+          icon={<ReceiptIcon size={28} />}
+          title={t('list.emptyTitle')}
+          actions={
+            <>
+              <Link to="/invoices/new" className="btn btn-primary">
+                <PlusIcon />
+                {t('nav.newInvoice')}
+              </Link>
+              <Link to="/clients" className="btn">
+                <UserPlusIcon />
+                {t('list.addClient')}
+              </Link>
+            </>
+          }
+        >
+          <p>{t('list.emptyText')}</p>
+          <ol className="empty-steps">
+            <li>{t('list.emptyStep1')}</li>
+            <li>{t('list.emptyStep2')}</li>
+            <li>{t('list.emptyStep3')}</li>
+          </ol>
+        </EmptyState>
       </div>
     )
   }
+
+  const toggle = (s: StatusFilter) => setStatus(status === s ? 'all' : s)
 
   return (
     <div className="page">
@@ -109,113 +143,131 @@ export default function InvoiceList() {
         <h1>{t('nav.invoices')}</h1>
       </div>
 
-      <div className="summary">
-        <button type="button" className={`summary-card${status === 'unpaid' ? ' active' : ''}`} onClick={() => setStatus(status === 'unpaid' ? 'all' : 'unpaid')} aria-pressed={status === 'unpaid'}>
-          <span className="summary-label">{t('list.unpaid')}</span>
-          <span className="summary-value">
+      <div className="figures" role="group" aria-label={t('list.summary')}>
+        <button type="button" className="figure" onClick={() => toggle('unpaid')} aria-pressed={status === 'unpaid'}>
+          <span className="figure-label">{t('list.unpaid')}</span>
+          <span className="figure-value">
             <MoneySum sums={summary.unpaid} />
           </span>
-          <span className="summary-sub">{t('list.invoiceCount', { count: summary.unpaidCount })}</span>
+          <span className="figure-sub">{t('list.invoiceCount', { count: summary.unpaidCount })}</span>
         </button>
-        <button
-          type="button"
-          className={`summary-card${summary.overdueCount ? ' summary-danger' : ''}${status === 'overdue' ? ' active' : ''}`}
-          onClick={() => setStatus(status === 'overdue' ? 'all' : 'overdue')}
-          aria-pressed={status === 'overdue'}
-        >
-          <span className="summary-label">{t('list.overdue')}</span>
-          <span className="summary-value">
+        <button type="button" className={`figure${summary.overdueCount ? ' figure-danger' : ''}`} onClick={() => toggle('overdue')} aria-pressed={status === 'overdue'}>
+          <span className="figure-label">{t('list.overdue')}</span>
+          <span className="figure-value">
             <MoneySum sums={summary.overdue} />
           </span>
-          <span className="summary-sub">{t('list.invoiceCount', { count: summary.overdueCount })}</span>
+          <span className="figure-sub">{t('list.invoiceCount', { count: summary.overdueCount })}</span>
         </button>
-        <div className="summary-card">
-          <span className="summary-label">{t('list.thisYear', { year: thisYear })}</span>
-          <span className="summary-value">
+        <div className="figure figure-static">
+          <span className="figure-label">{t('list.thisYear', { year: thisYear })}</span>
+          <span className="figure-value">
             <MoneySum sums={summary.year} />
           </span>
-          <span className="summary-sub">{t('list.invoiceCount', { count: summary.yearCount })}</span>
+          <span className="figure-sub">{t('list.invoiceCount', { count: summary.yearCount })}</span>
         </div>
       </div>
 
       <BackupReminder count={invoices.length} />
 
-      <div className="toolbar">
-        <input type="search" className="search-input" placeholder={t('list.search')} aria-label={t('list.search')} value={query} onChange={(e) => setQuery(e.target.value)} />
-        <select aria-label={t('list.filterStatus')} value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
-          <option value="all">{t('list.allStatuses')}</option>
-          <option value="unpaid">{t('list.unpaid')}</option>
-          {(['draft', 'issued', 'overdue', 'paid', 'cancelled'] as const).map((s) => (
-            <option key={s} value={s}>
-              {t(`status.${s}`)}
-            </option>
-          ))}
-        </select>
-        <select aria-label={t('list.filterYear')} value={year} onChange={(e) => setYear(e.target.value)}>
-          <option value="all">{t('list.allYears')}</option>
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+      <div className="list-toolbar">
+        <div className="filter-scroll">
+          <Segmented<StatusFilter>
+            label={t('list.filterStatus')}
+            value={status}
+            onChange={setStatus}
+            className="status-filter"
+            options={(['all', 'draft', 'unpaid', 'overdue', 'paid'] as const).map((s) => ({ value: s, label: t(`list.filter.${s}`), count: count(s) }))}
+          />
+        </div>
+        <div className="toolbar-end">
+          <select className="select-sm" aria-label={t('list.filterYear')} value={year} onChange={(e) => setYear(e.target.value)}>
+            <option value="all">{t('list.allYears')}</option>
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+          <SearchField value={query} onChange={setQuery} label={t('list.search')} shortcutHint={t('common.searchShortcut')} />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
-        <p className="empty-filter muted">{t('list.noMatches')}</p>
+        <div className="panel empty-filter">
+          <p>{t('list.noMatches')}</p>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              setStatus('all')
+              setYear('all')
+              setQuery('')
+            }}
+          >
+            {t('list.clearFilters')}
+          </button>
+        </div>
       ) : (
-        <div className="table-wrap">
-          <table className="invoice-table">
+        <div className="panel table-panel">
+          <table className="ledger invoice-table">
             <thead>
               <tr>
-                <th scope="col">{t('list.colNumber')}</th>
-                <th scope="col">{t('list.colClient')}</th>
-                <th scope="col">{t('list.colIssued')}</th>
-                <th scope="col">{t('list.colDue')}</th>
-                <th scope="col" className="num">
+                <th scope="col" className="col-number">
+                  {t('list.colNumber')}
+                </th>
+                <th scope="col" className="col-client">
+                  {t('list.colClient')}
+                </th>
+                <th scope="col" className="col-date">
+                  {t('list.colIssued')}
+                </th>
+                <th scope="col" className="col-due">
+                  {t('list.colDue')}
+                </th>
+                <th scope="col" className="num col-total">
                   {t('list.colTotal')}
                 </th>
-                <th scope="col">{t('list.colStatus')}</th>
-                <th scope="col">
+                <th scope="col" className="col-status">
+                  {t('list.colStatus')}
+                </th>
+                <th scope="col" className="col-actions">
                   <span className="visually-hidden">{t('list.colActions')}</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(({ inv, status: st, gross }) => (
-                <tr key={inv.id} className={`row-${st}`} onClick={(e) => (e.target as HTMLElement).closest('a,button') || navigate(`/invoices/${inv.id}`)}>
-                  <td data-label={t('list.colNumber')}>
-                    <Link to={`/invoices/${inv.id}`} className="inv-number">
-                      {inv.number || t('list.draftNumber')}
-                    </Link>
-                    {inv.type === 'credit-note' && <span className="chip chip-credit">{t('invoice.type.credit-note')}</span>}
-                    {inv.type === 'prepayment' && <span className="chip">{t('invoice.type.prepayment')}</span>}
-                  </td>
-                  <td data-label={t('list.colClient')} className="cell-client">
-                    {inv.buyer.name || <span className="muted">{t('list.noClient')}</span>}
-                  </td>
-                  <td data-label={t('list.colIssued')}>{formatDate(inv.issueDate)}</td>
-                  <td data-label={t('list.colDue')}>{formatDate(inv.dueDate)}</td>
-                  <td data-label={t('list.colTotal')} className="num">
-                    {formatMoney(gross, inv.currency)}
-                  </td>
-                  <td data-label={t('list.colStatus')}>
-                    <StatusChip status={st} />
-                  </td>
-                  <td className="row-actions">
-                    {inv.status !== 'draft' && (
-                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => void downloadPdf(inv)} disabled={busyId === inv.id} aria-label={t('actions.downloadPdfFor', { number: inv.number })}>
-                        PDF
-                      </button>
-                    )}
-                    {isUnpaid(inv) && (
-                      <button type="button" className="btn btn-sm" onClick={() => setPaying(inv)}>
-                        {t('actions.markPaid')}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {filtered.map(({ inv, status: st, gross }) => {
+                const rel = dueRelative(inv, st, today, t)
+                return (
+                  <tr key={inv.id} className={`row-${st}`} onClick={(e) => (e.target as HTMLElement).closest('a,button') || navigate(`/invoices/${inv.id}`)}>
+                    <td className="col-number">
+                      <Link to={`/invoices/${inv.id}`} className={`inv-number${inv.number ? '' : ' inv-draft'}`}>
+                        {inv.number || t('list.draftNumber')}
+                      </Link>
+                      {inv.type === 'credit-note' && <span className="chip chip-credit">{t('invoice.type.credit-note')}</span>}
+                      {inv.type === 'prepayment' && <span className="chip chip-neutral">{t('invoice.type.prepayment')}</span>}
+                    </td>
+                    <td className="col-client">{inv.buyer.name || <span className="muted">{t('list.noClient')}</span>}</td>
+                    <td className="col-date">{formatDate(inv.issueDate)}</td>
+                    <td className="col-due">
+                      <span className="due-date">{formatDate(inv.dueDate)}</span>
+                      {rel && <span className={`due-rel due-${rel.tone}`}>{rel.text}</span>}
+                    </td>
+                    <td className="num col-total">{formatMoney(gross, inv.currency)}</td>
+                    <td className="col-status">
+                      <StatusChip status={st} />
+                    </td>
+                    <td className="col-actions">
+                      <div className="row-actions">
+                        {inv.status !== 'draft' && (
+                          <IconButton label={t('actions.downloadPdfFor', { number: inv.number })} icon={<DownloadSimpleIcon />} onClick={() => void downloadPdf(inv)} disabled={busyId === inv.id} />
+                        )}
+                        {isUnpaid(inv) && <IconButton label={t('actions.markPaid')} icon={<CheckIcon />} onClick={() => setPaying(inv)} />}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -234,15 +286,19 @@ export default function InvoiceList() {
   )
 }
 
-/** Data lives only in this browser and invoices must be kept for 7 years (RPS § 12) — nudge towards backups. */
+/** Data lives only in this browser and invoices must be kept for 7 years (RPS § 12): nudge towards backups. */
 function BackupReminder({ count }: { count: number }) {
   const { t } = useApp()
   const last = getLastBackupAt()
   const age = last ? daysBetween(last.slice(0, 10), localTodayISO()) : null
   if (count === 0 || (age !== null && age < 30)) return null
   return (
-    <p className="notice notice-info backup-reminder">
-      {last ? t('list.backupOld', { days: age ?? 0 }) : t('list.backupNever')} <Link to="/settings">{t('list.backupLink')}</Link>
-    </p>
+    <div className="inline-banner backup-reminder">
+      <ClockCounterClockwiseIcon size={18} />
+      <p>{last ? t('list.backupOld', { days: age ?? 0 }) : t('list.backupNever')}</p>
+      <Link to="/settings" className="btn btn-sm">
+        {t('list.backupLink')}
+      </Link>
+    </div>
   )
 }

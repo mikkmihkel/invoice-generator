@@ -5,6 +5,7 @@ import { CompanySearch } from '../components/CompanySearch'
 import { Dialog } from '../components/Dialog'
 import { SelectField, TextAreaField, TextField } from '../components/fields'
 import { PartyFields } from '../components/PartyFields'
+import { Segmented } from '../components/ui'
 import { languageOptions, vatSchemeOptions } from '../options'
 import { useToast } from '../Toasts'
 import { clientFromRegistry, errorMessage, newClient } from '../util'
@@ -67,20 +68,15 @@ export function ClientDialog({ initial, onClose, onSaved, withSearch }: { initia
         </div>
       )}
       <form id={formId} onSubmit={save} noValidate className="stack-sm">
-        <div className="segmented" role="radiogroup" aria-label={t('clients.kind')}>
-          {(['company', 'person'] as const).map((k) => (
-            <label key={k} className={client.kind === k ? 'selected' : undefined}>
-              <input type="radio" name={formId + '-kind'} checked={client.kind === k} onChange={() => setClient({ ...client, kind: k })} />
-              {t(`clients.kind.${k}`)}
-            </label>
-          ))}
+        <div>
+          <Segmented
+            label={t('clients.kind')}
+            value={client.kind}
+            onChange={(kind) => setClient({ ...client, kind })}
+            options={(['company', 'person'] as const).map((k) => ({ value: k, label: t(`clients.kind.${k}`) }))}
+          />
         </div>
-        <PartyFields value={client} onChange={setClient} pathPrefix="client" person={client.kind === 'person'} />
-        {showError && !client.name.trim() && (
-          <p className="notice notice-error" role="alert">
-            {t('clients.needName')}
-          </p>
-        )}
+        <PartyFields value={client} onChange={setClient} pathPrefix="client" person={client.kind === 'person'} nameError={showError && !client.name.trim() ? t('clients.needName') : undefined} />
         <div className="grid">
           <TextField label={t('field.contactPerson')} value={client.contactPerson} onChange={(v) => setClient({ ...client, contactPerson: v || undefined })} />
           <SelectField<InvoiceLanguage | ''>

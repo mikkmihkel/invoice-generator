@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ClockCounterClockwiseIcon, PencilSimpleIcon } from '@phosphor-icons/react'
+import { useRef, useState } from 'react'
 import { createDefaultProfile, newId, type CompanyProfile, type RegistryCompany } from '../../domain'
 import { useApp } from '../AppContext'
 import { CompanySearch } from '../components/CompanySearch'
+import { Segmented } from '../components/ui'
+import { BrandMark } from '../Layout'
 import { useToast } from '../Toasts'
 import { errorMessage, partyFromRegistry } from '../util'
-import { ProfileForm, profileProblems } from './ProfileForm'
+import { ProfileForm, profileProblems, type ProfileSection } from './ProfileForm'
 import { BackupImport } from './SettingsPage'
 
 function initialProfile(): CompanyProfile {
@@ -12,14 +15,27 @@ function initialProfile(): CompanyProfile {
   return { ...p, bankAccounts: p.bankAccounts.length ? p.bankAccounts : [{ id: newId(), iban: '' }] }
 }
 
-/** First run: find own company in the register → check details → save. */
+type Step = 1 | 2 | 3
+
+const SECTIONS: Record<Step, ProfileSection[]> = {
+  1: ['company', 'vat'],
+  2: ['bank', 'logo'],
+  3: ['defaults', 'numbering'],
+}
+
+/** First run in three calm steps: company (register search first) → bank account and logo → invoice defaults. */
 export default function Onboarding() {
   const { t, saveProfile, lang, saveSettings, settings } = useApp()
   const toast = useToast()
-  const [step, setStep] = useState<'find' | 'details'>('find')
+  const [step, setStep] = useState<Step>(1)
+  const [finding, setFinding] = useState(true)
   const [profile, setProfile] = useState<CompanyProfile>(initialProfile)
   const [saving, setSaving] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+
+  const labels: Record<Step, string> = { 1: t('onboarding.step1'), 2: t('onboarding.step2'), 3: t('onboarding.step3') }
+  const hints: Record<Step, string> = { 1: t('onboarding.step1Hint'), 2: t('onboarding.step2Hint'), 3: t('onboarding.step3Hint') }
 
   const onPick = (c: RegistryCompany) => {
     const party = partyFromRegistry(c)
@@ -30,17 +46,24 @@ export default function Onboarding() {
       vatRegistered,
       defaults: { ...p.defaults, vatScheme: vatRegistered ? (p.defaults.vatScheme === 'not-registered' ? 'domestic' : p.defaults.vatScheme) : 'not-registered' },
     }))
-    setStep('details')
+    setFinding(false)
   }
 
-  const problems = profileProblems(profile, t)
+  // Each step only blocks on its own problems; the last step re-checks everything before saving.
+  const all = profileProblems(profile, t)
+  const ibanProblem = t('profile.needIban')
+  const problems = step === 1 ? all.filter((p) => p !== ibanProblem) : step === 2 ? all.filter((p) => p === ibanProblem) : all
 
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (problems.length) {
-      setShowErrors(true)
-      return
-    }
+  const goTo = (s: Step) => {
+    setStep(s)
+    setShowErrors(false)
+    requestAnimationFrame(() => {
+      headingRef.current?.focus({ preventScroll: true })
+      headingRef.current?.scrollIntoView?.({ block: 'center' })
+    })
+  }
+
+  const save = async () => {
     setSaving(true)
     try {
       await saveProfile({ ...profile, bankAccounts: profile.bankAccounts.filter((a) => a.iban.trim()) })
@@ -51,62 +74,122 @@ export default function Onboarding() {
     }
   }
 
+  const next = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (problems.length) {
+      setShowErrors(true)
+      return
+    }
+    if (step < 3) goTo((step + 1) as Step)
+    else void save()
+  }
+
   return (
     <div className="onboarding">
-      <div className="onboarding-head">
-        <div className="lang-switch" role="group" aria-label={t('settings.uiLanguage')}>
-          {(['et', 'en'] as const).map((l) => (
-            <button key={l} type="button" className={`btn btn-sm${lang === l ? ' btn-primary' : ''}`} aria-pressed={lang === l} onClick={() => void saveSettings({ uiLanguage: l })}>
-              {l.toUpperCase()}
-            </button>
-          ))}
-        </div>
-        <h1>{t('onboarding.title')}</h1>
-        <p className="lead">{t('onboarding.lead')}</p>
-        <ol className="steps" aria-label={t('onboarding.steps')}>
-          <li aria-current={step === 'find' ? 'step' : undefined}>{t('onboarding.step1')}</li>
-          <li aria-current={step === 'details' ? 'step' : undefined}>{t('onboarding.step2')}</li>
-        </ol>
-      </div>
+      <header className="onb-bar">
+        <span className="brand">
+          <BrandMark profile={profile.name ? profile : null} />
+          <span className="brand-text">
+            <span className="brand-name">{t('app.name')}</span>
+          </span>
+        </span>
+        <Segmented
+          label={t('settings.uiLanguage')}
+          value={lang}
+          onChange={(uiLanguage) => void saveSettings({ uiLanguage })}
+          options={[
+            { value: 'et', label: 'ET' },
+            { value: 'en', label: 'EN' },
+          ]}
+        />
+      </header>
 
-      {step === 'find' ? (
-        <div className="card onboarding-find">
-          <CompanySearch onPick={onPick} autoFocus label={t('onboarding.searchLabel')} />
-          {settings.registryLiveLookup && <p className="muted small">{t('onboarding.liveLookupNote')}</p>}
-          <div className="divider">
-            <span>{t('common.or')}</span>
-          </div>
-          <button type="button" className="btn" onClick={() => setStep('details')}>
-            {t('onboarding.manual')}
-          </button>
-          <details className="onboarding-restore">
-            <summary>{t('onboarding.restore')}</summary>
-            <p className="muted">{t('onboarding.restoreHint')}</p>
-            <BackupImport compact />
-          </details>
+      <div className="onb-main">
+        <div className="onb-intro">
+          <h1>{t('onboarding.title')}</h1>
+          <p className="lead">{t('onboarding.lead')}</p>
         </div>
-      ) : (
-        <form onSubmit={save} noValidate>
-          <ProfileForm value={profile} onChange={setProfile} sections={['company', 'vat', 'bank', 'logo', 'defaults', 'numbering']} />
-          {showErrors && problems.length > 0 && (
-            <div className="notice notice-error" role="alert">
-              <ul>
-                {problems.map((p) => (
-                  <li key={p}>{p}</li>
-                ))}
-              </ul>
+
+        <ol className="stepper" aria-label={t('onboarding.steps')}>
+          {([1, 2, 3] as const).map((s) => (
+            <li key={s} aria-current={step === s ? 'step' : undefined} className={s < step ? 'stepper-done' : s === step ? 'stepper-current' : undefined}>
+              <span className="stepper-no" aria-hidden="true">
+                {s < step ? <CheckIcon size={12} /> : s}
+              </span>
+              <span className="stepper-label">{labels[s]}</span>
+            </li>
+          ))}
+        </ol>
+
+        <div className="onb-step-head">
+          <h2 ref={headingRef} tabIndex={-1}>
+            {labels[step]}
+          </h2>
+          <p>{hints[step]}</p>
+        </div>
+
+        {step === 1 && finding ? (
+          <div className="onb-find">
+            <div className="panel onb-search">
+              <CompanySearch onPick={onPick} autoFocus label={t('onboarding.searchLabel')} />
+              {settings.registryLiveLookup && <p className="field-hint">{t('onboarding.liveLookupNote')}</p>}
+              <div className="divider">
+                <span>{t('common.or')}</span>
+              </div>
+              <button type="button" className="btn" onClick={() => setFinding(false)}>
+                <PencilSimpleIcon />
+                {t('onboarding.manual')}
+              </button>
             </div>
-          )}
-          <div className="form-actions sticky-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => setStep('find')}>
-              ← {t('onboarding.backToSearch')}
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? t('common.saving') : t('onboarding.finish')}
-            </button>
+            <details className="panel disclosure onb-restore">
+              <summary>
+                <ClockCounterClockwiseIcon className="caret-static" />
+                <span className="disclosure-title">{t('onboarding.restore')}</span>
+              </summary>
+              <div className="disclosure-body">
+                <p className="field-hint">{t('onboarding.restoreHint')}</p>
+                <BackupImport compact />
+              </div>
+            </details>
           </div>
-        </form>
-      )}
+        ) : (
+          <form onSubmit={next} noValidate className="onb-form">
+            <ProfileForm value={profile} onChange={setProfile} sections={SECTIONS[step]} />
+            {showErrors && problems.length > 0 && (
+              <div className="notice notice-error" role="alert">
+                <ul>
+                  {problems.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="onb-actions">
+              {step === 1 ? (
+                <button type="button" className="btn btn-ghost" onClick={() => setFinding(true)}>
+                  <ArrowLeftIcon />
+                  {t('onboarding.backToSearch')}
+                </button>
+              ) : (
+                <button type="button" className="btn btn-ghost" onClick={() => goTo((step - 1) as Step)}>
+                  <ArrowLeftIcon />
+                  {t('common.back')}
+                </button>
+              )}
+              {step < 3 ? (
+                <button type="submit" className="btn btn-primary">
+                  {t('common.next')}
+                  <ArrowRightIcon />
+                </button>
+              ) : (
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? t('common.saving') : t('onboarding.finish')}
+                </button>
+              )}
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   )
 }
