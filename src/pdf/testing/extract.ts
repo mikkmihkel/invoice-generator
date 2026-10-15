@@ -58,6 +58,22 @@ export function normalizeSpaces(s: string): string {
   return s.replace(/[   ]/g, ' ').replace(/[ \t]+/g, ' ')
 }
 
+/** True when `next` continues `prev` on the same baseline without a visible gap (pdfmake splits words at "-", "/"). */
+function touches(prev: ExtractedItem | undefined, next: ExtractedItem): boolean {
+  if (!prev || prev.page !== next.page || prev.rotated || next.rotated) return false
+  if (Math.abs(prev.y - next.y) > 0.5) return false
+  const gap = next.x - (prev.x + prev.width)
+  return gap > -0.5 && gap < Math.min(prev.fontSize, next.fontSize) * 0.12
+}
+
+function joinRow(row: ExtractedItem[]): string {
+  let out = ''
+  row.forEach((it, i) => {
+    out += (i > 0 && !touches(row[i - 1], it) ? ' ' : '') + it.str
+  })
+  return out
+}
+
 function groupLines(items: ExtractedItem[]): string[] {
   const out: string[] = []
   const pages = new Map<number, ExtractedItem[]>()
@@ -74,7 +90,7 @@ function groupLines(items: ExtractedItem[]): string[] {
       else rows.push([it])
     }
     rows.sort((a, b) => b[0].y - a[0].y)
-    for (const row of rows) out.push(normalizeSpaces(row.sort((a, b) => a.x - b.x).map((i) => i.str).join(' ')).trim())
+    for (const row of rows) out.push(normalizeSpaces(joinRow(row.sort((a, b) => a.x - b.x))).trim())
   }
   return out
 }
@@ -96,7 +112,7 @@ export async function extractPdf(data: Uint8Array): Promise<ExtractedPdf> {
         if (!('str' in raw)) continue
         const it = raw as TextItem
         const [a, b, c, d, e, f] = it.transform as number[]
-        items.push({
+        const item: ExtractedItem = {
           str: it.str,
           page: p,
           x: e,
@@ -104,8 +120,11 @@ export async function extractPdf(data: Uint8Array): Promise<ExtractedPdf> {
           width: it.width,
           fontSize: Math.hypot(c, d) || Math.abs(d),
           rotated: Math.abs(b) > 1e-6 || Math.abs(c) > 1e-6 || a <= 0,
-        })
-        streamText += it.str + (it.hasEOL ? '\n' : ' ')
+        }
+        const prev = items[items.length - 1]
+        if (prev && prev.page === p && !streamText.endsWith('\n')) streamText += touches(prev, item) ? '' : ' '
+        items.push(item)
+        streamText += it.str + (it.hasEOL ? '\n' : '')
       }
       streamText += '\n'
       const ops = await page.getOperatorList()

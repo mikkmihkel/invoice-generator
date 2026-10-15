@@ -1,10 +1,219 @@
 // Shared, template-agnostic building blocks. Templates decide placement and styling.
+// Machine-readability rules applied here: every value is real text preceded by its label (same wording on every
+// template), each number/amount is one text run ("2 083,20 €"), tables have a real header row, identifiers use
+// Plex Mono.
 import type { Content, ContentStack, ContentTable, ContentText, CustomTableLayout, DynamicContent, TableCell } from 'pdfmake/interfaces'
 import { addressLines, COLORS, type DocContext } from './context'
-import { formatIban, formatMoney, formatQuantity, formatUnitPrice } from './format'
-import { creditNoteText, lateInterestText, referenceHint, type LabelKey } from './labels'
+import { FONT } from './fonts'
+import { formatIban, formatMoney, formatQuantity } from './format'
+import { creditNoteText, lateInterestText, type LabelKey } from './labels'
+import { paymentQrPayload } from './machine'
 import { vatSchemeAllowsRates } from '../domain/law'
 import { vatInEur } from '../domain/calc'
+
+export type Align = 'left' | 'right' | 'center'
+export type Margins = [number, number, number, number]
+
+// ---------- labels ----------
+
+export interface LabelStyle {
+  fontSize: number
+  color: string
+  /** Colour of the English half of bilingual labels. */
+  secondaryColor?: string
+  bold?: boolean
+  font?: string
+  uppercase?: boolean
+  characterSpacing?: number
+  alignment?: Align
+  /** Keep each line on one row (e.g. "KM %" must not break into "KM" / "%"). */
+  noWrap?: boolean
+}
+
+function caseOf(o: { uppercase?: boolean }, s: string): string {
+  return o.uppercase ? s.toUpperCase() : s
+}
+
+/** One-line label: "Arve kuupäev", bilingual "Arve kuupäev / Date of issue" (English half in `secondaryColor`). */
+export function inlineLabel(ctx: DocContext, key: LabelKey, o: LabelStyle, suffix = ''): ContentText {
+  const [primary, secondary] = ctx.t.parts(key)
+  const style = { fontSize: o.fontSize, bold: o.bold ?? false, font: o.font, characterSpacing: o.characterSpacing, alignment: o.alignment, ...(o.noWrap ? { noWrap: true } : {}) }
+  if (!secondary) return { text: caseOf(o, primary) + suffix, color: o.color, ...style }
+  return {
+    text: [
+      { text: caseOf(o, primary), color: o.color },
+      { text: ` / ${caseOf(o, secondary)}${suffix}`, color: o.secondaryColor ?? o.color },
+    ],
+    ...style,
+  }
+}
+
+/** Stacked label for table headers: bilingual documents get the English part on a second, smaller line. */
+export function label(ctx: DocContext, key: LabelKey, o: LabelStyle): ContentText | ContentStack {
+  const [primary, secondary] = ctx.t.parts(key)
+  const base = { color: o.color, bold: o.bold ?? false, font: o.font, characterSpacing: o.characterSpacing, alignment: o.alignment, ...(o.noWrap ? { noWrap: true } : {}) }
+  if (!secondary) return { text: caseOf(o, primary), fontSize: o.fontSize, ...base }
+  return {
+    stack: [
+      { text: caseOf(o, primary), fontSize: o.fontSize, ...base },
+      { text: caseOf(o, secondary), fontSize: Math.max(5.5, o.fontSize - 1), ...base, bold: false, color: o.secondaryColor ?? COLORS.muted },
+    ],
+  }
+}
+
+/** Merge cell properties (fill, margin…) into a content node. */
+export function withProps(c: Content, props: Record<string, unknown>): TableCell {
+  return { ...(c as object), ...props } as TableCell
+}
+
+// ---------- definition lists (label → value) ----------
+
+export interface DefRow {
+  key: LabelKey
+  value: string
+  /** Identifier (number, code, IBAN): set in Plex Mono. */
+  mono?: boolean
+  strong?: boolean
+}
+
+/** Document metadata in legal order. Optional rows are omitted when empty. */
+export function metaRows(ctx: DocContext, o: { exclude?: LabelKey[]; reference?: boolean } = {}): DefRow[] {
+  const inv = ctx.invoice
+  const rows: DefRow[] = [{ key: ctx.numberKey, value: inv.number || '—', mono: true, strong: true }]
+  rows.push({ key: 'issueDate', value: ctx.date(inv.issueDate) })
+  if (inv.supplyDate) rows.push({ key: 'supplyDate', value: ctx.date(inv.supplyDate) })
+  if (inv.periodStart || inv.periodEnd) rows.push({ key: 'period', value: `${ctx.date(inv.periodStart)} – ${ctx.date(inv.periodEnd)}`.trim() })
+  if (!ctx.isCreditNote && inv.dueDate) rows.push({ key: 'dueDate', value: ctx.date(inv.dueDate), strong: true })
+  if (o.reference && inv.referenceNumber) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, mono: true })
+  if (inv.orderReference) rows.push({ key: 'orderReference', value: inv.orderReference })
+  if (ctx.isCreditNote && inv.creditedInvoiceNumber) rows.push({ key: 'creditedInvoice', value: inv.creditedInvoiceNumber, mono: true, strong: true })
+  const exclude = new Set(o.exclude ?? [])
+  return rows.filter((r) => !exclude.has(r.key))
+}
+
+/** Payment rows: recipient, bank / IBAN / BIC per printed account, reference number. */
+export function paymentRows(ctx: DocContext, o: { reference?: boolean } = {}): DefRow[] {
+  const inv = ctx.invoice
+  const rows: DefRow[] = []
+  if (ctx.bankAccounts.length) rows.push({ key: 'recipient', value: inv.seller.name })
+  for (const a of ctx.bankAccounts) {
+    if (a.bankName?.trim()) rows.push({ key: 'bank', value: a.bankName.trim() })
+    rows.push({ key: 'iban', value: formatIban(a.iban), mono: true, strong: true })
+    if (a.bic?.trim()) rows.push({ key: 'bic', value: a.bic.trim(), mono: true })
+  }
+  if ((o.reference ?? true) && inv.referenceNumber) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, mono: true, strong: true })
+  return rows
+}
+
+export interface ValueStyle {
+  fontSize: number
+  color: string
+  /** Font for strong values (default: Plex Sans bold = SemiBold). */
+  strongFont?: string
+  /** Mono size relative to the text size (Plex Mono runs wider). */
+  monoScale?: number
+}
+
+/** A value as one text run; identifiers in Plex Mono. */
+export function valueText(value: string, row: Pick<DefRow, 'mono' | 'strong'>, s: ValueStyle): ContentText {
+  if (row.mono) return { text: value, font: FONT.mono, fontSize: round(s.fontSize * (s.monoScale ?? 0.94)), color: s.color }
+  return { text: value, fontSize: s.fontSize, color: s.color, bold: !!row.strong && !s.strongFont, font: row.strong ? s.strongFont : undefined }
+}
+
+export interface DefListStyle {
+  fontSize: number
+  labelColor: string
+  labelSecondaryColor?: string
+  labelSize?: number
+  labelBold?: boolean
+  labelUppercase?: boolean
+  /** Keep labels on one line ("Käibe tekkimise kuupäev"). */
+  labelNoWrap?: boolean
+  valueColor: string
+  strongFont?: string
+  labelWidth?: number | 'auto' | '*'
+  valueWidth?: number | 'auto' | '*'
+  valueAlign?: Align
+  /** Space between label and value columns. */
+  gap?: number
+  paddingY?: number
+  layout?: CustomTableLayout
+}
+
+/** Two-column label → value table (label first in reading order). */
+export function defList(ctx: DocContext, rows: DefRow[], s: DefListStyle): ContentTable {
+  const labelStyle: LabelStyle = { fontSize: s.labelSize ?? s.fontSize - 0.5, color: s.labelColor, secondaryColor: s.labelSecondaryColor, bold: s.labelBold, uppercase: s.labelUppercase, noWrap: s.labelNoWrap }
+  return {
+    table: {
+      widths: [s.labelWidth ?? 'auto', s.valueWidth ?? '*'],
+      body: rows.map((r): TableCell[] => [
+        withProps(inlineLabel(ctx, r.key, labelStyle), { margin: [0, r.mono ? 0.4 : 0, 0, 0] }),
+        { ...valueText(r.value, r, { fontSize: s.fontSize, color: s.valueColor, strongFont: s.strongFont }), alignment: s.valueAlign ?? 'left' },
+      ]),
+    },
+    layout: s.layout ?? plainLayout(s.gap ?? 12, s.paddingY ?? 1.5),
+  }
+}
+
+/** Label and value on one line: "Arve nr 2026-0007". */
+export function inlineDef(ctx: DocContext, row: DefRow, labelStyle: LabelStyle, value: ValueStyle): ContentText {
+  const lbl = inlineLabel(ctx, row.key, labelStyle)
+  const runs = Array.isArray(lbl.text) ? (lbl.text as ContentText[]) : [{ text: lbl.text as string, color: labelStyle.color }]
+  return { text: [...runs, { text: ' ' }, valueText(row.value, row, value)], fontSize: labelStyle.fontSize }
+}
+
+/** Label stacked above its value (for horizontal fact rows). */
+export function fact(ctx: DocContext, row: DefRow, s: { label: LabelStyle; value: ValueStyle; gap?: number }): ContentStack {
+  return { stack: [inlineLabel(ctx, row.key, s.label), { ...valueText(row.value, row, s.value), margin: [0, s.gap ?? 2, 0, 0] }] }
+}
+
+// ---------- parties ----------
+
+export interface PartyStyle {
+  /** Section heading ("Müüja" / "Ostja"); null = no heading. */
+  heading: LabelStyle | null
+  headingGap?: number
+  nameSize: number
+  nameFont?: string
+  fontSize: number
+  color: string
+  labelColor: string
+  /** Extra space between lines. */
+  lineGap?: number
+}
+
+/** Party details: name, address, codes, contacts. Labels are inline ("Registrikood 16234571"). */
+export function partyBlock(ctx: DocContext, role: 'seller' | 'buyer', s: PartyStyle): ContentStack {
+  const inv = ctx.invoice
+  const p = role === 'seller' ? inv.seller : inv.buyer
+  const gap = s.lineGap ?? 0
+  const line = (c: ContentText): Content => ({ ...c, margin: [0, gap, 0, 0] })
+  const kv = (key: LabelKey, value: string | undefined, mono = false): Content | null => {
+    const v = value?.trim()
+    if (!v) return null
+    const lbl = inlineLabel(ctx, key, { fontSize: s.fontSize, color: s.labelColor })
+    const runs = Array.isArray(lbl.text) ? lbl.text : [{ text: lbl.text as string, color: s.labelColor }]
+    return line({ text: [...(runs as ContentText[]), { text: ' ' }, mono ? { text: v, font: FONT.mono, fontSize: round(s.fontSize * 0.94), color: s.color } : { text: v, color: s.color }], fontSize: s.fontSize })
+  }
+  const out: (Content | null)[] = []
+  if (s.heading) out.push({ ...inlineLabel(ctx, role, s.heading), margin: [0, 0, 0, s.headingGap ?? 5] })
+  out.push({ text: p.name || '—', font: s.nameFont, bold: !s.nameFont, fontSize: s.nameSize, color: s.color, margin: [0, 0, 0, 1.5] })
+  for (const l of addressLines(p.address, ctx)) out.push(line({ text: l, fontSize: s.fontSize, color: s.color }))
+  out.push(kv('registryCode', p.registryCode, true), kv('personalCode', p.registryCode ? undefined : p.personalCode, true), kv('vatNumber', p.vatNumber, true))
+  if (role === 'buyer') out.push(kv('contactPerson', inv.buyer.contactPerson))
+  out.push(kv('email', p.email), kv('phone', p.phone))
+  if (role === 'seller') out.push(kv('website', inv.seller.website))
+  return { stack: out.filter((c): c is Content => c !== null) }
+}
+
+/** Seller logo, if any. pdfmake supports PNG/JPEG data URLs. */
+export function logo(ctx: DocContext, fit: [number, number], alignment: Align = 'left'): Content | null {
+  const url = ctx.invoice.seller.logoDataUrl
+  if (!url || !/^data:image\/(png|jpe?g);base64,/i.test(url)) return null
+  return { image: url, fit, alignment }
+}
+
+// ---------- line items ----------
 
 export interface TableStyle {
   layout: CustomTableLayout
@@ -13,176 +222,74 @@ export interface TableStyle {
   /** Colour of the English part of bilingual header labels. */
   headerSecondaryColor: string
   headerFontSize: number
+  headerBold?: boolean
+  headerFont?: string
+  headerUppercase?: boolean
+  headerCharacterSpacing?: number
   bodyFontSize: number
+  bodyColor?: string
   /** Alternate row fill. */
   zebra?: string
-  /** Uppercase header labels. */
-  headerUppercase?: boolean
-}
-
-export interface LabelOptions {
-  fontSize: number
-  color: string
-  secondaryColor?: string
-  bold?: boolean
-  uppercase?: boolean
-  characterSpacing?: number
-  alignment?: 'left' | 'right' | 'center'
-  /** Keep each line on one row (e.g. "KM %" must not break into "KM" / "%"). */
-  noWrap?: boolean
-}
-
-/** A label; bilingual documents get the English part on a second, smaller line. */
-export function label(ctx: DocContext, key: LabelKey, o: LabelOptions): ContentText | ContentStack {
-  const [primary, secondary] = ctx.t.parts(key)
-  const up = (s: string) => (o.uppercase ? s.toUpperCase() : s)
-  const base = { color: o.color, bold: o.bold ?? false, characterSpacing: o.characterSpacing, alignment: o.alignment, ...(o.noWrap ? { noWrap: true } : {}) }
-  if (!secondary) return { text: up(primary), fontSize: o.fontSize, ...base }
-  return {
-    stack: [
-      { text: up(primary), fontSize: o.fontSize, ...base },
-      { text: up(secondary), fontSize: Math.max(5.5, o.fontSize - 1.5), ...base, bold: false, color: o.secondaryColor ?? COLORS.muted },
-    ],
-  }
-}
-
-export interface MetaRow {
-  key: LabelKey
-  value: string
-  /** Visually emphasise (e.g. invoice number, due date). */
-  strong?: boolean
-}
-
-/** Document metadata rows in legal order. Optional rows are omitted when empty. */
-export function metaRows(ctx: DocContext): MetaRow[] {
-  const inv = ctx.invoice
-  const rows: MetaRow[] = [{ key: 'number', value: inv.number || '—', strong: true }]
-  rows.push({ key: 'issueDate', value: ctx.date(inv.issueDate) })
-  if (inv.supplyDate) rows.push({ key: 'supplyDate', value: ctx.date(inv.supplyDate) })
-  if (inv.periodStart || inv.periodEnd) {
-    rows.push({ key: 'period', value: `${ctx.date(inv.periodStart)} – ${ctx.date(inv.periodEnd)}`.trim() })
-  }
-  rows.push({ key: 'dueDate', value: ctx.date(inv.dueDate), strong: true })
-  if (inv.referenceNumber) rows.push({ key: 'referenceNumber', value: inv.referenceNumber })
-  if (inv.orderReference) rows.push({ key: 'orderReference', value: inv.orderReference })
-  if (inv.type === 'credit-note' && inv.creditedInvoiceNumber) {
-    rows.push({ key: 'creditedInvoice', value: inv.creditedInvoiceNumber, strong: true })
-  }
-  return rows
-}
-
-export interface MetaTableOptions {
-  labelColor: string
-  valueColor: string
-  fontSize: number
-  layout?: CustomTableLayout | 'noBorders'
-  labelFill?: string
-  labelWidth?: number | '*' | 'auto'
-}
-
-/** Two-column label/value table. */
-export function metaTable(ctx: DocContext, o: MetaTableOptions, rows = metaRows(ctx)): ContentTable {
-  return {
-    table: {
-      widths: [o.labelWidth ?? 'auto', '*'],
-      body: rows.map((r): TableCell[] => [
-        withProps(label(ctx, r.key, { fontSize: o.fontSize - 0.5, color: o.labelColor }), { fillColor: o.labelFill }),
-        { text: r.value, fontSize: o.fontSize, bold: !!r.strong, color: o.valueColor, alignment: 'right' },
-      ]),
-    },
-    layout: o.layout ?? 'noBorders',
-  }
-}
-
-/** Merge cell properties (fill, margin…) into a content node. */
-export function withProps(c: ContentText | ContentStack, props: Record<string, unknown>): TableCell {
-  return { ...c, ...props } as TableCell
-}
-
-export interface PartyOptions {
-  nameSize: number
-  fontSize: number
-  color: string
-  mutedColor: string
-}
-
-/** Party details: name, address, codes, contacts. Labels are inline ("Registrikood: 12345678"). */
-export function partyLines(ctx: DocContext, role: 'seller' | 'buyer', o: PartyOptions): Content[] {
-  const inv = ctx.invoice
-  const p = role === 'seller' ? inv.seller : inv.buyer
-  const kv = (key: LabelKey, value: string | undefined): Content | null =>
-    value?.trim() ? { text: [{ text: `${ctx.t(key)}: `, color: o.mutedColor }, { text: value.trim(), color: o.color }], fontSize: o.fontSize } : null
-  const out: (Content | null)[] = [
-    { text: p.name || '—', bold: true, fontSize: o.nameSize, color: o.color, margin: [0, 0, 0, 2] },
-    ...addressLines(p.address, ctx).map((line): Content => ({ text: line, fontSize: o.fontSize, color: o.color })),
-    kv('registryCode', p.registryCode),
-    kv('personalCode', p.registryCode ? undefined : p.personalCode),
-    kv('vatNumber', p.vatNumber),
-  ]
-  if (role === 'buyer') out.push(kv('contactPerson', inv.buyer.contactPerson))
-  out.push(kv('phone', p.phone), kv('email', p.email))
-  if (role === 'seller') out.push(kv('website', inv.seller.website))
-  return out.filter((c): c is Content => c !== null)
-}
-
-/** Seller logo, if any. pdfmake supports PNG/JPEG data URLs. */
-export function logo(ctx: DocContext, fit: [number, number], alignment: 'left' | 'right' = 'left'): Content | null {
-  const url = ctx.invoice.seller.logoDataUrl
-  if (!url || !/^data:image\/(png|jpe?g);base64,/i.test(url)) return null
-  return { image: url, fit, alignment }
+  /** Leading "Nr" column. */
+  lineNumbers?: boolean
 }
 
 /** Short numeric-column headers that would otherwise break mid-label when the description column takes the space. */
-const NO_WRAP_HEADERS = new Set<LabelKey>(['lineNo', 'quantity', 'vatRate', 'lineTotal'])
+const NO_WRAP_HEADERS = new Set<LabelKey>(['lineNo', 'quantity', 'unit', 'vatRate', 'lineTotal', 'unitPrice'])
+
+function headerCell(ctx: DocContext, key: LabelKey, align: Align, s: TableStyle): TableCell {
+  return withProps(
+    label(ctx, key, {
+      fontSize: s.headerFontSize,
+      color: s.headerColor,
+      secondaryColor: s.headerSecondaryColor,
+      bold: s.headerBold ?? true,
+      font: s.headerFont,
+      uppercase: s.headerUppercase,
+      characterSpacing: s.headerCharacterSpacing,
+      alignment: align,
+      noWrap: NO_WRAP_HEADERS.has(key),
+    }),
+    { fillColor: s.headerFill },
+  )
+}
 
 /** Invoice lines table. VAT column only when VAT is shown; discount column only when used. */
 export function linesTable(ctx: DocContext, s: TableStyle): ContentTable {
   const { totals, invoice } = ctx
   const netById = new Map(totals.lines.map((l) => [l.lineId, l.net]))
-  type Col = { key: LabelKey; width: number | string; align: 'left' | 'right' | 'center' }
-  const cols: Col[] = [
-    { key: 'lineNo', width: 'auto', align: 'left' },
+  type Col = { key: LabelKey; width: number | string; align: Align }
+  const cols: Col[] = []
+  if (s.lineNumbers) cols.push({ key: 'lineNo', width: 'auto', align: 'left' })
+  cols.push(
     { key: 'description', width: '*', align: 'left' },
     { key: 'quantity', width: 'auto', align: 'right' },
     { key: 'unit', width: 'auto', align: 'left' },
     { key: 'unitPrice', width: 'auto', align: 'right' },
-  ]
+  )
   if (ctx.showDiscount) cols.push({ key: 'discount', width: 'auto', align: 'right' })
   // Per-line rates only mean something for domestic VAT; other schemes are explained by the scheme note.
   if (totals.showVat && vatSchemeAllowsRates(invoice.vatScheme)) cols.push({ key: 'vatRate', width: 'auto', align: 'right' })
   cols.push({ key: 'lineTotal', width: 'auto', align: 'right' })
 
-  const header: TableCell[] = cols.map((c) =>
-    withProps(
-      label(ctx, c.key, {
-        fontSize: s.headerFontSize,
-        color: s.headerColor,
-        secondaryColor: s.headerSecondaryColor,
-        bold: true,
-        uppercase: s.headerUppercase,
-        alignment: c.align,
-        noWrap: NO_WRAP_HEADERS.has(c.key),
-      }),
-      { fillColor: s.headerFill },
-    ),
-  )
-
+  const header = cols.map((c) => headerCell(ctx, c.key, c.align, s))
   const body: TableCell[][] = invoice.lines.map((line, i) => {
-    const cells: Record<LabelKey, string> = {} as Record<LabelKey, string>
-    cells.lineNo = String(i + 1)
-    cells.description = line.description
-    cells.quantity = formatQuantity(line.quantity, ctx.lang)
-    cells.unit = line.unit
-    cells.unitPrice = formatUnitPrice(line.unitPrice, ctx.lang)
-    cells.discount = line.discountPercent ? ctx.percent(line.discountPercent) : ''
-    cells.vatRate = ctx.percent(line.vatRate)
-    cells.lineTotal = ctx.amount(netById.get(line.id) ?? 0)
+    const cells: Partial<Record<LabelKey, string>> = {
+      lineNo: String(i + 1),
+      description: line.description,
+      quantity: formatQuantity(line.quantity, ctx.lang),
+      unit: line.unit,
+      unitPrice: ctx.unitMoney(line.unitPrice),
+      discount: line.discountPercent ? ctx.percent(line.discountPercent) : '',
+      vatRate: ctx.percent(line.vatRate),
+      lineTotal: ctx.money(netById.get(line.id) ?? 0),
+    }
     const fill = s.zebra && i % 2 === 1 ? s.zebra : undefined
     return cols.map((c) => ({
       text: cells[c.key] ?? '',
       alignment: c.align,
       fontSize: s.bodyFontSize,
-      color: c.key === 'lineNo' ? COLORS.muted : COLORS.text,
+      color: c.key === 'lineNo' ? COLORS.faint : (s.bodyColor ?? COLORS.text),
       fillColor: fill,
       noWrap: c.key !== 'description' && c.key !== 'unit',
     }))
@@ -200,206 +307,302 @@ export function linesTable(ctx: DocContext, s: TableStyle): ContentTable {
  */
 export function vatBreakdownTable(ctx: DocContext, s: TableStyle): ContentTable | null {
   if (!ctx.totals.showVat || ctx.totals.vatBreakdown.length < 2) return null
-  const head = (key: LabelKey, alignment: 'left' | 'right'): TableCell =>
-    withProps(label(ctx, key, { fontSize: s.headerFontSize, color: s.headerColor, secondaryColor: s.headerSecondaryColor, bold: true, uppercase: s.headerUppercase, alignment, noWrap: NO_WRAP_HEADERS.has(key) }), {
-      fillColor: s.headerFill,
-    })
+  const cell = (text: string, alignment: Align): TableCell => ({ text, fontSize: s.bodyFontSize, color: s.bodyColor ?? COLORS.text, alignment, noWrap: true })
   return {
     table: {
       headerRows: 1,
       widths: ['auto', '*', '*'],
       body: [
-        [head('vatRate', 'left'), head('taxableAmount', 'right'), head('vatAmount', 'right')],
-        ...ctx.totals.vatBreakdown.map((r): TableCell[] => [
-          { text: ctx.percent(r.rate), fontSize: s.bodyFontSize },
-          { text: ctx.amount(r.taxable), fontSize: s.bodyFontSize, alignment: 'right' },
-          { text: ctx.amount(r.vat), fontSize: s.bodyFontSize, alignment: 'right' },
-        ]),
+        [headerCell(ctx, 'vatRate', 'left', s), headerCell(ctx, 'taxableAmount', 'right', s), headerCell(ctx, 'vatAmount', 'right', s)],
+        ...ctx.totals.vatBreakdown.map((r): TableCell[] => [cell(ctx.percent(r.rate), 'left'), cell(ctx.money(r.taxable), 'right'), cell(ctx.money(r.vat), 'right')]),
       ],
     },
     layout: s.layout,
   }
 }
 
+// ---------- totals ----------
+
 export interface TotalRow {
-  text: string
+  key: LabelKey
+  /** Appended to the label, e.g. " 24%". */
+  suffix?: string
   value: string
   grand?: boolean
 }
 
-/** Totals: net, VAT per rate, grand total (only the grand total when VAT is not shown). */
+/** Totals: net, VAT (per rate when single), VAT in EUR, grand total (only the grand total when VAT is not shown). */
 export function totalRows(ctx: DocContext): TotalRow[] {
-  const { totals, t } = ctx
+  const { totals } = ctx
   const rows: TotalRow[] = []
   if (totals.showVat) {
-    rows.push({ text: t('netTotal'), value: ctx.money(totals.net) })
+    rows.push({ key: 'netTotal', value: ctx.money(totals.net) })
     // Single rate: "Käibemaks 24%" here is the whole breakdown. Several rates: total here, per-rate table beside.
     const single = totals.vatBreakdown.length === 1 ? totals.vatBreakdown[0] : null
-    if (single) rows.push({ text: `${t('vatAmount')} ${ctx.percent(single.rate)}`, value: ctx.money(single.vat) })
-    else rows.push({ text: t('vatTotal'), value: ctx.money(totals.vat) })
+    if (single) rows.push({ key: 'vatAmount', suffix: ` ${ctx.percent(single.rate)}`, value: ctx.money(single.vat) })
+    else rows.push({ key: 'vatTotal', value: ctx.money(totals.vat) })
     const eur = vatInEur(ctx.invoice, totals)
     if (eur !== null) {
       const rate = ctx.invoice.eurExchangeRate!.toLocaleString(ctx.lang === 'en' ? 'en-GB' : 'et-EE', { maximumFractionDigits: 6 })
-      rows.push({ text: `${t('vatInEur')} (1 EUR = ${rate} ${ctx.invoice.currency.toUpperCase()})`, value: formatMoney(eur, 'EUR', ctx.lang) })
+      rows.push({ key: 'vatInEur', suffix: ` (1 EUR = ${rate} ${ctx.invoice.currency.toUpperCase()})`, value: formatMoney(eur, 'EUR', ctx.lang) })
     }
   }
-  const grandKey: LabelKey = ctx.invoice.type === 'credit-note' ? 'amountCredited' : 'amountDue'
-  rows.push({ text: t(grandKey), value: ctx.money(totals.gross), grand: true })
+  rows.push({ key: ctx.isCreditNote ? 'amountCredited' : 'amountDue', value: ctx.money(totals.gross), grand: true })
   return rows
 }
 
-export interface TotalsTableOptions {
-  fontSize: number
-  grandFontSize: number
-  color: string
-  mutedColor: string
-  grandColor: string
-  grandFill?: string
-  layout: CustomTableLayout | 'noBorders'
-  /** Leave out the grand total row (template renders it separately). */
-  omitGrand?: boolean
+export function grandTotal(ctx: DocContext): TotalRow {
+  return totalRows(ctx).find((r) => r.grand)!
 }
 
-export function totalsTable(ctx: DocContext, o: TotalsTableOptions): ContentTable {
-  // Note: pdfmake cannot lay out a table with an empty body — callers using omitGrand must check showVat.
+export interface TotalsStyle {
+  fontSize: number
+  labelColor: string
+  labelSecondaryColor?: string
+  valueColor: string
+  grandLabelSize?: number
+  grandFontSize: number
+  grandColor: string
+  grandLabelColor?: string
+  grandFont?: string
+  grandFill?: string
+  /** Rule above the grand total row. */
+  grandRule?: [number, string]
+  /** Hairlines between the other rows. */
+  rowRule?: [number, string]
+  paddingY?: number
+  grandPaddingY?: number
+  /** Horizontal cell padding (needed with fills). */
+  paddingX?: number
+  /** Leave out the grand total row (template renders it separately). */
+  omitGrand?: boolean
+  /** Boxed grid (all lines) instead of rules. */
+  grid?: [number, string]
+}
+
+export function totalsTable(ctx: DocContext, s: TotalsStyle): ContentTable | null {
+  const rows = totalRows(ctx).filter((r) => !(s.omitGrand && r.grand))
+  // pdfmake cannot lay out a table with an empty body.
+  if (!rows.length) return null
+  const grandIndex = rows.findIndex((r) => r.grand)
+  const py = s.paddingY ?? 3
+  const gpy = s.grandPaddingY ?? py + 2
+  const px = s.paddingX ?? 0
   return {
     table: {
       widths: ['*', 'auto'],
-      body: totalRows(ctx)
-        .filter((r) => !(o.omitGrand && r.grand))
-        .map((r): TableCell[] => [
-        { text: r.text, fontSize: r.grand ? o.fontSize + 0.5 : o.fontSize, bold: !!r.grand, color: r.grand ? o.grandColor : o.mutedColor, fillColor: r.grand ? o.grandFill : undefined, margin: r.grand ? [0, 3, 0, 3] : undefined },
-        { text: r.value, fontSize: r.grand ? o.grandFontSize : o.fontSize, bold: !!r.grand, color: r.grand ? o.grandColor : o.color, alignment: 'right', noWrap: true, fillColor: r.grand ? o.grandFill : undefined, margin: r.grand ? [0, 2, 0, 2] : undefined },
-      ]),
+      body: rows.map((r): TableCell[] => {
+        const fill = r.grand ? s.grandFill : undefined
+        const lbl = inlineLabel(ctx, r.key, {
+          fontSize: r.grand ? (s.grandLabelSize ?? s.fontSize) : s.fontSize,
+          color: r.grand ? (s.grandLabelColor ?? s.grandColor) : s.labelColor,
+          secondaryColor: r.grand ? (s.grandLabelColor ?? s.grandColor) : (s.labelSecondaryColor ?? s.labelColor),
+          bold: !!r.grand && !s.grandFont,
+          font: r.grand ? s.grandFont : undefined,
+        }, r.suffix ?? '')
+        return [
+          withProps(lbl, { fillColor: fill }),
+          {
+            text: r.value,
+            fontSize: r.grand ? s.grandFontSize : s.fontSize,
+            bold: !!r.grand && !s.grandFont,
+            font: r.grand ? s.grandFont : undefined,
+            color: r.grand ? s.grandColor : s.valueColor,
+            alignment: 'right',
+            noWrap: true,
+            fillColor: fill,
+          },
+        ]
+      }),
     },
-    layout: o.layout,
+    layout: {
+      hLineWidth: (i) => (s.grid ? s.grid[0] : i === grandIndex && i > 0 && s.grandRule ? s.grandRule[0] : i > 0 && i < rows.length && s.rowRule ? s.rowRule[0] : 0),
+      hLineColor: (i) => (s.grid ? s.grid[1] : i === grandIndex && s.grandRule ? s.grandRule[1] : (s.rowRule?.[1] ?? COLORS.hairline)),
+      vLineWidth: () => s.grid?.[0] ?? 0,
+      vLineColor: () => s.grid?.[1] ?? COLORS.rule,
+      paddingLeft: (i) => (i === 0 ? px : 12),
+      paddingRight: (i, node) => (i === (node.table.widths?.length ?? 1) - 1 ? px : 0),
+      paddingTop: (i) => (i === grandIndex ? gpy : py),
+      paddingBottom: (i) => (i === grandIndex ? gpy : py),
+    },
   }
 }
 
-export interface TextBlockOptions {
+// ---------- payment, notes ----------
+
+/** EPC "scan to pay" QR code with caption, or null when the invoice has no (sensible) payment QR. */
+export function paymentQr(ctx: DocContext, size: number, caption: LabelStyle, color: string = COLORS.ink): Content | null {
+  const payload = paymentQrPayload(ctx.invoice)
+  if (!payload) return null
+  return {
+    stack: [
+      { qr: payload, fit: size, eccLevel: 'M', foreground: color, alignment: caption.alignment ?? 'left' } as Content,
+      { ...inlineLabel(ctx, 'scanToPay', caption), margin: [0, 4, 0, 0] },
+    ],
+    unbreakable: true,
+  } as Content
+}
+
+export interface NotesStyle {
   fontSize: number
   color: string
   mutedColor: string
-  headingColor: string
-  headingUppercase?: boolean
+  /** The mandatory VAT note is set in this font weight (default bold = SemiBold). */
+  strongFont?: string
+  heading: LabelStyle
+  gap?: number
 }
 
-function heading(ctx: DocContext, key: LabelKey, o: TextBlockOptions): Content {
-  return { text: o.headingUppercase ? ctx.t(key).toUpperCase() : ctx.t(key), bold: true, fontSize: o.fontSize, color: o.headingColor, margin: [0, 0, 0, 3], characterSpacing: o.headingUppercase ? 0.6 : undefined }
-}
-
-/** Payment instructions: bank accounts, reference number. */
-export function paymentBlock(ctx: DocContext, o: TextBlockOptions): Content | null {
-  const inv = ctx.invoice
-  if (!ctx.bankAccounts.length && !inv.referenceNumber) return null
-  const accounts: Content[] = ctx.bankAccounts.map((a) => ({
-    text: [
-      ...(a.bankName ? [{ text: `${a.bankName}  `, color: o.mutedColor }] : []),
-      { text: formatIban(a.iban), bold: true, color: o.color },
-      ...(a.bic ? [{ text: `  BIC ${a.bic}`, color: o.mutedColor }] : []),
-    ],
-    fontSize: o.fontSize,
-  }))
-  const extra: Content[] = []
-  if (inv.referenceNumber && inv.type !== 'credit-note') {
-    extra.push({ text: referenceHint(inv.referenceNumber, ctx.lang), fontSize: o.fontSize - 0.5, color: o.mutedColor, margin: [0, 2, 0, 0] })
-  }
-  return { stack: [heading(ctx, 'bankDetails', o), { text: inv.seller.name, fontSize: o.fontSize, color: o.color }, ...accounts, ...extra], unbreakable: true }
-}
-
-/** Mandatory notes (VAT scheme, credit note reference), free-text notes, late interest. */
-export function notesBlock(ctx: DocContext, o: TextBlockOptions): Content | null {
+/** Mandatory notes (VAT scheme, credit note reference), late interest and free-text notes. */
+export function notesBlock(ctx: DocContext, s: NotesStyle): ContentStack | null {
   const inv = ctx.invoice
   const items: Content[] = []
-  if (ctx.vatNote) items.push({ text: ctx.vatNote, fontSize: o.fontSize, bold: true, color: o.color })
-  if (ctx.notRegisteredNote) items.push({ text: ctx.notRegisteredNote, fontSize: o.fontSize, color: o.color })
-  if (inv.type === 'credit-note' && inv.creditedInvoiceNumber) {
-    items.push({ text: creditNoteText(inv.creditedInvoiceNumber, ctx.lang), fontSize: o.fontSize, color: o.color })
-  }
-  if (inv.lateInterestPercentPerDay && inv.lateInterestPercentPerDay > 0 && inv.type !== 'credit-note') {
-    items.push({ text: lateInterestText(inv.lateInterestPercentPerDay, ctx.lang), fontSize: o.fontSize, color: o.mutedColor })
+  const strong = (text: string): Content => ({ text, fontSize: s.fontSize, color: s.color, bold: !s.strongFont, font: s.strongFont })
+  if (ctx.vatNote) items.push(strong(ctx.vatNote))
+  if (ctx.notRegisteredNote) items.push(strong(ctx.notRegisteredNote))
+  if (ctx.isCreditNote && inv.creditedInvoiceNumber) items.push({ text: creditNoteText(inv.creditedInvoiceNumber, ctx.lang), fontSize: s.fontSize, color: s.color })
+  if (inv.lateInterestPercentPerDay && inv.lateInterestPercentPerDay > 0 && !ctx.isCreditNote) {
+    items.push({ text: lateInterestText(inv.lateInterestPercentPerDay, ctx.lang), fontSize: s.fontSize, color: s.mutedColor })
   }
   if (inv.notes?.trim()) {
-    items.push({ stack: [heading(ctx, 'notes', o), { text: inv.notes.trim(), fontSize: o.fontSize, color: o.color }], margin: [0, 4, 0, 0] })
+    items.push({ stack: [{ ...inlineLabel(ctx, 'notes', s.heading), margin: [0, 0, 0, 2] }, { text: inv.notes.trim(), fontSize: s.fontSize, color: s.color }], margin: [0, 3, 0, 0] })
   }
   if (!items.length) return null
-  return { stack: items.map((c, i) => (i === 0 ? c : { stack: [c], margin: [0, 3, 0, 0] })) }
+  const gap = s.gap ?? 3
+  return { stack: items.map((c, i) => (i === 0 ? c : { stack: [c], margin: [0, gap, 0, 0] })) }
 }
 
-export interface FooterOptions {
+// ---------- page furniture ----------
+
+export interface FooterStyle {
   marginX: number
   fontSize: number
   color: string
+  /** Hairline above the footer. */
   ruleColor?: string
+  /** Also print a one-line seller summary (name, address, codes, contacts) — letterhead style. */
+  sellerSummary?: boolean
+  top?: number
 }
 
-/** Page footer: footer note + seller summary on the left, "Lk 1/2" on the right. */
-export function footer(ctx: DocContext, o: FooterOptions): DynamicContent {
+/** Two letterhead lines: "Lumi Arendus OÜ · Tartu mnt 18-4, 10115 Tallinn · Registrikood 16234571 · KMKR nr …" and contacts. */
+export function sellerSummary(ctx: DocContext): string[] {
   const s = ctx.invoice.seller
-  const summary = [
-    s.name,
-    s.registryCode ? `${ctx.t('registryCode')} ${s.registryCode}` : '',
-    s.vatNumber ? `${ctx.t('vatNumber')} ${s.vatNumber}` : '',
-    s.email ?? '',
-    s.phone ?? '',
-    s.website ?? '',
-  ]
-    .filter(Boolean)
-    .join('  ·  ')
+  const join = (parts: (string | undefined)[]) => parts.filter(Boolean).join('  ·  ')
+  return [
+    join([
+      s.name,
+      addressLines(s.address, ctx).join(', '),
+      s.registryCode ? `${ctx.t('registryCode')} ${s.registryCode}` : '',
+      s.vatNumber ? `${ctx.t('vatNumber')} ${s.vatNumber}` : '',
+    ]),
+    join([s.email, s.phone, s.website]),
+  ].filter(Boolean)
+}
+
+/** Page footer: footer note (+ seller summary) left; "Arve nr 2026-0007 · Lk 1/2" right. */
+export function footer(ctx: DocContext, o: FooterStyle): DynamicContent {
   const note = ctx.invoice.footerNote?.trim()
+  const summary = o.sellerSummary ? sellerSummary(ctx) : []
+  const number = ctx.invoice.number?.trim()
   return (currentPage, pageCount, pageSize) => ({
-    margin: [o.marginX, 14, o.marginX, 0],
+    margin: [o.marginX, o.top ?? 16, o.marginX, 0],
     stack: [
       ...(o.ruleColor
-        ? [{ canvas: [{ type: 'line' as const, x1: 0, y1: 0, x2: pageSize.width - 2 * o.marginX, y2: 0, lineWidth: 0.5, lineColor: o.ruleColor }], margin: [0, 0, 0, 4] as [number, number, number, number] }]
+        ? [{ canvas: [{ type: 'line' as const, x1: 0, y1: 0, x2: pageSize.width - 2 * o.marginX, y2: 0, lineWidth: 0.5, lineColor: o.ruleColor }], margin: [0, 0, 0, 5] as Margins }]
         : []),
       {
         columns: [
-          { width: '*', stack: [...(note ? [{ text: note, fontSize: o.fontSize, color: o.color }] : []), { text: summary, fontSize: o.fontSize - 0.5, color: o.color }] },
-          { width: 'auto', text: `${ctx.t('page')} ${currentPage}/${pageCount}`, fontSize: o.fontSize, color: o.color, alignment: 'right', noWrap: true },
+          {
+            width: '*',
+            stack: [
+              ...(note ? [{ text: note, fontSize: o.fontSize, color: o.color }] : []),
+              ...summary.map((text, i) => ({ text, fontSize: o.fontSize - 0.5, color: o.color, margin: [0, i === 0 && note ? 1.5 : 0, 0, 0] as Margins })),
+            ],
+          },
+          {
+            width: 'auto',
+            text: [...(number ? [`${ctx.t(ctx.numberKey)} ${number}  ·  `] : []), `${ctx.t('page')} ${currentPage}/${pageCount}`],
+            fontSize: o.fontSize,
+            color: o.color,
+            alignment: 'right',
+            noWrap: true,
+          },
         ],
-        columnGap: 12,
+        columnGap: 16,
       },
     ],
   })
 }
 
-/** Horizontal-rules-only table layout. */
-export function rulesLayout(o: { header: string; rows: string; outer?: string; width?: number; paddingY?: number; paddingX?: number }): CustomTableLayout {
-  const w = o.width ?? 0.5
-  return {
-    hLineWidth: (i) => (i === 0 ? (o.outer ? w : 0) : i === 1 ? w * 1.5 : w),
-    vLineWidth: () => 0,
-    hLineColor: (i) => (i === 0 ? (o.outer ?? o.header) : i === 1 ? o.header : o.rows),
-    paddingLeft: (i) => (i === 0 ? 0 : (o.paddingX ?? 6)),
-    paddingRight: (i, node) => (i === (node.table.widths?.length ?? 1) - 1 ? 0 : (o.paddingX ?? 6)),
-    paddingTop: () => o.paddingY ?? 5,
-    paddingBottom: () => o.paddingY ?? 5,
+/** Running header on continuation pages: "Lumi Arendus OÜ" left, "Arve nr 2026-0007" right. Nothing on page 1. */
+export function continuationHeader(ctx: DocContext, o: { marginX: number; top: number; fontSize: number; color: string }): DynamicContent {
+  return (currentPage) => {
+    if (currentPage === 1) return null
+    const number = ctx.invoice.number?.trim()
+    return {
+      margin: [o.marginX, o.top, o.marginX, 0],
+      columns: [
+        { width: '*', text: ctx.invoice.seller.name, fontSize: o.fontSize, color: o.color },
+        { width: 'auto', text: number ? `${ctx.t(ctx.numberKey)} ${number}` : ctx.title, fontSize: o.fontSize, color: o.color, alignment: 'right' },
+      ],
+    }
   }
 }
 
-/** Full grid layout. */
-export function gridLayout(color: string, width = 0.5, padding = 4): CustomTableLayout {
+/** Full-width horizontal rule. */
+export function rule(width: number, color: string, lineWidth = 0.5, margin: Margins = [0, 0, 0, 0]): Content {
+  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: width, y2: 0, lineWidth, lineColor: color }], margin }
+}
+
+// ---------- table layouts ----------
+
+export interface LayoutSpec {
+  /** [width, colour] of the line above the first row. */
+  top?: [number, string]
+  /** Line below the header row. */
+  header?: [number, string]
+  /** Lines between body rows. */
+  rows?: [number, string]
+  /** Line below the last row. */
+  bottom?: [number, string]
+  /** All vertical lines (grid). */
+  vertical?: [number, string]
+  paddingX?: number
+  paddingY?: number
+  headerPaddingY?: number
+  /** Padding at the table's left/right edges (default 0, so text aligns with the content edge). */
+  edge?: number
+}
+
+export function tableLayout(o: LayoutSpec): CustomTableLayout {
+  const pick = (i: number, node: { table: { body: unknown[]; headerRows?: number } }): [number, string] | undefined => {
+    const n = node.table.body.length
+    const h = node.table.headerRows ?? 0
+    if (i === 0) return o.top
+    if (i === n) return o.bottom
+    if (h && i === h) return o.header
+    return o.rows
+  }
+  const px = o.paddingX ?? 6
+  const py = o.paddingY ?? 4
   return {
-    hLineWidth: () => width,
-    vLineWidth: () => width,
-    hLineColor: () => color,
-    vLineColor: () => color,
-    paddingLeft: () => padding,
-    paddingRight: () => padding,
-    paddingTop: () => padding - 1,
-    paddingBottom: () => padding - 1,
+    hLineWidth: (i, node) => pick(i, node)?.[0] ?? 0,
+    hLineColor: (i, node) => pick(i, node)?.[1] ?? COLORS.rule,
+    vLineWidth: () => o.vertical?.[0] ?? 0,
+    vLineColor: () => o.vertical?.[1] ?? COLORS.rule,
+    paddingLeft: (i) => (i === 0 ? (o.edge ?? 0) : px),
+    paddingRight: (i, node) => (i === (node.table.widths?.length ?? 1) - 1 ? (o.edge ?? 0) : px),
+    paddingTop: (i, node) => (i < (node.table.headerRows ?? 0) ? (o.headerPaddingY ?? py) : py),
+    paddingBottom: (i, node) => (i < (node.table.headerRows ?? 0) ? (o.headerPaddingY ?? py) : py),
   }
 }
 
 /** No lines, custom padding. */
 export function plainLayout(paddingX = 0, paddingY = 2): CustomTableLayout {
-  return {
-    hLineWidth: () => 0,
-    vLineWidth: () => 0,
-    paddingLeft: (i) => (i === 0 ? 0 : paddingX),
-    paddingRight: (i, node) => (i === (node.table.widths?.length ?? 1) - 1 ? 0 : paddingX),
-    paddingTop: () => paddingY,
-    paddingBottom: () => paddingY,
-  }
+  return tableLayout({ paddingX: paddingX / 2, paddingY })
+}
+
+function round(n: number): number {
+  return Math.round(n * 100) / 100
 }

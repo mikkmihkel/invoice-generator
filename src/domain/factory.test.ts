@@ -62,7 +62,7 @@ describe('createDefaultProfile', () => {
     expect(p.bankAccounts).toEqual([])
     expect(p.defaults).toMatchObject({
       paymentTermDays: 14,
-      templateId: 'classic',
+      templateId: 'standard',
       accentColor: '#1f4e79',
       language: 'et',
       currency: 'EUR',

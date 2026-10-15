@@ -53,6 +53,7 @@ function cut(s: string, max: number): string {
 
 /** EPC field text: single line, no control characters, trimmed. */
 function clean(s: string | undefined): string {
+  // oxlint-disable-next-line no-control-regex -- stripping control characters is the point
   return (s ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
@@ -69,20 +70,64 @@ export function remittanceText(invoice: Invoice): string {
   return parts.join(', ')
 }
 
+export interface EpcFields {
+  /** BIC; optional in version 002 (left empty unless a valid 8/11-character BIC is given). */
+  bic?: string
+  /** Beneficiary name (cut to 70 characters). */
+  name: string
+  iban: string
+  /** Amount in EUR, 0.01–999 999 999.99. */
+  amount: number
+  /** ISO 11649 creditor reference ("RF…"). When set, `text` is ignored (only one remittance kind is allowed). */
+  reference?: string
+  /** Unstructured remittance (cut to 140 characters, and further if the payload would exceed 331 bytes). */
+  text?: string
+  /** 4-letter ISO 20022 purpose code; normally empty. */
+  purpose?: string
+}
+
 /**
- * EPC069-12 "SEPA Credit Transfer" QR payload (version 002, UTF-8), lines joined with "\n":
+ * Build an EPC069-12 payload, version 002, character set 1 (UTF-8), identification SCT. Elements are joined with
+ * LF; the last populated element is not followed by a separator (trailing empty elements are dropped).
+ * Returns null when a mandatory element is missing or out of range.
+ */
+export function epcPayload(f: EpcFields): string | null {
+  const name = cut(clean(f.name), EPC_LIMITS.name)
+  const iban = normalizeIban(f.iban ?? '')
+  if (!name || !/^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(iban) || iban.length > EPC_LIMITS.iban) return null
+  if (!Number.isFinite(f.amount)) return null
+  const cents = Math.round(f.amount * 100)
+  if (cents < EPC_LIMITS.minAmount * 100 || cents > Math.round(EPC_LIMITS.maxAmount * 100)) return null
+  const bicRaw = (f.bic ?? '').replace(/\s+/g, '').toUpperCase()
+  const bic = BIC_RE.test(bicRaw) ? bicRaw : ''
+  const purpose = /^[A-Z0-9]{4}$/i.test(f.purpose ?? '') ? f.purpose!.toUpperCase() : ''
+  const ref = (f.reference ?? '').replace(/\s+/g, '').toUpperCase()
+  const structured = ref && isRfCreditorReference(ref) ? ref : ''
+  let text = structured ? '' : cut(clean(f.text), EPC_LIMITS.unstructuredRemittance)
+  const amount = `EUR${(cents / 100).toFixed(2)}`
+  const build = () => ['BCD', '002', '1', 'SCT', bic, name, iban, amount, purpose, structured, text].join('\n').replace(/\n+$/, '')
+  let payload = build()
+  // Multi-byte letters (õ ä ö ü š ž) can push a maximal payload over 331 bytes: shorten the free text.
+  while (utf8Length(payload) > EPC_LIMITS.payloadBytes && text) {
+    text = Array.from(text).slice(0, -1).join('').trimEnd()
+    payload = build()
+  }
+  return utf8Length(payload) <= EPC_LIMITS.payloadBytes ? payload : null
+}
+
+/**
+ * EPC069-12 "SEPA Credit Transfer" QR payload for an invoice:
  *
- *     BCD / 002 / 1 / SCT / <BIC or empty> / <name ≤70> / <IBAN> / EUR<amount> / <purpose: empty> /
+ *     BCD / 002 / 1 / SCT / <BIC or empty> / <seller name ≤70> / <IBAN> / EUR<amount> / <purpose: empty> /
  *     <RF creditor reference or empty> / <remittance text ≤140>
  *
- * The optional last element (beneficiary-to-originator information) is omitted; nothing follows the
- * remittance line. Exactly one of structured reference (only for ISO 11649 `RF…` references) or
- * unstructured remittance is filled. The Estonian national reference number (viitenumber) has no field of
- * its own in the EPC format, so it goes into the remittance text, after the invoice number.
+ * Exactly one of structured reference (only for ISO 11649 `RF…` references) or unstructured remittance is
+ * filled. The Estonian national reference number (viitenumber) has no field of its own in the EPC format, so it
+ * goes into the remittance text after the invoice number: "Arve 2026-0007, viitenumber 20260007".
  *
  * Returns null when a SEPA credit transfer QR would be wrong or useless: non-EUR currency, credit notes,
  * cancelled invoices, total ≤ 0 or > 999 999 999,99, or no valid IBAN among the invoice's bank accounts
- * (the first selected account with a valid IBAN is used, i.e. the first one printed).
+ * (the first selected account with a valid IBAN is used, i.e. normally the first one printed).
  */
 export function epcQrPayload(invoice: Invoice): string | null {
   if ((invoice.currency || 'EUR').toUpperCase() !== 'EUR') return null
@@ -91,29 +136,14 @@ export function epcQrPayload(invoice: Invoice): string | null {
   if (!(total >= EPC_LIMITS.minAmount && total <= EPC_LIMITS.maxAmount)) return null
   const account = selectedBankAccounts(invoice).find((a) => isValidIban(a.iban ?? ''))
   if (!account) return null
-  const iban = normalizeIban(account.iban)
-  if (iban.length > EPC_LIMITS.iban) return null
-  const name = cut(clean(invoice.seller.name), EPC_LIMITS.name)
-  if (!name) return null
-  const bicRaw = (account.bic ?? '').replace(/\s+/g, '').toUpperCase()
-  const bic = BIC_RE.test(bicRaw) ? bicRaw : ''
-
-  const ref = (invoice.referenceNumber ?? '').replace(/\s+/g, '').toUpperCase()
-  const structured = isRfCreditorReference(ref) ? ref : ''
-  let remittance = structured ? '' : cut(remittanceText(invoice), EPC_LIMITS.unstructuredRemittance)
-
-  const build = () =>
-    ['BCD', '002', '1', 'SCT', bic, name, iban, `EUR${total.toFixed(2)}`, '', structured, remittance]
-      // Trailing empty elements may be left out; keep the payload as short as possible for a sparser QR.
-      .join('\n')
-      .replace(/\n+$/, '')
-  let payload = build()
-  // Multi-byte letters (õ ä ö ü š ž) can push a maximal payload over 331 bytes: shorten the free text.
-  while (utf8Length(payload) > EPC_LIMITS.payloadBytes && remittance) {
-    remittance = Array.from(remittance).slice(0, -1).join('').trimEnd()
-    payload = build()
-  }
-  return utf8Length(payload) <= EPC_LIMITS.payloadBytes ? payload : null
+  return epcPayload({
+    bic: account.bic,
+    name: invoice.seller.name,
+    iban: account.iban,
+    amount: total,
+    reference: invoice.referenceNumber,
+    text: remittanceText(invoice),
+  })
 }
 
 /** Whether the invoice asks for a payment QR code (opt-in per invoice; default off). */
@@ -251,7 +281,8 @@ type DocDefinition = TDocumentDefinitions & { language?: string }
  * file (AFRelationship /Alternative, MIME application/xml). The XML is built without the PDF to avoid recursion.
  */
 export function withMachineLayer(def: TDocumentDefinitions, invoice: Invoice, opts: { embedEInvoice?: boolean } = {}): DocDefinition {
-  const out: DocDefinition = { ...def, info: pdfMetadata(invoice), language: pdfLanguage(invoice.language) }
+  // PDF 1.7 (ISO 32000-1) instead of pdfmake's default 1.3; embedded files and /Lang are well-defined there.
+  const out: DocDefinition = { version: '1.7', ...def, info: pdfMetadata(invoice), language: pdfLanguage(invoice.language) }
   if (opts.embedEInvoice === false || !embedsEInvoice(invoice)) return out
   const lang = invoice.language === 'en' ? 'en' : 'et'
   const description =

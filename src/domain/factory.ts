@@ -77,7 +77,7 @@ export function createDefaultProfile(): CompanyProfile {
     bankAccounts: [],
     defaults: {
       paymentTermDays: 14,
-      templateId: 'classic',
+      templateId: 'standard',
       accentColor: '#1f4e79',
       language: 'et',
       currency: 'EUR',

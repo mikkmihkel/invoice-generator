@@ -160,6 +160,8 @@ export const en: Record<keyof typeof et, string> = {
   'field.lateInterest': 'Late payment interest',
   'field.lateInterestHint': 'E.g. 0.05. Printed on the invoice when set.',
   'field.footerNote': 'Footer text',
+  'field.paymentQr': 'Add a payment QR code to the invoice',
+  'field.paymentQrHint': 'SEPA payment QR code (EPC standard): banking apps fill in the payment details. Not every Estonian bank supports it yet. EUR invoices only.',
   'field.footerNoteHint': 'Printed at the bottom of every invoice (e.g. "Thank you for your business!").',
   'field.prefix': 'Prefix',
   'field.prefixHint': '{YYYY} is replaced with the invoice year, e.g. "{YYYY}-" → 2026-0001',

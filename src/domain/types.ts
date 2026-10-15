@@ -17,8 +17,8 @@ export type UiLanguage = 'et' | 'en'
 /** Language of the invoice document itself. `et-en` = bilingual labels. */
 export type InvoiceLanguage = 'et' | 'en' | 'et-en'
 
-/** Visual style of the generated PDF. */
-export type TemplateId = 'classic' | 'modern' | 'minimal' | 'bold'
+/** Visual style of the generated PDF. `standard` is the default for new profiles; `compact` suits long invoices. */
+export type TemplateId = 'standard' | 'classic' | 'modern' | 'minimal' | 'bold' | 'compact'
 
 export interface Address {
   /** Street, house and apartment, e.g. "Narva mnt 5-12". */

@@ -45,7 +45,7 @@ import { useApp } from '../AppContext'
 import { AccentPicker, TemplatePicker } from '../components/Appearance'
 import { useConfirm } from '../components/Dialog'
 import { pick } from '../i18n'
-import { DecimalInput, FieldShell, fieldId, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
+import { CheckboxField, DecimalInput, FieldShell, fieldId, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
 import { StatusChip } from '../components/misc'
 import { IconButton, Menu, Skeleton, type MenuItem } from '../components/ui'
 import { formatDate, formatIban, formatMoney } from '../format'
@@ -465,7 +465,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       // Embed the human-readable PDF so the receiver gets both in one file.
       let pdf: { base64: string; fileName: string } | undefined
       try {
-        pdf = { base64: await renderInvoicePdfBase64(invoice), fileName: invoiceFileName(invoice, 'pdf') }
+        // The PDF goes inside the XML, so it must not carry its own embedded copy of the XML.
+        pdf = { base64: await renderInvoicePdfBase64(invoice, { embedEInvoice: false }), fileName: invoiceFileName(invoice, 'pdf') }
       } catch (e) {
         console.warn('PDF embedding failed', e)
       }
@@ -830,6 +831,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               <AccentPicker value={invoice.accentColor} onChange={(accentColor) => set({ accentColor })} disabled={ro} />
             </div>
             <TemplatePicker value={invoice.templateId} onChange={(templateId) => set({ templateId })} accent={invoice.accentColor} disabled={ro} compact />
+            <CheckboxField label={t('field.paymentQr')} hint={t('field.paymentQrHint')} checked={!!invoice.paymentQr} onChange={(paymentQr) => set({ paymentQr })} disabled={ro} />
           </Step>
         </fieldset>
 

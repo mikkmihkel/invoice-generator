@@ -121,6 +121,7 @@ export function ProfileForm({ value, onChange, sections }: { value: CompanyProfi
           <TextAreaField label={t('field.footerNote')} value={d.footerNote} onChange={(v) => setDefaults({ footerNote: v || undefined })} hint={t('field.footerNoteHint')} rows={2} />
           <TemplatePicker value={d.templateId} onChange={(templateId) => setDefaults({ templateId })} accent={d.accentColor} />
           <AccentPicker value={d.accentColor} onChange={(accentColor) => setDefaults({ accentColor })} />
+          <CheckboxField label={t('field.paymentQr')} hint={t('field.paymentQrHint')} checked={!!d.paymentQr} onChange={(paymentQr) => setDefaults({ paymentQr })} />
         </Section>
       )}
 

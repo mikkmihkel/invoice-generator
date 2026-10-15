@@ -158,6 +158,8 @@ export const et = {
   'field.lateInterest': 'Viivis',
   'field.lateInterestHint': 'Nt 0,05. Kui väli on täidetud, trükitakse viivise määr arvele.',
   'field.footerNote': 'Jaluse tekst',
+  'field.paymentQr': 'Lisa arvele makse QR-kood',
+  'field.paymentQrHint': 'SEPA makse QR-kood (EPC standard): pangarakendus täidab makse andmed ise. Kõik Eesti pangad seda veel ei toeta. Ainult eurodes arvetel.',
   'field.footerNoteHint': 'Trükitakse iga arve alaossa (nt „Täname koostöö eest!“).',
   'field.prefix': 'Eesliide',
   'field.prefixHint': '{YYYY} asendatakse arve aastaga, nt „{YYYY}-“ → 2026-0001',
