@@ -89,7 +89,8 @@ export interface ConfirmOptions {
 type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>
 const ConfirmContext = createContext<ConfirmFn | null>(null)
 
-export function ConfirmProvider({ children }: { children: ReactNode }) {
+/** `closeLabel` names the dialog's × button ("Sulge"); the cancel button keeps its own label. */
+export function ConfirmProvider({ children, closeLabel = 'Close' }: { children: ReactNode; closeLabel?: string }) {
   const [state, setState] = useState<(ConfirmOptions & { resolve: (v: boolean) => void }) | null>(null)
 
   const confirm = useCallback<ConfirmFn>((opts) => new Promise<boolean>((resolve) => setState({ ...opts, resolve })), [])
@@ -106,7 +107,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         <Dialog
           title={state.title}
           onClose={() => close(false)}
-          closeLabel={state.cancelLabel}
+          closeLabel={closeLabel}
           footer={
             <>
               <button type="button" className="btn" onClick={() => close(false)} data-autofocus={state.danger ? true : undefined}>

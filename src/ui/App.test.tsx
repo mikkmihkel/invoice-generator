@@ -376,3 +376,167 @@ describe('issue button summary', () => {
     expect(screen.getByText('Arve saab numbri 2026-0001 ja lukustatakse.')).toBeInTheDocument()
   })
 })
+
+describe('settlement by credit notes', () => {
+  const profile = sampleProfile()
+  const inv = (patch: Record<string, unknown>) => ({
+    id: newId(),
+    number: '2026-0001',
+    type: 'invoice' as const,
+    status: 'issued' as const,
+    issueDate: '2026-01-05',
+    dueDate: '2026-01-19',
+    seller: { ...profile },
+    buyer: { kind: 'company' as const, name: 'Ostja AS', address: profile.address },
+    bankAccountIds: [],
+    lines: [{ id: newId(), description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 100, vatRate: 24 }],
+    currency: 'EUR',
+    vatScheme: 'domestic' as const,
+    language: 'et' as const,
+    templateId: 'classic' as const,
+    accentColor: '#2457c5',
+    createdAt: '2026-01-05T10:00:00Z',
+    updatedAt: '2026-01-05T10:00:00Z',
+    ...patch,
+  })
+  const creditNote = (unitPrice: number) =>
+    inv({
+      number: '2026-0005',
+      type: 'credit-note',
+      creditedInvoiceNumber: '2026-0001',
+      issueDate: '2026-01-06',
+      dueDate: '2026-01-06',
+      lines: [{ id: newId(), description: 'Töö', quantity: -1, unit: 'tk', unitPrice, vatRate: 24 }],
+    })
+
+  it('treats a fully credited invoice as settled: not unpaid, not overdue, no payment actions', async () => {
+    const original = inv({})
+    const repo = createMemoryRepo({ profile, invoices: [original, creditNote(100)] })
+    renderAt('#/', repo)
+    const row = (await screen.findByText('2026-0001')).closest('li')!
+    expect(within(row).getByText('Krediteeritud')).toBeInTheDocument()
+    expect(screen.queryByText(/päeva üle tähtaja/)).not.toBeInTheDocument()
+    expect(screen.getByText('Kõik väljastatud arved on tasutud.')).toBeInTheDocument()
+    // Invoices and credit notes net: the year total agrees with "nothing owed".
+    expect(screen.getByText(/aastal on arveid väljastatud/)).toHaveTextContent('0,00 €')
+
+    fireEvent.click(within(row).getByRole('link'))
+    const status = await screen.findByText(/^Krediteeritud kreeditarvega/)
+    expect(within(status).getByRole('link', { name: '2026-0005' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Märgi tasutuks' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Saada meeldetuletus' })).not.toBeInTheDocument()
+  })
+
+  it('shows what is still owed on a partially credited invoice and asks for it in the reminder', async () => {
+    const original = inv({})
+    const repo = createMemoryRepo({ profile, invoices: [original, creditNote(50)] })
+    renderAt(`#/?id=${original.id}`, repo)
+    expect(await screen.findByText(/^Tasumata 62,00 € \(kreeditarve 2026-0005 arvesse võetud\), \d+ päeva üle tähtaja$/)).toBeInTheDocument()
+    expect(screen.getByText(/^Tasumata/, { selector: 'p.receivable' })).toHaveTextContent(/^Tasumata 62,00 €, neist üle tähtaja 62,00 €$/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Saada meeldetuletus' }))
+    const body = (await screen.findByLabelText('Sõnum')) as HTMLTextAreaElement
+    expect(body.value).toMatch(/summas 62,00\s€/)
+  })
+})
+
+describe('QA fixes', () => {
+  const profile = sampleProfile()
+  const draft = (patch: Record<string, unknown> = {}) => ({
+    id: newId(),
+    number: '',
+    type: 'invoice' as const,
+    status: 'draft' as const,
+    issueDate: '2026-10-15',
+    dueDate: '2026-10-29',
+    seller: { ...profile },
+    buyer: { kind: 'company' as const, name: 'Ostja AS', address: profile.address },
+    bankAccountIds: [],
+    lines: [{ id: newId(), description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 100, vatRate: 24 }],
+    currency: 'EUR',
+    vatScheme: 'domestic' as const,
+    language: 'et' as const,
+    templateId: 'classic' as const,
+    accentColor: '#2457c5',
+    createdAt: '2026-10-15T10:00:00Z',
+    updatedAt: '2026-10-15T10:00:00Z',
+    ...patch,
+  })
+
+  it('does not claim everything is paid when only drafts exist', async () => {
+    renderAt('#/', createMemoryRepo({ profile, invoices: [draft()] }))
+    expect(await screen.findByText('Väljastatud arveid veel ei ole.')).toBeInTheDocument()
+    expect(screen.queryByText('Kõik väljastatud arved on tasutud.')).not.toBeInTheDocument()
+  })
+
+  it('names the credit-note total and issue action in a credit-note draft', async () => {
+    const d = draft({ type: 'credit-note', creditedInvoiceNumber: '2026-0001', lines: [{ id: newId(), description: 'Töö', quantity: -1, unit: 'tk', unitPrice: 100, vatRate: 24 }] })
+    renderAt(`#/invoices/${d.id}`, createMemoryRepo({ profile, invoices: [d] }))
+    expect(await screen.findByRole('button', { name: 'Väljasta kreeditarve' })).toBeInTheDocument()
+    expect(screen.getAllByText('Krediteeritav summa').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Tasumisele kuulub')).not.toBeInTheDocument()
+  })
+
+  it('keeps only the selected invoice row in the tab order', async () => {
+    const a = draft({ number: '2026-0001', status: 'issued', issueDate: '2026-10-02' })
+    const b = draft({ number: '2026-0002', status: 'issued', issueDate: '2026-10-03' })
+    renderAt('#/', createMemoryRepo({ profile, invoices: [a, b] }))
+    const rowB = (await screen.findByText('2026-0002')).closest('a')!
+    const rowA = screen.getByText('2026-0001').closest('a')!
+    expect(rowB).toHaveAttribute('tabindex', '0')
+    expect(rowA).toHaveAttribute('tabindex', '-1')
+    rowB.focus()
+    fireEvent.keyDown(rowB, { key: 'ArrowDown' })
+    expect(rowA).toHaveFocus()
+    await waitFor(() => expect(rowA).toHaveAttribute('tabindex', '0'))
+    expect(rowB).toHaveAttribute('tabindex', '-1')
+  })
+
+  it('labels the × of a confirm dialog "Sulge", not with the cancel text', async () => {
+    const issued = draft({ number: '2026-0001', status: 'issued' })
+    renderAt(`#/?id=${issued.id}`, createMemoryRepo({ profile, invoices: [issued] }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Rohkem/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Tühista arve' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Sulge' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Tagasi' })).toBeInTheDocument()
+  })
+
+  it('"Jätka koostamist" lands focus on the editor title', async () => {
+    const d = draft()
+    renderAt(`#/?id=${d.id}`, createMemoryRepo({ profile, invoices: [d] }))
+    fireEvent.click(await screen.findByRole('link', { name: 'Jätka koostamist' }))
+    const h1 = await screen.findByRole('heading', { level: 1, name: 'Uus arve' })
+    await waitFor(() => expect(h1).toHaveFocus())
+  })
+
+  it('moves focus to the first discount field and offers a skip link to issuing', async () => {
+    const d = draft()
+    renderAt(`#/invoices/${d.id}`, createMemoryRepo({ profile, invoices: [d] }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Lisa allahindlus' }))
+    await waitFor(() => expect(screen.getByLabelText('Allahindlus %')).toHaveFocus())
+
+    fireEvent.click(screen.getByRole('link', { name: 'Liigu väljastamise juurde' }))
+    expect(screen.getByRole('button', { name: 'Väljasta arve' })).toHaveFocus()
+  })
+
+  it('asks before the top bar leaves the company page with unsaved changes', async () => {
+    const repo = createMemoryRepo({ profile, invoices: [draft()] })
+    renderAt('#/company', repo)
+    fireEvent.change(await screen.findByLabelText(/^Nimi/), { target: { value: 'Muudetud OÜ' } })
+    const nav = screen.getByRole('navigation', { name: 'Peamenüü' })
+
+    fireEvent.click(within(nav).getByRole('link', { name: 'Arved' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Salvestamata muudatused' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Jätka muutmist' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(window.location.hash).toBe('#/company')
+    expect(screen.getByLabelText(/^Nimi/)).toHaveValue('Muudetud OÜ')
+
+    fireEvent.click(within(nav).getByRole('link', { name: 'Arved' }))
+    dialog = await screen.findByRole('dialog', { name: 'Salvestamata muudatused' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Loobu muudatustest' }))
+    await waitFor(() => expect(window.location.hash).toBe('#/'))
+    expect(repo.saveProfile).not.toHaveBeenCalled()
+  })
+})

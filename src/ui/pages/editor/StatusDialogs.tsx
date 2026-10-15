@@ -56,12 +56,15 @@ export interface StaleIssueDate {
 }
 
 export function IssueDialog({
+  credit,
   predictedNumber,
   warnings,
   stale,
   onClose,
   onConfirm,
 }: {
+  /** Issuing a credit note: the title says so. */
+  credit?: boolean
   predictedNumber: string
   warnings: number
   stale?: StaleIssueDate | null
@@ -76,7 +79,7 @@ export function IssueDialog({
   const number = moving ? stale.numberWithToday : predictedNumber
   return (
     <Dialog
-      title={t('issue.title')}
+      title={t(credit ? 'issue.titleCredit' : 'issue.title')}
       onClose={onClose}
       closeLabel={t('common.close')}
       dismissible={!busy}

@@ -1,28 +1,30 @@
 import { AppWindowIcon, EnvelopeSimpleIcon, PaperclipIcon, ShareNetworkIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
-import type { Invoice } from '../../../domain'
+import { outstandingAmount, type Invoice } from '../../../domain'
 import { buildMailtoUrl, canShareFiles, downloadBlob, googleSignIn, sendViaGmail, shareFiles, type EmailDraft } from '../../../integrations'
 import { invoiceFileName, renderInvoicePdf } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { Dialog } from '../../components/Dialog'
 import { TextAreaField, TextField } from '../../components/fields'
 import { useToast } from '../../Toasts'
-import { errorMessage, fillTemplate } from '../../util'
-import { emailTemplates, emailVars, parseRecipients, reminderTemplates, type EmailKind } from './email'
+import { errorMessage } from '../../util'
+import { emailTemplates, fillEmailText, parseRecipients, reminderTemplates, type EmailKind } from './email'
 
 /** Send the invoice PDF by e-mail; `kind="reminder"` starts from the payment reminder text instead. */
 export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { invoice: Invoice; onClose: () => void; kind?: EmailKind; onSent?: () => void }) {
-  const { t, profile, settings } = useApp()
+  const { t, profile, settings, invoices } = useApp()
   const toast = useToast()
-  const vars = useMemo(() => emailVars(invoice, invoice.seller.name || profile?.name || ''), [invoice, profile])
+  const company = invoice.seller.name || profile?.name || ''
+  // A reminder asks for what is still owed after credit notes, not the original total.
+  const amount = kind === 'reminder' ? outstandingAmount(invoice, invoices) : undefined
   const tpl = useMemo(
     () => (kind === 'reminder' ? reminderTemplates(invoice.language) : emailTemplates(invoice.language, profile?.defaults)),
     [kind, invoice.language, profile],
   )
   const [to, setTo] = useState(invoice.buyer.email ?? '')
   const [cc, setCc] = useState('')
-  const [subject, setSubject] = useState(() => fillTemplate(tpl.subject, vars))
-  const [body, setBody] = useState(() => fillTemplate(tpl.body, vars))
+  const [subject, setSubject] = useState(() => fillEmailText(tpl.subject, invoice, company, amount))
+  const [body, setBody] = useState(() => fillEmailText(tpl.body, invoice, company, amount))
   const [pdf, setPdf] = useState<Blob | null>(null)
   const [pdfError, setPdfError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)

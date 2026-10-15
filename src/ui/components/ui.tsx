@@ -1,5 +1,6 @@
 import { CaretDownIcon, DotsThreeIcon, MagnifyingGlassIcon } from '@phosphor-icons/react'
-import { Fragment, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react'
+import { MENU_SHEET_QUERY, menuOffset, VIEWPORT_GAP } from './menuPlacement'
 
 /** Icon-only button: the label is both the accessible name and the hover tooltip. */
 export function IconButton({ label, icon, className, ...rest }: { label: string; icon: ReactNode } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>) {
@@ -88,12 +89,36 @@ export interface MenuItem {
 /**
  * Overflow menu (menu button pattern): arrow keys move, Escape closes and returns focus to the button.
  * With `text` the trigger is a quiet text button ("Rohkem ▾") instead of the icon-only "…" button.
+ * The popup is measured on open and kept inside the viewport; on phones it is a bottom sheet.
  */
 export function Menu({ label, items, disabled, text, align = 'end' }: { label: string; items: MenuItem[]; disabled?: boolean; text?: string; align?: 'start' | 'end' }) {
   const [open, setOpen] = useState(false)
+  const [place, setPlace] = useState<CSSProperties | undefined>(undefined)
+  const wrap = useRef<HTMLDivElement>(null)
   const btn = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const id = useId()
+
+  // Before paint: position the popup so it never widens the page (no sideways scroll on phones/tablets).
+  useLayoutEffect(() => {
+    if (!open) return
+    const measure = () => {
+      const el = menu.current
+      const w = wrap.current
+      if (!el || !w) return
+      if (typeof window.matchMedia === 'function' && window.matchMedia(MENU_SHEET_QUERY).matches) {
+        setPlace(undefined)
+        return
+      }
+      const viewport = document.documentElement.clientWidth || window.innerWidth
+      const width = Math.min(el.offsetWidth, viewport - 2 * VIEWPORT_GAP)
+      const r = w.getBoundingClientRect()
+      setPlace({ left: menuOffset(r, width, viewport, align), right: 'auto', maxWidth: viewport - 2 * VIEWPORT_GAP })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [open, align])
 
   useEffect(() => {
     if (!open) return
@@ -130,7 +155,7 @@ export function Menu({ label, items, disabled, text, align = 'end' }: { label: s
   }
 
   return (
-    <div className={`menu-wrap${align === 'start' ? ' menu-start' : ''}`}>
+    <div ref={wrap} className={`menu-wrap${align === 'start' ? ' menu-start' : ''}`}>
       <button
         ref={btn}
         type="button"
@@ -152,8 +177,9 @@ export function Menu({ label, items, disabled, text, align = 'end' }: { label: s
           <DotsThreeIcon size={18} />
         )}
       </button>
+      {open && <div className="menu-backdrop" aria-hidden="true" />}
       {open && (
-        <div ref={menu} id={id} role="menu" aria-label={label} className="menu" onKeyDown={onKeyDown}>
+        <div ref={menu} id={id} role="menu" aria-label={label} className="menu" style={place} onKeyDown={onKeyDown}>
           {items.map((it) => (
             <Fragment key={it.key}>
               {it.separatorBefore && <div role="separator" className="menu-sep" />}

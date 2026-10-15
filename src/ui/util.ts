@@ -1,6 +1,8 @@
 import {
   buyerSnapshot,
+  creditNotesFor,
   newId,
+  outstandingAmount,
   sellerSnapshot as domainSellerSnapshot,
   type Address,
   type BuyerSnapshot,
@@ -24,15 +26,34 @@ export function nowISO(): string {
   return new Date().toISOString()
 }
 
-/** 'overdue' is derived: issued, unpaid and past due date. Credit notes are never overdue (nothing is owed to us). */
-export function displayStatus(inv: Pick<Invoice, 'status' | 'dueDate'> & Partial<Pick<Invoice, 'type'>>, today = localTodayISO()): DisplayStatus {
-  if (inv.status === 'issued' && inv.type !== 'credit-note' && inv.dueDate && inv.dueDate < today) return 'overdue'
+/**
+ * 'overdue' is derived: issued, unpaid and past due date. Credit notes are never overdue (nothing is owed to us),
+ * and with `allInvoices` neither is an invoice fully settled by credit notes.
+ */
+export function displayStatus(inv: Pick<Invoice, 'status' | 'dueDate'> & Partial<Pick<Invoice, 'type'>>, today?: string): DisplayStatus
+export function displayStatus(inv: Invoice, today: string | undefined, allInvoices: readonly Invoice[]): DisplayStatus
+export function displayStatus(inv: Pick<Invoice, 'status' | 'dueDate'> & Partial<Pick<Invoice, 'type'>>, today = localTodayISO(), allInvoices?: readonly Invoice[]): DisplayStatus {
+  if (inv.status === 'issued' && inv.type !== 'credit-note' && inv.dueDate && inv.dueDate < today) {
+    return allInvoices && isCreditSettled(inv as Invoice, allInvoices) ? 'issued' : 'overdue'
+  }
   return inv.status
 }
 
-/** Issued invoice still awaiting payment (credit notes are settled by offsetting, not paid). */
-export function isUnpaid(inv: Pick<Invoice, 'status' | 'type'>): boolean {
-  return inv.status === 'issued' && inv.type !== 'credit-note'
+/** Issued invoice whose amount credit notes have reduced to zero: settled, nothing left to pay. */
+export function isCreditSettled(inv: Invoice, allInvoices: readonly Invoice[]): boolean {
+  if (inv.status !== 'issued' || inv.type === 'credit-note') return false
+  return creditNotesFor(inv, allInvoices).length > 0 && outstandingAmount(inv, allInvoices) === 0
+}
+
+/**
+ * Issued invoice still awaiting payment (credit notes are settled by offsetting, not paid).
+ * With `allInvoices`, an invoice fully offset by credit notes is not unpaid.
+ */
+export function isUnpaid(inv: Pick<Invoice, 'status' | 'type'>): boolean
+export function isUnpaid(inv: Invoice, allInvoices: readonly Invoice[]): boolean
+export function isUnpaid(inv: Pick<Invoice, 'status' | 'type'>, allInvoices?: readonly Invoice[]): boolean {
+  if (inv.status !== 'issued' || inv.type === 'credit-note') return false
+  return !allInvoices || !isCreditSettled(inv as Invoice, allInvoices)
 }
 
 export function daysBetween(fromISO: string, toISO: string): number {

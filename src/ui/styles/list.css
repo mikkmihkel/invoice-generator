@@ -134,6 +134,7 @@
   text-overflow: ellipsis;
 }
 .row-amount {
+  font-variant-numeric: tabular-nums;
   justify-self: end;
   font-weight: 500;
   white-space: nowrap;
@@ -241,6 +242,7 @@
   text-align: right;
 }
 .doc-gross {
+  font-variant-numeric: tabular-nums;
   font-size: 28px;
   font-weight: 600;
   line-height: 1.2;
@@ -253,6 +255,7 @@
   text-decoration-thickness: 2px;
 }
 .doc-vat {
+  font-variant-numeric: tabular-nums;
   margin-top: 2px;
   font-size: var(--fs-sm);
   color: var(--text-2);
@@ -357,6 +360,7 @@
   color: var(--text-2);
 }
 .doc-totals dd {
+  font-variant-numeric: tabular-nums;
   margin: 0;
   color: var(--text);
   white-space: nowrap;

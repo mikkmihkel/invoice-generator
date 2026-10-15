@@ -753,3 +753,42 @@ fieldset {
     transform: translateY(-2px) scale(0.98);
   }
 }
+
+/* Phones: the menu opens as a bottom sheet over a backdrop, like dialogs. */
+.menu-backdrop {
+  display: none;
+}
+@media (max-width: 599px) {
+  .menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    display: block;
+    background: var(--backdrop);
+    animation: fade-in var(--dur) var(--ease);
+  }
+  .menu-wrap .menu {
+    position: fixed;
+    z-index: 100;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    min-width: 0;
+    max-height: 80svh;
+    overflow-y: auto;
+    padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+    border-radius: var(--r-md) var(--r-md) 0 0;
+    transform-origin: bottom center;
+    animation: sheet-in var(--dur) var(--ease);
+  }
+  .menu-item {
+    height: 44px;
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}

@@ -6,6 +6,7 @@ import type { Repository } from './storage'
 import { AppProvider, useApp } from './ui/AppContext'
 import { ConfirmProvider } from './ui/components/Dialog'
 import { ErrorBoundary } from './ui/ErrorBoundary'
+import { NavGuardProvider } from './ui/navGuard'
 import { BootSkeleton, Layout } from './ui/Layout'
 import ClientsPage from './ui/pages/ClientsPage'
 import CompanyPage from './ui/pages/CompanyPage'
@@ -71,7 +72,9 @@ function Providers({ children }: { children: ReactNode }) {
   const { t } = useApp()
   return (
     <ToastProvider closeLabel={t('common.close')}>
-      <ConfirmProvider>{children}</ConfirmProvider>
+      <ConfirmProvider closeLabel={t('common.close')}>
+        <NavGuardProvider>{children}</NavGuardProvider>
+      </ConfirmProvider>
     </ToastProvider>
   )
 }

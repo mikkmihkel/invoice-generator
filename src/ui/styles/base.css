@@ -10,7 +10,6 @@
   font-family: var(--font-sans);
   font-size: var(--fs-md);
   line-height: 1.5;
-  font-variant-numeric: tabular-nums;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -117,11 +116,21 @@ img {
   text-align: right;
   white-space: nowrap;
 }
+/*
+ * Tabular figures only where numbers line up (amounts, numeric cells and inputs, dates): with the system
+ * font, tnum also widens the hyphen, so it must not apply to running text ("E-post", "2026-0001").
+ */
 .amount,
 td.num,
 .tnum {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.num,
+input[inputmode='decimal'],
+input[inputmode='numeric'],
+input[type='number'] {
+  font-variant-numeric: tabular-nums;
 }
 .lead {
   font-size: var(--fs-lg);

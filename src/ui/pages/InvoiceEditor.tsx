@@ -48,7 +48,7 @@ import { IconButton, Menu, Skeleton, type MenuItem } from '../components/ui'
 import { formatDate, formatIban } from '../format'
 import { CURRENCIES, languageOptions, templateName, vatSchemeOptions } from '../options'
 import { useToast } from '../Toasts'
-import { accentColor, addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
+import { accentColor, addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isCreditSettled, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
 import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './editor/builders'
 import { DueAmount, EdSection, MoreOptions, NextStep, SaveIndicator, StatusWord } from './editor/EditorParts'
@@ -114,7 +114,11 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const toast = useToast()
   const confirm = useConfirm()
   const navigate = useNavigate()
+  const location = useLocation()
   const [search] = useSearchParams()
+  // Arriving from "Jätka koostamist": focus lands on the title so keyboard users start from the top of the form.
+  const focusTitle = !!(location.state as { focusTitle?: boolean } | null)?.focusTitle
+  const titleRef = useRef<HTMLHeadingElement>(null)
 
   const [invoice, setInvoiceState] = useState<Invoice | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -182,6 +186,12 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const loaded = !!invoice
+  useEffect(() => {
+    if (loaded && focusTitle) titleRef.current?.focus({ preventScroll: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded])
+
   const { markDirty } = autosave
   const isDraft = invoice?.status === 'draft'
   const edit = useCallback(
@@ -218,7 +228,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   if (!invoice || !effective || !profile || !totals) return <EditorSkeleton />
 
   const ro = invoice.status !== 'draft'
-  const status = displayStatus(invoice)
+  const status = displayStatus(invoice, undefined, app.invoices)
+  const unpaid = isUnpaid(invoice, app.invoices)
+  const credit = invoice.type === 'credit-note'
   const errors = issues.filter((i) => i.severity === 'error')
   const warnings = issues.filter((i) => i.severity === 'warning')
   const checklist = !ro && invoice.buyer.name && !invoice.buyer.email ? [...issues, EMAIL_SUGGESTION] : issues
@@ -422,7 +434,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const busyAny = busy !== null
   // One obvious action for an issued invoice; everything else lives in "Rohkem".
   const primary: null | 'email' | 'reminder' =
-    !ro || justIssued || invoice.status === 'cancelled' || invoice.status === 'paid' ? null : status === 'overdue' ? 'reminder' : 'email'
+    !ro || justIssued || invoice.status === 'cancelled' || invoice.status === 'paid' || isCreditSettled(invoice, app.invoices) ? null : status === 'overdue' ? 'reminder' : 'email'
   const menuItems: MenuItem[] = [
     ...(invoice.status === 'paid' ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
     ...(primary === 'reminder' ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
@@ -446,6 +458,19 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     <div className={`page ed${ro ? ' ed-ro' : ' ed-draft'}`}>
       <div className="ed-layout">
         <div className="ed-main">
+          {!ro && (
+            <a
+              href="#ed-side"
+              className="ed-skip"
+              onClick={(e) => {
+                e.preventDefault()
+                const target = document.querySelector<HTMLElement>('.ed-issue-btn:not(:disabled)') ?? document.getElementById('ed-side')
+                target?.focus()
+              }}
+            >
+              {t('editor.skipToIssue')}
+            </a>
+          )}
           <header className="ed-head">
             <Link to="/" className="back-link">
               <ArrowLeftIcon />
@@ -454,7 +479,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             <div className="ed-head-row">
               <div className="ed-title">
                 <div className="ed-title-line">
-                  <h1>{title}</h1>
+                  <h1 ref={titleRef} tabIndex={-1}>
+                    {title}
+                  </h1>
                   {ro && <StatusWord status={status} />}
                 </div>
                 <p className="ed-meta">{ro ? meta : <SaveIndicator state={autosave.state} onRetry={() => void autosave.flush()} />}</p>
@@ -533,6 +560,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 defaultUnit={profile.defaults.defaultUnit}
                 defaultVatRate={profile.defaults.defaultVatRate}
                 disabled={ro}
+                grossLabel={credit ? t('totals.credited') : undefined}
               />
             </EdSection>
 
@@ -737,8 +765,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         </div>
 
         {!ro ? (
-          <aside className="ed-side" aria-label={t('editor.sideLabel')}>
-            <DueAmount totals={totals} currency={invoice.currency} />
+          <aside id="ed-side" className="ed-side" aria-label={t('editor.sideLabel')} tabIndex={-1}>
+            <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : undefined} />
             <ValidationPanel issues={checklist} summaryId="issue-summary" />
             <div className="ed-issue">
               <button
@@ -749,16 +777,16 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 title={errors.length ? t('issue.blocked') : undefined}
                 aria-describedby={errors.length ? 'issue-summary' : 'issue-note'}
               >
-                {t('actions.issue')}
+                {t(credit ? 'actions.issueCredit' : 'actions.issue')}
               </button>
               <p id="issue-note" className="ed-issue-note">
-                {t('editor.willGetNumber', { number: predicted })}
+                {t(credit ? 'editor.willGetNumberCredit' : 'editor.willGetNumber', { number: predicted })}
               </p>
             </div>
           </aside>
         ) : (
           <aside className="ed-side ed-side-ro" aria-label={t('editor.sideLabel')}>
-            <DueAmount totals={totals} currency={invoice.currency} />
+            <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : undefined} />
             <dl className="ed-facts">
               {invoice.issuedAt && (
                 <div>
@@ -783,7 +811,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 </div>
               )}
             </dl>
-            {(primary || isUnpaid(invoice)) && (
+            {(primary || unpaid) && (
               <div className="ed-issue">
                 {primary && (
                   <button type="button" className="btn btn-primary ed-issue-btn" onClick={() => setDialog(primary)} disabled={busyAny}>
@@ -791,7 +819,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                     {primary === 'reminder' ? t('editor.sendReminder') : t('actions.email')}
                   </button>
                 )}
-                {isUnpaid(invoice) && (
+                {unpaid && (
                   <button type="button" className={`btn ed-issue-btn${primary ? '' : ' btn-primary'}`} onClick={() => setDialog('paid')} disabled={busyAny}>
                     <CheckIcon />
                     {t('actions.markPaid')}
@@ -822,7 +850,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
       <PreviewDrawer invoice={effective} open={previewOpen} onClose={() => setPreviewOpen(false)} actions={pdfButton} returnFocus={previewBtn} />
 
-      {dialog === 'issue' && <IssueDialog predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && <IssueDialog credit={credit} predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
       {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus((id) => app.markInvoicePaid(id, paidAt)).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}
       {(dialog === 'email' || dialog === 'reminder') && <EmailDialog invoice={effective} kind={dialog === 'reminder' ? 'reminder' : 'invoice'} onSent={() => markSent(invoice.id)} onClose={() => setDialog(null)} />}
     </div>

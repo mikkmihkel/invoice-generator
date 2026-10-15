@@ -30,7 +30,7 @@ import { EmailDialog } from '../editor/EmailDialog'
 import { MarkPaidDialog } from '../editor/StatusDialogs'
 import { PdfPage } from './PdfPage'
 import { markSent, useSentAt } from './sent'
-import { detailStatus } from './status'
+import { detailStatus, settlementOf } from './status'
 import { interpolate } from './text'
 import { useInvoiceActions } from './useInvoiceActions'
 
@@ -70,10 +70,11 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   const actions = useInvoiceActions(invoice, effective)
   const sentAt = useSentAt(invoice.id)
   const today = localTodayISO()
-  const status = displayStatus(invoice, today)
+  const status = displayStatus(invoice, today, invoices)
   const draft = invoice.status === 'draft'
   const credit = invoice.type === 'credit-note'
-  const unpaid = isUnpaid(invoice)
+  const unpaid = isUnpaid(invoice, invoices)
+  const settle = useMemo(() => settlementOf(invoice, invoices), [invoice, invoices])
   const busy = actions.busy !== null
   const cur = invoice.currency
 
@@ -92,7 +93,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   let primary: Primary | null = null
   if (draft) primary = { kind: 'continue', label: t('detail.continue'), icon: <PencilSimpleIcon /> }
   else if (status === 'overdue') primary = { kind: 'remind', label: t('detail.remind'), icon: <BellRingingIcon /> }
-  else if (invoice.status === 'issued' && !sentAt) primary = { kind: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon /> }
+  else if (invoice.status === 'issued' && !sentAt && !settle.settled) primary = { kind: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon /> }
   else if (unpaid) primary = { kind: 'paid', label: t('actions.markPaid'), icon: <CheckIcon /> }
 
   const runPrimary = (p: Primary) => {
@@ -110,7 +111,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   }
   items.push({ key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void actions.print() })
   items.push({ key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: true, onSelect: () => void actions.duplicate() })
-  if (!draft && !credit && invoice.status !== 'cancelled') items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
+  if (!draft && !credit && invoice.status !== 'cancelled' && !settle.settled) items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
   if (invoice.status === 'paid') items.push({ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void actions.markUnpaid() })
   if (invoice.status === 'issued') items.push({ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void actions.cancel() })
   if (draft) items.push({ key: 'delete', label: t('actions.deleteDraft'), icon: <TrashIcon />, danger: true, separatorBefore: true, onSelect: () => void actions.deleteDraft() })
@@ -119,7 +120,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   const title = draft
     ? t(credit ? 'detail.draftCreditTitle' : 'detail.draftTitle')
     : t(credit ? 'editor.titleCredit' : 'editor.title', { number: invoice.number })
-  const head = detailStatus(invoice, status, today, t)
+  const head = detailStatus(invoice, status, today, t, settle)
   const tail = [
     !draft && invoice.issuedAt ? t('detail.issuedOn', { date: formatDate(invoice.issuedAt.slice(0, 10)) }) : '',
     sentAt && invoice.status === 'issued' ? t('detail.sentOn', { date: formatDate(sentAt) }) : '',
@@ -133,6 +134,13 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
     !draft && !credit && invoice.number
       ? invoices.filter((i) => i.type === 'credit-note' && i.id !== invoice.id && i.status !== 'cancelled' && i.creditedInvoiceNumber?.trim() === invoice.number)
       : []
+  const creditLinks = (list: Invoice[]) =>
+    list.map((cn, i) => (
+      <span key={cn.id}>
+        {i > 0 && ', '}
+        <Link to={`/?id=${cn.id}`}>{cn.number || t('list.draftNumber')}</Link>
+      </span>
+    ))
 
   const buyerRows: [string, ReactNode][] = []
   if (buyer.kind === 'person' ? buyer.personalCode : buyer.registryCode) buyerRows.push([t(buyer.kind === 'person' ? 'field.personalCode' : 'field.registryCode'), (buyer.kind === 'person' ? buyer.personalCode : buyer.registryCode) ?? ''])
@@ -183,7 +191,13 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           <h2 id="doc-title">{title}</h2>
           <p className="doc-client">{buyer.name || <span className="muted">{t('list.noClient')}</span>}</p>
           <p className="doc-status">
-            <span className={`tone-${head.tone}`}>{head.text}</span>
+            {settle.settled ? (
+              <span className="tone-muted">
+                {interpolate(t(settle.creditNotes.length > 1 ? 'detail.statusCreditedMany' : 'detail.statusCredited'), { numbers: creditLinks(settle.creditNotes) })}
+              </span>
+            ) : (
+              <span className={`tone-${head.tone}`}>{head.text}</span>
+            )}
             {tail.length > 0 && <>, {tail.join(', ')}</>}
             {unpaid && primary?.kind !== 'paid' && (
               <>
@@ -204,7 +218,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
       <div className="doc-actions" role="group" aria-label={t('detail.actions')}>
         {primary &&
           (primary.kind === 'continue' ? (
-            <Link to={`/invoices/${invoice.id}`} className="btn btn-primary">
+            <Link to={`/invoices/${invoice.id}`} state={{ focusTitle: true }} className="btn btn-primary">
               {primary.icon}
               {primary.label}
             </Link>
@@ -307,7 +321,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
                 </>
               )}
               <div className="doc-grand">
-                <dt>{t('totals.gross')}</dt>
+                <dt>{t(credit ? 'totals.credited' : 'totals.gross')}</dt>
                 <dd>{formatMoney(totals.gross, cur)}</dd>
               </div>
             </dl>
@@ -339,13 +353,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
             </p>
             {creditedBy.length > 0 && (
               <p className="credited-by">
-                {t('editor.creditedBy')}{' '}
-                {creditedBy.map((cn, i) => (
-                  <span key={cn.id}>
-                    {i > 0 && ', '}
-                    <Link to={`/?id=${cn.id}`}>{cn.number || t('list.draftNumber')}</Link>
-                  </span>
-                ))}
+                {t('editor.creditedBy')} {creditLinks(creditedBy)}
               </p>
             )}
           </>

@@ -1,8 +1,9 @@
 import { BuildingsIcon, FileTextIcon, GearSixIcon, PlusIcon, ReceiptIcon, UsersIcon } from '@phosphor-icons/react'
 import { useEffect, type ReactNode } from 'react'
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import type { CompanyProfile } from '../domain'
 import { useApp } from './AppContext'
+import { useGuardedNavigation } from './navGuard'
 import { Skeleton } from './components/ui'
 import { logoImageSrc } from './util'
 
@@ -43,14 +44,14 @@ function isTyping(el: Element | null): boolean {
 
 /** "N" opens a new invoice, "/" focuses the list search, unless the user is typing or a dialog is open. */
 function useShortcuts() {
-  const navigate = useNavigate()
+  const { go } = useGuardedNavigation()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
       if (isTyping(document.activeElement) || document.querySelector('[role="dialog"], [role="menu"]')) return
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault()
-        navigate('/invoices/new')
+        go('/invoices/new')
       } else if (e.key === '/') {
         const search = document.querySelector<HTMLInputElement>('[data-shortcut="search"]')
         if (!search) return
@@ -61,12 +62,14 @@ function useShortcuts() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate])
+  }, [go])
 }
 
 export function Layout({ children }: { children: ReactNode }) {
   const { t, profile } = useApp()
   const location = useLocation()
+  // Pages with unsaved changes (company details) are asked before the shell's links navigate away.
+  const { onLinkClick } = useGuardedNavigation()
   useShortcuts()
 
   // Arved is a full-bleed two-pane screen; its list pane carries the "data stays in this browser" note itself.
@@ -93,7 +96,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </a>
       <header className="topbar">
         <div className="topbar-inner">
-          <Link to="/" className="brand" aria-label={profile?.name ? `${profile.name}, ${t('app.name')}` : t('app.name')}>
+          <Link to="/" onClick={onLinkClick('/')} className="brand" aria-label={profile?.name ? `${profile.name}, ${t('app.name')}` : t('app.name')}>
             <span className="brand-name">{profile?.name || t('app.name')}</span>
           </Link>
           <nav id="main-nav" className="main-nav" aria-label={t('nav.main')}>
@@ -101,6 +104,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <NavLink
                 key={n.to}
                 to={n.to}
+                onClick={onLinkClick(n.to)}
                 end={n.to === '/'}
                 title={n.settings ? n.label : undefined}
                 className={({ isActive }) => `nav-link${n.settings ? ' nav-settings' : ''}${isActive || n.active ? ' active' : ''}`}
@@ -110,7 +114,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </nav>
-          <Link to="/invoices/new" className="btn btn-primary new-invoice" aria-keyshortcuts="N" title={t('nav.newInvoiceShortcut')}>
+          <Link to="/invoices/new" onClick={onLinkClick('/invoices/new')} className="btn btn-primary new-invoice" aria-keyshortcuts="N" title={t('nav.newInvoiceShortcut')}>
             <PlusIcon />
             <span>{t('nav.newInvoice')}</span>
           </Link>
@@ -122,7 +126,9 @@ export function Layout({ children }: { children: ReactNode }) {
       {!home && (
         <footer className="footer">
           <span>{t('footer.local')}</span>
-          <Link to="/settings">{t('footer.backup')}</Link>
+          <Link to="/settings" onClick={onLinkClick('/settings')}>
+            {t('footer.backup')}
+          </Link>
         </footer>
       )}
     </div>

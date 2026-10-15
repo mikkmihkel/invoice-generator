@@ -12,7 +12,6 @@
   --ed-bar-h: 128px;
   max-width: calc(var(--ed-col) + var(--ed-side) + var(--ed-gap));
   margin: 0 auto;
-  font-variant-numeric: tabular-nums;
 }
 .ed .num {
   font-variant-numeric: tabular-nums;
@@ -604,6 +603,7 @@
   color: var(--text-2);
 }
 .ed-total-amount {
+  font-variant-numeric: tabular-nums;
   margin-top: 4px;
   font-size: 28px;
   font-weight: 600;
@@ -612,6 +612,7 @@
   white-space: nowrap;
 }
 .ed-total-sub {
+  font-variant-numeric: tabular-nums;
   margin-top: 4px;
   font-size: var(--fs-sm);
   color: var(--text-2);
@@ -645,6 +646,7 @@
   color: var(--text-2);
 }
 .ed-facts dd {
+  font-variant-numeric: tabular-nums;
   margin: 0;
   white-space: nowrap;
 }
@@ -1220,4 +1222,27 @@
   .back-link {
     display: none;
   }
+}
+
+/* "Liigu väljastamise juurde": hidden until focused, the first stop in the draft editor. */
+.ed-skip {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.ed-skip:focus {
+  position: static;
+  display: inline-block;
+  width: auto;
+  height: auto;
+  margin-bottom: var(--s-2);
+  overflow: visible;
+  clip-path: none;
+}
+.ed-title h1:focus,
+.ed-side:focus {
+  outline: none;
 }

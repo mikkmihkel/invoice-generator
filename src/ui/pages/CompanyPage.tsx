@@ -4,7 +4,8 @@ import { useSearchParams } from 'react-router-dom'
 import type { CompanyProfile, RegistryCompany } from '../../domain'
 import { useApp } from '../AppContext'
 import { CompanySearch } from '../components/CompanySearch'
-import { Dialog } from '../components/Dialog'
+import { Dialog, useConfirm } from '../components/Dialog'
+import { useNavGuard } from '../navGuard'
 import { useToast } from '../Toasts'
 import { errorMessage, partyFromRegistry } from '../util'
 import { focusField } from './editor/ValidationPanel'
@@ -33,6 +34,12 @@ export default function CompanyPage() {
   useEffect(() => {
     if (!dirty) setDraft(profile)
   }, [profile, dirty])
+
+  // Leaving through the top bar with unsaved changes asks first (reloads/closing the tab: beforeunload below).
+  const confirm = useConfirm()
+  useNavGuard(dirty, () =>
+    confirm({ title: t('common.unsavedChanges'), message: t('company.leaveConfirm'), confirmLabel: t('common.discard'), cancelLabel: t('common.keepEditing'), danger: true }),
+  )
 
   useEffect(() => {
     if (!dirty) return

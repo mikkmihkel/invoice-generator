@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createDefaultProfile, type Invoice } from '../../../domain'
 import { sampleProfile } from '../../testing/memoryRepo'
 import { newDraft } from './builders'
-import { emailTemplates, emailVars, parseRecipients, reminderTemplates } from './email'
+import { emailTemplates, emailVars, fillEmailText, parseRecipients, reminderTemplates } from './email'
 
 describe('parseRecipients', () => {
   it('splits on commas, semicolons and line breaks and accepts "Name <address>"', () => {
@@ -53,6 +53,31 @@ describe('emailVars', () => {
     }
     expect(emailVars(inv, 'Näidis OÜ')).toMatchObject({ total: '7 471,00 €', dueDate: '26.10.2026' })
     expect(emailVars({ ...inv, language: 'en' }, 'Näidis OÜ')).toMatchObject({ total: '€7,471.00', dueDate: '26 Oct 2026' })
+  })
+})
+
+describe('fillEmailText', () => {
+  const inv: Invoice = {
+    ...newDraft(sampleProfile()),
+    number: '2026-0001',
+    dueDate: '2026-10-26',
+    language: 'et-en',
+    lines: [{ id: 'l1', description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 6025, vatRate: 24 }],
+  }
+
+  it('formats the English half of a bilingual e-mail in English', () => {
+    const body = fillEmailText(reminderTemplates('et-en').body, inv, 'Näidis OÜ').replace(/[\u00a0\u202f]/g, ' ')
+    const [etPart, enPart] = body.split('\n\n---\n\n')
+    expect(etPart).toContain('7 471,00 €')
+    expect(etPart).toContain('26.10.2026')
+    expect(enPart).toContain('€7,471.00')
+    expect(enPart).toContain('26 Oct 2026')
+    expect(enPart).not.toContain('26.10.2026')
+  })
+
+  it('uses a given amount (e.g. what is still owed after a credit note)', () => {
+    expect(fillEmailText('{total}', { ...inv, language: 'et' }, 'X', 600).replace(/[\u00a0\u202f]/g, ' ')).toBe('600,00 €')
+    expect(emailVars({ ...inv, language: 'en' }, 'X', { amount: 600 }).total).toBe('€600.00')
   })
 })
 

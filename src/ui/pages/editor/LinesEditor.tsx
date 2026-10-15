@@ -1,5 +1,5 @@
 import { ArrowDownIcon, ArrowUpIcon, PercentIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { newId, vatSchemeAllowsRates, type InvoiceLine, type InvoiceTotals, type VatScheme } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { DecimalInput, fieldId } from '../../components/fields'
@@ -26,6 +26,8 @@ interface Props {
   defaultUnit: string
   defaultVatRate: number
   disabled?: boolean
+  /** Label of the grand total ("Krediteeritav summa" on credit notes). */
+  grossLabel?: string
 }
 
 const focusById = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.focus())
@@ -34,10 +36,11 @@ const focusById = (id: string) => requestAnimationFrame(() => document.getElemen
  * Spreadsheet-like line editor: Tab walks the cells in reading order, Enter in a cell of the last line adds
  * a new line (in other lines it moves down to the next description). Amounts are right-aligned tabular figures.
  */
-export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defaultUnit, defaultVatRate, disabled }: Props) {
+export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defaultUnit, defaultVatRate, disabled, grossLabel }: Props) {
   const { t } = useApp()
   const showRates = vatSchemeAllowsRates(vatScheme)
   const [showDiscount, setShowDiscount] = useState(() => lines.some((l) => l.discountPercent))
+  const addBtn = useRef<HTMLButtonElement>(null)
   const discountCol = showDiscount || lines.some((l) => l.discountPercent)
   const lineTotal = new Map(totals.lines.map((l) => [l.lineId, l]))
 
@@ -171,25 +174,33 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
       <div className="lines-foot">
         {!disabled && (
           <div className="lines-actions">
-            <button type="button" className="ed-text-btn" onClick={add} title={t('lines.enterHint')}>
+            <button ref={addBtn} type="button" className="ed-text-btn" onClick={add} title={t('lines.enterHint')}>
               <PlusIcon />
               {t('lines.add')}
             </button>
             {!discountCol && (
-              <button type="button" className="ed-text-btn ed-text-btn-quiet" onClick={() => setShowDiscount(true)}>
+              <button
+                type="button"
+                className="ed-text-btn ed-text-btn-quiet"
+                onClick={() => {
+                  // The button disappears with the click: move focus to the first discount field instead of <body>.
+                  setShowDiscount(true)
+                  requestAnimationFrame(() => (document.getElementById(fieldId('lines.0.discountPercent')) ?? addBtn.current)?.focus())
+                }}
+              >
                 <PercentIcon />
                 {t('lines.addDiscount')}
               </button>
             )}
           </div>
         )}
-        <TotalsTable totals={totals} currency={currency} />
+        <TotalsTable totals={totals} currency={currency} grossLabel={grossLabel} />
       </div>
     </div>
   )
 }
 
-export function TotalsTable({ totals, currency }: { totals: InvoiceTotals; currency: string }) {
+export function TotalsTable({ totals, currency, grossLabel }: { totals: InvoiceTotals; currency: string; grossLabel?: string }) {
   const { t } = useApp()
   return (
     <dl className="totals" aria-label={t('totals.title')}>
@@ -208,7 +219,7 @@ export function TotalsTable({ totals, currency }: { totals: InvoiceTotals; curre
         </>
       )}
       <div className="grand">
-        <dt>{t('totals.gross')}</dt>
+        <dt>{grossLabel ?? t('totals.gross')}</dt>
         <dd data-testid="total-gross">{formatMoney(totals.gross, currency)}</dd>
       </div>
     </dl>

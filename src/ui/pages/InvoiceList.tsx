@@ -7,7 +7,7 @@ import { EmptyState, SearchField, Segmented } from '../components/ui'
 import { formatMoney } from '../format'
 import { daysBetween, displayStatus, getLastBackupAt, isUnpaid, localTodayISO, normalizeInvoice, sumByCurrency, type DisplayStatus } from '../util'
 import { InvoiceDetail } from './invoice-detail/InvoiceDetail'
-import { rowStatus } from './invoice-detail/status'
+import { rowStatus, settlementOf, type Settlement } from './invoice-detail/status'
 import { interpolate, joinSums } from './invoice-detail/text'
 
 type MainFilter = 'all' | 'unpaid' | 'draft'
@@ -19,11 +19,14 @@ interface Row {
   inv: Invoice
   status: DisplayStatus
   gross: number
+  /** Credit notes against the row's invoice and what is still owed after them. */
+  settle: Settlement
+  unpaid: boolean
 }
 
 function matches(r: Row, status: StatusFilter): boolean {
   if (status === 'all') return true
-  if (status === 'unpaid') return isUnpaid(r.inv)
+  if (status === 'unpaid') return r.unpaid
   return r.status === status
 }
 
@@ -60,27 +63,32 @@ export default function InvoiceList() {
   const [year, setYear] = useState<string>('all')
   const [query, setQuery] = useState('')
   const detailRef = useRef<HTMLDivElement>(null)
+  const [focusId, setFocusId] = useState<string | null>(null)
 
   // Normalized so a malformed stored record (old / hand-edited backup) still renders as a row.
-  const rows = useMemo<Row[]>(
-    () =>
-      invoices.map((raw) => {
-        const inv = normalizeInvoice(raw)
-        return { inv, status: displayStatus(inv, today), gross: computeTotals(inv).gross }
-      }),
-    [invoices, today],
-  )
+  const rows = useMemo<Row[]>(() => {
+    const all = invoices.map(normalizeInvoice)
+    return all.map((inv) => ({
+      inv,
+      status: displayStatus(inv, today, all),
+      gross: computeTotals(inv).gross,
+      settle: settlementOf(inv, all),
+      unpaid: isUnpaid(inv, all),
+    }))
+  }, [invoices, today])
 
   const years = useMemo(() => [...new Set(rows.map((r) => r.inv.issueDate.slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse(), [rows])
 
   const summary = useMemo(() => {
-    const sum = (rs: Row[]) => sumByCurrency(rs.map((r) => ({ amount: r.gross, currency: r.inv.currency })))
+    // Receivables count what is still owed after credit notes; the year total is invoices and credit notes net.
+    const owed = (rs: Row[]) => sumByCurrency(rs.map((r) => ({ amount: r.settle.outstanding, currency: r.inv.currency })))
     const billed = rows.filter((r) => (r.status === 'issued' || r.status === 'overdue' || r.status === 'paid') && r.inv.issueDate.startsWith(thisYear))
     return {
-      unpaid: sum(rows.filter((r) => isUnpaid(r.inv))),
-      overdue: sum(rows.filter((r) => r.status === 'overdue')),
-      year: sum(billed),
+      unpaid: owed(rows.filter((r) => r.unpaid)),
+      overdue: owed(rows.filter((r) => r.status === 'overdue')),
+      year: sumByCurrency(billed.map((r) => ({ amount: r.gross, currency: r.inv.currency }))),
       yearCount: billed.length,
+      issued: rows.some((r) => r.status !== 'draft'),
     }
   }, [rows, thisYear])
 
@@ -160,13 +168,16 @@ export default function InvoiceList() {
     }
   }
 
-  // Arrow keys move between rows (and select), like a list in a desktop tool.
+  // Roving tabindex: only one row is in the tab order (the selected one, else the last focused or first row),
+  // so Tab goes from the list straight on to the invoice's actions. Arrow keys move between rows (and select).
+  const tabStop = filtered.some((r) => r.inv.id === selected?.inv.id) ? selected?.inv.id : filtered.some((r) => r.inv.id === focusId) ? focusId : filtered[0]?.inv.id
   const onListKey = (e: React.KeyboardEvent) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
     const links = Array.from(e.currentTarget.querySelectorAll<HTMLAnchorElement>('.inv-row'))
     const i = links.indexOf(document.activeElement as HTMLAnchorElement)
     if (i < 0) return
-    const next = links[e.key === 'ArrowDown' ? Math.min(i + 1, links.length - 1) : Math.max(i - 1, 0)]
+    const last = links.length - 1
+    const next = links[e.key === 'Home' ? 0 : e.key === 'End' ? last : e.key === 'ArrowDown' ? Math.min(i + 1, last) : Math.max(i - 1, 0)]
     e.preventDefault()
     next.focus()
     if (!isPhone() && next.dataset.id) navigate(`/?id=${next.dataset.id}`, { replace: true })
@@ -180,7 +191,9 @@ export default function InvoiceList() {
             {t('nav.invoices')}
           </h1>
           <p className="receivable">
-            {summary.unpaid.size === 0
+            {!summary.issued
+              ? t('list.noIssued')
+              : summary.unpaid.size === 0
               ? t('list.allPaid')
               : interpolate(t(summary.overdue.size ? 'list.receivable' : 'list.receivableNoOverdue'), {
                   unpaid: <strong className="tnum">{joinSums(summary.unpaid, money)}</strong>,
@@ -239,8 +252,8 @@ export default function InvoiceList() {
               <div key={g.key || 'none'} className="month">
                 {g.label && <h2 className="month-label">{g.label}</h2>}
                 <ul className="inv-rows" aria-label={g.label || t('list.invoicesLabel')}>
-                  {g.rows.map(({ inv, status: st, gross }) => {
-                    const s = rowStatus(inv, st, today, t)
+                  {g.rows.map(({ inv, status: st, gross, settle }) => {
+                    const s = rowStatus(inv, st, today, t, settle)
                     const current = selected?.inv.id === inv.id
                     return (
                       <li key={inv.id}>
@@ -249,10 +262,12 @@ export default function InvoiceList() {
                           data-id={inv.id}
                           className={`inv-row row-${st}`}
                           aria-current={current ? 'true' : undefined}
+                          tabIndex={inv.id === tabStop ? 0 : -1}
+                          onFocus={() => setFocusId(inv.id)}
                         >
                           <span className="row-client">{inv.buyer.name || <span className="muted">{t('list.noClient')}</span>}</span>
                           <span className="row-amount tnum">{formatMoney(gross, inv.currency)}</span>
-                          <span className="row-number tnum">
+                          <span className="row-number">
                             {inv.number || t('list.noNumber')}
                             {inv.type === 'prepayment' && <span className="row-type"> · {t('invoice.type.prepayment')}</span>}
                           </span>
@@ -268,7 +283,7 @@ export default function InvoiceList() {
         </div>
 
         <div className="list-foot">
-          {summary.yearCount > 0 && <p>{t('list.yearBilled', { year: thisYear, amount: joinSums(summary.year, money) })}</p>}
+          {summary.yearCount > 0 && <p>{interpolate(t('list.yearBilled', { year: thisYear }), { amount: <span className="tnum">{joinSums(summary.year, money)}</span> })}</p>}
           <BackupNote />
         </div>
       </section>
