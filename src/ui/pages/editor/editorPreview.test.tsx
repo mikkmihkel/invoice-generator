@@ -158,16 +158,16 @@ describe('text rows around the lines', () => {
     const draft = validDraft()
     const repo = createMemoryRepo({ profile, clients: [client], invoices: [draft] })
     renderAt(`#/invoices/${draft.id}`, repo)
-    fireEvent.click(await screen.findByRole('button', { name: 'Lisa rida enne arveridu' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Lisa tekstirida enne arveridu' }))
     const first = screen.getByRole('textbox', { name: 'Tekst enne arveridu, rida 1' })
-    expect(first).toHaveAttribute('placeholder', 'Nt: Vastavalt lepingule nr 12/2026')
+    expect(first).toHaveAttribute('placeholder', 'Nt „Vastavalt lepingule nr 12/2026“')
     fireEvent.change(first, { target: { value: 'Vastavalt lepingule nr 12/2026' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Lisa rida enne arveridu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lisa tekstirida enne arveridu' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Tekst enne arveridu, rida 2' }), { target: { value: 'Teine rida\nkahel real' } })
     fireEvent.click(screen.getByRole('button', { name: 'Tekst enne arveridu: liiguta rida 2 üles' }))
     expect(screen.getByRole('textbox', { name: 'Tekst enne arveridu, rida 1' })).toHaveValue('Teine rida\nkahel real')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Lisa rida pärast arveridu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lisa tekstirida pärast arveridu' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Tekst pärast arveridu, rida 1' }), { target: { value: 'Täname koostöö eest!' } })
 
     await waitFor(

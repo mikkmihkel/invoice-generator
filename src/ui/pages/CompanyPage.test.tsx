@@ -55,8 +55,8 @@ describe('company page: default text rows', () => {
 
     const section = within((await screen.findByRole('heading', { name: 'Arve vaikeseaded' })).closest('section')!)
     const before = within(section.getByRole('group', { name: 'Tekst enne arveridu' }))
-    fireEvent.click(before.getByRole('button', { name: 'Lisa rida enne arveridu' }))
-    fireEvent.click(before.getByRole('button', { name: 'Lisa rida enne arveridu' }))
+    fireEvent.click(before.getByRole('button', { name: 'Lisa tekstirida enne arveridu' }))
+    fireEvent.click(before.getByRole('button', { name: 'Lisa tekstirida enne arveridu' }))
     fireEvent.change(before.getByRole('textbox', { name: 'Tekst enne arveridu, rida 1' }), { target: { value: 'Esimene' } })
     fireEvent.change(before.getByRole('textbox', { name: 'Tekst enne arveridu, rida 2' }), { target: { value: 'Vastavalt lepingule nr 12/2026' } })
     expect(before.getByRole('button', { name: 'Tekst enne arveridu: liiguta rida 1 üles' })).toBeDisabled()
@@ -64,8 +64,8 @@ describe('company page: default text rows', () => {
     expect(before.getByRole('textbox', { name: 'Tekst enne arveridu, rida 1' })).toHaveValue('Vastavalt lepingule nr 12/2026')
 
     const after = within(section.getByRole('group', { name: 'Tekst pärast arveridu' }))
-    fireEvent.click(after.getByRole('button', { name: 'Lisa rida pärast arveridu' }))
-    fireEvent.click(after.getByRole('button', { name: 'Lisa rida pärast arveridu' }))
+    fireEvent.click(after.getByRole('button', { name: 'Lisa tekstirida pärast arveridu' }))
+    fireEvent.click(after.getByRole('button', { name: 'Lisa tekstirida pärast arveridu' }))
     fireEvent.change(after.getByRole('textbox', { name: 'Tekst pärast arveridu, rida 1' }), { target: { value: 'Täname koostöö eest!' } })
     fireEvent.click(after.getByRole('button', { name: 'Tekst pärast arveridu: eemalda rida 1' }))
     expect(after.getByRole('textbox', { name: 'Tekst pärast arveridu, rida 1' })).toHaveValue('')
