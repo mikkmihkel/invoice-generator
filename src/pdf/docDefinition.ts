@@ -22,7 +22,7 @@ function watermarkText(ctx: DocContext): string | null {
 /** Pure pdfmake document definition for the invoice (template and language taken from the invoice). */
 export function buildDocDefinition(invoice: Invoice, opts: DocDefinitionOptions = {}): TDocumentDefinitions {
   const ctx = createContext(invoice)
-  const build = TEMPLATE_BUILDERS[invoice.templateId] ?? TEMPLATE_BUILDERS.classic
+  const build = Object.hasOwn(TEMPLATE_BUILDERS, invoice.templateId) ? TEMPLATE_BUILDERS[invoice.templateId] : TEMPLATE_BUILDERS.classic
   const tpl = build(ctx)
   const wm = opts.watermark === false ? null : watermarkText(ctx)
   const def: TDocumentDefinitions & { language?: string } = {

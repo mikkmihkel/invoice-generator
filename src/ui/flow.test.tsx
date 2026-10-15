@@ -67,7 +67,8 @@ describe('keyboard shortcuts', () => {
     expect(screen.getByRole('heading', { name: 'Arved', level: 1 })).toBeInTheDocument()
     search.blur()
     fireEvent.keyDown(document.body, { key: 'n' })
-    expect(await screen.findByRole('heading', { name: 'Uus arve', level: 1 })).toBeInTheDocument()
+    // The editor mounts with its own data loading; allow for a busy test runner.
+    expect(await screen.findByRole('heading', { name: 'Uus arve', level: 1 }, { timeout: 5000 })).toBeInTheDocument()
   })
 })
 

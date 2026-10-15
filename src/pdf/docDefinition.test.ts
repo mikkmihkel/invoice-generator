@@ -353,3 +353,12 @@ describe('templates — design system', () => {
     expect(JSON.stringify(buildDocDefinition(inv).content)).toEqual(JSON.stringify(buildDocDefinition(sampleInvoice({ templateId: 'classic' })).content))
   })
 })
+
+describe('buildDocDefinition – unknown template ids', () => {
+  it('falls back to classic for ids that are not templates, including Object.prototype names', () => {
+    for (const id of ['constructor', '__proto__', 'toString', 'no-such-template']) {
+      const def = buildDocDefinition(sampleInvoice({ templateId: id as TemplateId }))
+      expect(Array.isArray(def.content) ? def.content.length : 0).toBeGreaterThan(0)
+    }
+  })
+})

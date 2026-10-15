@@ -564,6 +564,7 @@ export const en: Record<keyof typeof et, string> = {
   'detail.period': 'Service period',
   'detail.paidOn': 'Paid',
   'detail.term': '{date} ({days} days)',
+  'detail.termOne': '{date} (1 day)',
   'detail.colVat': 'VAT',
   'detail.vatRate': 'VAT {rate}%',
   'detail.locked': 'An issued invoice is locked. To correct it, {link}.',

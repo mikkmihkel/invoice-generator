@@ -149,7 +149,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   const payRows: [string, ReactNode][] = []
   if (invoice.type !== 'invoice') payRows.push([t('field.invoiceType'), t(`invoice.type.${invoice.type}`)])
   if (invoice.issueDate) payRows.push([t('field.issueDate'), formatDate(invoice.issueDate)])
-  if (invoice.dueDate && !credit) payRows.push([t('field.dueDate'), term > 0 ? t('detail.term', { date: formatDate(invoice.dueDate), days: term }) : formatDate(invoice.dueDate)])
+  if (invoice.dueDate && !credit) payRows.push([t('field.dueDate'), term > 0 ? t(term === 1 ? 'detail.termOne' : 'detail.term', { date: formatDate(invoice.dueDate), days: term }) : formatDate(invoice.dueDate)])
   if (invoice.paidAt) payRows.push([t('detail.paidOn'), formatDate(invoice.paidAt)])
   if (invoice.supplyDate && invoice.supplyDate !== invoice.issueDate) payRows.push([t('field.supplyDate'), formatDate(invoice.supplyDate)])
   if (invoice.periodStart || invoice.periodEnd) payRows.push([t('detail.period'), `${formatDate(invoice.periodStart)} – ${formatDate(invoice.periodEnd)}`])

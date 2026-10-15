@@ -562,6 +562,7 @@ export const et = {
   'detail.period': 'Teenuse periood',
   'detail.paidOn': 'Tasutud',
   'detail.term': '{date} ({days} päeva)',
+  'detail.termOne': '{date} (1 päev)',
   'detail.colVat': 'KM',
   'detail.vatRate': 'Käibemaks {rate}%',
   'detail.locked': 'Väljastatud arve on lukustatud. Vea parandamiseks {link}.',

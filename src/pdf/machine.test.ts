@@ -128,6 +128,7 @@ describe('epcQrPayload (invoice)', () => {
     expect(epcQrPayload(payable({ currency: 'USD' }))).toBeNull()
     expect(epcQrPayload(payable({ type: 'credit-note', creditedInvoiceNumber: '2026-0001' }))).toBeNull()
     expect(epcQrPayload(payable({ status: 'cancelled' }))).toBeNull()
+    expect(epcQrPayload(payable({ status: 'paid', paidAt: '2026-10-20' }))).toBeNull()
     expect(epcQrPayload(payable({ lines: [line({ id: 'z', unitPrice: 0 })] }))).toBeNull()
     expect(epcQrPayload(payable({ lines: [line({ id: 'n', unitPrice: -10 })] }))).toBeNull()
     expect(epcQrPayload(payable({ lines: [line({ id: 'big', quantity: 1, unitPrice: 2_000_000_000 })] }))).toBeNull()

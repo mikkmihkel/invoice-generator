@@ -53,6 +53,7 @@ import { BuyerSection } from './editor/BuyerSection'
 import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './editor/builders'
 import { DueAmount, EdSection, MoreOptions, NextStep, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
+import { markSent } from './invoice-detail/sent'
 import { LinesEditor } from './editor/LinesEditor'
 import { PreviewDrawer } from './editor/PdfPreview'
 import { IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
@@ -823,7 +824,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
       {dialog === 'issue' && <IssueDialog predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
       {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus((id) => app.markInvoicePaid(id, paidAt)).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}
-      {(dialog === 'email' || dialog === 'reminder') && <EmailDialog invoice={effective} kind={dialog === 'reminder' ? 'reminder' : 'invoice'} onClose={() => setDialog(null)} />}
+      {(dialog === 'email' || dialog === 'reminder') && <EmailDialog invoice={effective} kind={dialog === 'reminder' ? 'reminder' : 'invoice'} onSent={() => markSent(invoice.id)} onClose={() => setDialog(null)} />}
     </div>
   )
 }

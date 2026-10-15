@@ -94,4 +94,7 @@ npm run registry:build
 ## Third-party notices
 
 - Register data: Estonian e-Business Register, RIK, open data under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- PDF fonts: Roboto (Apache License 2.0), bundled through [pdfmake](https://github.com/bpampuch/pdfmake) (MIT).
+- PDF fonts: [IBM Plex Sans and IBM Plex Mono](https://github.com/IBM/plex), SIL Open Font License 1.1 (Reserved Font Name "Plex"). They are embedded in the generated PDFs. Licence: [`public/licenses/IBM-Plex-OFL-1.1.txt`](public/licenses/IBM-Plex-OFL-1.1.txt), also served at `licenses/IBM-Plex-OFL-1.1.txt` on the site.
+- PDF generation: [pdfmake](https://github.com/bpampuch/pdfmake) (MIT).
+- PDF page previews: [PDF.js](https://github.com/mozilla/pdf.js) (`pdfjs-dist`), Apache License 2.0. Licence: [`public/licenses/pdf.js-Apache-2.0.txt`](public/licenses/pdf.js-Apache-2.0.txt).
+- Icons: [Phosphor Icons](https://github.com/phosphor-icons/react) (MIT).

@@ -34,7 +34,20 @@ function monthLabel(ym: string, lang: 'et' | 'en'): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-const isPhone = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches
+const PHONE_QUERY = '(max-width: 767px)'
+const isPhone = () => typeof window.matchMedia === 'function' && window.matchMedia(PHONE_QUERY).matches
+
+function usePhone(): boolean {
+  const [phone, setPhone] = useState(isPhone)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(PHONE_QUERY)
+    const on = () => setPhone(mq.matches)
+    mq.addEventListener?.('change', on)
+    return () => mq.removeEventListener?.('change', on)
+  }, [])
+  return phone
+}
 
 /** Arved: the receivables sentence, a quiet filter, month-grouped rows and the selected invoice beside them. */
 export default function InvoiceList() {
@@ -91,8 +104,10 @@ export default function InvoiceList() {
 
   const explicitId = params.get('id')
   const explicit = explicitId ? rows.find((r) => r.inv.id === explicitId) : undefined
-  // Wide screens always show an invoice; phones show the list until one is tapped.
-  const selected = explicit ?? filtered[0]
+  // Wide screens always show an invoice; phones show the list until one is tapped (and never render a hidden
+  // detail, which would download pdfmake and rasterise a page nobody sees).
+  const phone = usePhone()
+  const selected = explicit ?? (phone ? undefined : filtered[0])
 
   useEffect(() => {
     detailRef.current?.scrollTo?.({ top: 0 })

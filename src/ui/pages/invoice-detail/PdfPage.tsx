@@ -25,7 +25,7 @@ function remember(key: string, value: Rendered) {
 }
 
 async function render(invoice: Invoice): Promise<Rendered> {
-  const pdf = await renderInvoicePdf(invoice)
+  const pdf = await renderInvoicePdf(invoice, { embedEInvoice: false })
   try {
     return { image: await renderPdfPageImage(pdf, PAGE_WIDTH) }
   } catch (e) {

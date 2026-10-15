@@ -126,12 +126,13 @@ export function epcPayload(f: EpcFields): string | null {
  * goes into the remittance text after the invoice number: "Arve 2026-0007, viitenumber 20260007".
  *
  * Returns null when a SEPA credit transfer QR would be wrong or useless: non-EUR currency, credit notes,
- * cancelled invoices, total ≤ 0 or > 999 999 999,99, or no valid IBAN among the invoice's bank accounts
+ * cancelled or paid invoices, total ≤ 0 or > 999 999 999,99, or no valid IBAN among the invoice's bank accounts
  * (the first selected account with a valid IBAN is used, i.e. normally the first one printed).
  */
 export function epcQrPayload(invoice: Invoice): string | null {
   if ((invoice.currency || 'EUR').toUpperCase() !== 'EUR') return null
-  if (invoice.type === 'credit-note' || invoice.status === 'cancelled') return null
+  // A paid invoice must not invite a second payment when it is re-downloaded or re-sent.
+  if (invoice.type === 'credit-note' || invoice.status === 'cancelled' || invoice.status === 'paid') return null
   const total = computeTotals(invoice).gross
   if (!(total >= EPC_LIMITS.minAmount && total <= EPC_LIMITS.maxAmount)) return null
   const account = selectedBankAccounts(invoice).find((a) => isValidIban(a.iban ?? ''))
