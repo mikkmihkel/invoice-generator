@@ -1,6 +1,6 @@
 import { DEFAULT_EMAIL_BODY_EN, DEFAULT_EMAIL_SUBJECT_EN, formatInvoiceNumber, type CompanyProfile, type InvoiceDefaults, type NumberingSettings } from '../../domain'
 import { useApp } from '../AppContext'
-import { AccentPicker, TemplatePicker } from '../components/Appearance'
+import { InvoiceDesign } from '../components/Appearance'
 import { CheckboxField, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
 import { BankAccountsEditor, LogoInput, Section } from '../components/misc'
 import { PartyFields, registryCodeError, vatNumberError } from '../components/PartyFields'
@@ -11,7 +11,8 @@ export function numberingPreview(n: NumberingSettings, year = Number(localTodayI
   return formatInvoiceNumber(n, n.nextNumber, year)
 }
 
-export type ProfileSection = 'company' | 'vat' | 'bank' | 'logo' | 'defaults' | 'numbering' | 'email'
+/** `design` = "Arve kujundus": logo, default template, colours and a live preview (`logo` = the logo alone). */
+export type ProfileSection = 'company' | 'vat' | 'bank' | 'logo' | 'design' | 'defaults' | 'numbering' | 'email'
 
 type ProblemKey = 'profile.needName' | 'profile.needIban' | 'profile.registryCodeInvalid' | 'profile.vatNumberInvalid' | 'profile.vatNumberRequired'
 
@@ -29,7 +30,18 @@ export function profileProblems(p: CompanyProfile, t: (k: ProblemKey) => string)
   return out
 }
 
-export function ProfileForm({ value, onChange, sections }: { value: CompanyProfile; onChange: (p: CompanyProfile) => void; sections: ProfileSection[] }) {
+export function ProfileForm({
+  value,
+  onChange,
+  sections,
+  compactDesign,
+}: {
+  value: CompanyProfile
+  onChange: (p: CompanyProfile) => void
+  sections: ProfileSection[]
+  /** Onboarding: the design section without logo, with compact template cards. */
+  compactDesign?: boolean
+}) {
   const { t } = useApp()
   const has = (s: ProfileSection) => sections.includes(s)
   const set = (patch: Partial<CompanyProfile>) => onChange({ ...value, ...patch })
@@ -81,6 +93,20 @@ export function ProfileForm({ value, onChange, sections }: { value: CompanyProfi
         </Section>
       )}
 
+      {has('design') &&
+        (compactDesign ? (
+          // Onboarding: the step heading already says "Arve kujundus".
+          <section className="panel section" id="sec-design" aria-label={t('appearance.design')}>
+            <div className="section-body">
+              <InvoiceDesign value={value} onChange={onChange} compact />
+            </div>
+          </section>
+        ) : (
+          <Section id="sec-design" title={t('appearance.design')} description={t('appearance.designHint')}>
+            <InvoiceDesign value={value} onChange={onChange} />
+          </Section>
+        ))}
+
       {has('defaults') && (
         <Section id="sec-defaults" title={t('profile.defaults')} description={t('profile.defaultsHint')}>
           <div className="grid">
@@ -119,8 +145,6 @@ export function ProfileForm({ value, onChange, sections }: { value: CompanyProfi
             ))}
           </datalist>
           <TextAreaField label={t('field.footerNote')} value={d.footerNote} onChange={(v) => setDefaults({ footerNote: v || undefined })} hint={t('field.footerNoteHint')} rows={2} />
-          <TemplatePicker value={d.templateId} onChange={(templateId) => setDefaults({ templateId })} accent={d.accentColor} />
-          <AccentPicker value={d.accentColor} onChange={(accentColor) => setDefaults({ accentColor })} />
           <CheckboxField label={t('field.paymentQr')} hint={t('field.paymentQrHint')} checked={!!d.paymentQr} onChange={(paymentQr) => setDefaults({ paymentQr })} />
         </Section>
       )}

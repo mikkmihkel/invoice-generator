@@ -1,6 +1,6 @@
 // Everything a template needs to lay out an invoice: resolved totals, labels, formatters and colours.
-import { computeTotals, selectedBankAccounts, vatSchemeNote } from '../domain'
-import type { Address, BankAccount, Invoice, InvoiceLanguage, InvoiceTotals, Party } from '../domain/types'
+import { colorModeOf, computeTotals, selectedBankAccounts, vatSchemeNote } from '../domain'
+import type { Address, BankAccount, ColorMode, Invoice, InvoiceLanguage, InvoiceTotals, Party } from '../domain/types'
 import { formatAmount, formatDate, formatMoney, formatPercent, formatUnitMoney } from './format'
 import { translator, type LabelKey, type Translator } from './labels'
 
@@ -18,6 +18,9 @@ export const COLORS = {
   white: '#ffffff',
 }
 
+/** The "colour" of a monochrome invoice: a soft ink for bands, blocks and rules, and a neutral tint for fills. */
+export const MONO = { ink: '#24282e', tint: COLORS.fill, soft: COLORS.rule }
+
 export interface DocContext {
   invoice: Invoice
   totals: InvoiceTotals
@@ -31,6 +34,15 @@ export interface DocContext {
   accentSoft: string
   /** Readable text colour on an accent background. */
   onAccent: string
+  /**
+   * How colour is used: 'accent' (the primary colour as accent), 'mono' (`accent` is then a neutral ink and
+   * the tints are greys) or 'duo' (templates also use `secondary`).
+   */
+  colorMode: ColorMode
+  /** Second brand colour, normalised `#rrggbb`. Equals `accent` unless the mode is 'duo'. */
+  secondary: string
+  /** Very light tint of `secondary`. */
+  secondaryTint: string
   /** Document title, e.g. "Arve" / "Kreeditarve / Credit note". */
   title: string
   /** Title parts for bilingual layouts: [et, en?]. */
@@ -54,11 +66,12 @@ export interface DocContext {
   date(value: string | undefined): string
 }
 
-export function normalizeHex(color: string | undefined): string {
-  const c = (color ?? '').trim()
+/** `#rrggbb` (or `#rgb`) lower-cased; anything else becomes `fallback`. Every PDF colour sink goes through this. */
+export function normalizeHex(color: string | undefined, fallback = DEFAULT_ACCENT): string {
+  const c = typeof color === 'string' ? color.trim() : ''
   if (/^#[0-9a-f]{6}$/i.test(c)) return c.toLowerCase()
   if (/^#[0-9a-f]{3}$/i.test(c)) return `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`.toLowerCase()
-  return DEFAULT_ACCENT
+  return fallback
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -98,11 +111,16 @@ export function contrastText(hex: string): string {
   return withWhite >= withBlack ? COLORS.white : COLORS.text
 }
 
-/** Accent as used for text on white: darkened if too light to read. */
-export function readableOnWhite(hex: string): string {
+/** Colour as used for text on white: darkened until it reaches `minContrast` (3:1 for large text, 4.5:1 for small). */
+export function readableOnWhite(hex: string, minContrast = 3): string {
   let c = hex
-  for (let i = 0; i < 6 && 1.05 / (relativeLuminance(c) + 0.05) < 3; i++) c = shade(c, 0.2)
+  for (let i = 0; i < 12 && 1.05 / (relativeLuminance(c) + 0.05) < minContrast; i++) c = shade(c, 0.2)
   return c
+}
+
+/** Text colour for a muted label on a `bg` fill (bands, blocks): a mix towards `bg` that stays readable. */
+export function mutedOn(bg: string, on: string): string {
+  return on === COLORS.white ? tint(bg, 0.7) : shade(bg, 0.6)
 }
 
 const COUNTRY_FALLBACK: Record<string, { et: string; en: string }> = {
@@ -146,7 +164,11 @@ export function createContext(invoice: Invoice): DocContext {
   const lang: InvoiceLanguage = invoice.language === 'en' || invoice.language === 'et-en' ? invoice.language : 'et'
   const t = translator(lang)
   const totals = computeTotals(invoice)
-  const accent = normalizeHex(invoice.accentColor)
+  // Duo without a usable second colour is printed as 'accent'.
+  const requested = colorModeOf(invoice.colorMode)
+  const colorMode: ColorMode = requested === 'duo' && normalizeHex(invoice.secondaryColor, '') === '' ? 'accent' : requested
+  const accent = colorMode === 'mono' ? MONO.ink : normalizeHex(invoice.accentColor)
+  const secondary = colorMode === 'duo' ? normalizeHex(invoice.secondaryColor) : accent
   const vatNote = vatSchemeNote(invoice.vatScheme, lang, invoice.vatExemptionNote) || null
   const { title, parts } = documentTitle(invoice, t)
   const currency = invoice.currency || 'EUR'
@@ -156,9 +178,12 @@ export function createContext(invoice: Invoice): DocContext {
     lang,
     t,
     accent,
-    accentTint: tint(accent, 0.9),
-    accentSoft: tint(accent, 0.6),
+    accentTint: colorMode === 'mono' ? MONO.tint : tint(accent, 0.9),
+    accentSoft: colorMode === 'mono' ? MONO.soft : tint(accent, 0.6),
     onAccent: contrastText(accent),
+    colorMode,
+    secondary,
+    secondaryTint: tint(secondary, 0.9),
     title,
     titleParts: parts,
     isCreditNote: invoice.type === 'credit-note',

@@ -72,16 +72,35 @@ describe('keyboard shortcuts', () => {
 })
 
 describe('invoice list filters', () => {
-  it('filters by status with the segmented control and shows relative due dates', async () => {
+  it('filters by status with the segmented control and the "more filters" select, and shows relative due dates', async () => {
     const paid = issued('2026-0001', { status: 'paid', paidAt: '2026-01-10' })
     const overdue = issued('2026-0002', { dueDate: '2026-01-19' })
-    renderAt('#/', createMemoryRepo({ profile, invoices: [paid, overdue] }))
-    const row = (await screen.findByText('2026-0002')).closest('tr')!
-    expect(within(row).getByText(/päeva üle$/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('radio', { name: /^Tasutud/ }))
+    const draft = issued('', { status: 'draft', issueDate: '2025-12-01', dueDate: '2025-12-15' })
+    renderAt('#/', createMemoryRepo({ profile, invoices: [paid, overdue, draft] }))
+    const row = (await screen.findByText('2026-0002')).closest('li')!
+    expect(within(row).getByText(/^Tähtaeg ületatud \d+ päeva$/)).toBeInTheDocument()
+    // Rows are grouped by month.
+    expect(screen.getByRole('heading', { name: 'Jaanuar 2026', level: 2 })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Detsember 2025', level: 2 })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Tasumata' }))
+    expect(screen.getByText('2026-0002')).toBeInTheDocument()
+    expect(screen.queryByText('2026-0001')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Mustandid' }))
+    expect(screen.getByText('Ilma numbrita')).toBeInTheDocument()
+    expect(screen.queryByText('2026-0002')).not.toBeInTheDocument()
+
+    const more = screen.getByRole('combobox', { name: 'Rohkem filtreid' })
+    fireEvent.change(more, { target: { value: 'paid' } })
     expect(screen.queryByText('2026-0002')).not.toBeInTheDocument()
     expect(screen.getByText('2026-0001')).toBeInTheDocument()
-    expect(screen.getByText('Tasutud 10.01.2026')).toBeInTheDocument()
+    expect(within(screen.getByText('2026-0001').closest('li')!).getByText('Tasutud 10.01.2026')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Kõik' })).not.toBeChecked()
+
+    fireEvent.change(more, { target: { value: 'y:2025' } })
+    expect(screen.getByRole('radio', { name: 'Kõik' })).toBeChecked()
+    expect(screen.getByText('Ilma numbrita')).toBeInTheDocument()
+    expect(screen.queryByText('2026-0001')).not.toBeInTheDocument()
   })
 })
 

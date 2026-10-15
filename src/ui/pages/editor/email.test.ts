@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createDefaultProfile, type Invoice } from '../../../domain'
 import { sampleProfile } from '../../testing/memoryRepo'
 import { newDraft } from './builders'
-import { emailTemplates, emailVars, parseRecipients } from './email'
+import { emailTemplates, emailVars, parseRecipients, reminderTemplates } from './email'
 
 describe('parseRecipients', () => {
   it('splits on commas, semicolons and line breaks and accepts "Name <address>"', () => {
@@ -53,5 +53,14 @@ describe('emailVars', () => {
     }
     expect(emailVars(inv, 'Näidis OÜ')).toMatchObject({ total: '7 471,00 €', dueDate: '26.10.2026' })
     expect(emailVars({ ...inv, language: 'en' }, 'Näidis OÜ')).toMatchObject({ total: '€7,471.00', dueDate: '26 Oct 2026' })
+  })
+})
+
+describe('reminderTemplates', () => {
+  it('follows the invoice language and keeps the placeholders', () => {
+    expect(reminderTemplates('et').subject).toBe('Meeldetuletus: arve {number} on tasumata')
+    expect(reminderTemplates('en').body).toContain('{dueDate}')
+    const both = reminderTemplates('et-en')
+    expect(both.body.indexOf('Tere!')).toBeLessThan(both.body.indexOf('Hello,'))
   })
 })

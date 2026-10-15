@@ -65,8 +65,11 @@ describe('onboarding', () => {
     expect(screen.getByLabelText(/^BIC/)).toHaveValue('HABAEE2X')
     fireEvent.click(screen.getByRole('button', { name: 'Edasi' }))
 
-    // Step 3 (invoice defaults): save.
-    expect(await screen.findByRole('heading', { name: 'Arve vaikeväärtused' })).toBeInTheDocument()
+    // Step 3 (invoice design, defaults behind "Lisavalikud"): pick two colours, then save.
+    expect(await screen.findByRole('heading', { name: 'Arve kujundus', level: 2 })).toBeInTheDocument()
+    expect(screen.getByText('Lisavalikud').closest('details')).not.toHaveAttribute('open')
+    fireEvent.click(screen.getByRole('radio', { name: 'Kahevärviline' }))
+    fireEvent.change(screen.getByLabelText('Lisavärv'), { target: { value: '#E07A10' } })
     expect(repo.saveProfile).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Salvesta ja alusta' }))
 
@@ -76,6 +79,7 @@ describe('onboarding', () => {
     expect(saved.name).toBe('Minu Firma OÜ')
     expect(saved.registryCode).toBe('12345678')
     expect(saved.bankAccounts).toEqual([expect.objectContaining({ iban: 'EE382200221020145685' })])
+    expect(saved.defaults).toMatchObject({ colorMode: 'duo', secondaryColor: '#e07a10' })
   })
 
   it('prefills the company from the e-Business Register', async () => {
@@ -250,9 +254,11 @@ describe('invoice list', () => {
     const repo2 = createMemoryRepo({ profile, invoices: [mk('2026-0001', 'issued', '2026-01-19', 100), mk('2026-0002', 'paid', '2026-01-19', 50)] })
     renderAt('#/', repo2)
     expect(await screen.findByText('2026-0001')).toBeInTheDocument()
-    const row = screen.getByText('2026-0001').closest('tr')!
-    expect(within(row).getByText('Tähtaeg ületatud')).toBeInTheDocument()
+    const row = screen.getByText('2026-0001').closest('li')!
+    expect(within(row).getByText(/^Tähtaeg ületatud \d+ päeva$/)).toBeInTheDocument()
     expect(within(row).getByText(/124,00/)).toBeInTheDocument()
+    // One sentence sums up what is owed, with the overdue part called out.
+    expect(screen.getByText(/^Tasumata/, { selector: 'p' })).toHaveTextContent(/^Tasumata 124,00 €, neist üle tähtaja 124,00 €$/)
     // The backup reminder is shown while no backup has been made.
     expect(screen.getByText(/ei ole veel varukoopiat teinud/)).toBeInTheDocument()
   })
@@ -292,12 +298,14 @@ describe('credit notes', () => {
     })
     const repo = createMemoryRepo({ profile, invoices: [base({ status: 'paid' }), credit] })
     renderAt('#/', repo)
-    const row = (await screen.findByText('2026-0002')).closest('tr')!
-    expect(within(row).getByText('Väljastatud')).toBeInTheDocument()
-    expect(within(row).queryByRole('button', { name: 'Märgi tasutuks' })).not.toBeInTheDocument()
-    const unpaid = screen.getByRole('button', { name: /Tasumata/ })
-    expect(within(unpaid).getByText('Arveid: 0')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Tähtaeg ületatud/ })).toHaveTextContent('Arveid: 0')
+    const row = (await screen.findByText('2026-0002')).closest('li')!
+    expect(within(row).getByText('Kreeditarve arvele 2026-0001')).toBeInTheDocument()
+    expect(screen.queryByText(/^Tähtaeg ületatud \d/)).not.toBeInTheDocument()
+    // Nothing is owed: the credit note is not counted as unpaid.
+    expect(screen.getByText('Kõik väljastatud arved on tasutud.')).toBeInTheDocument()
+    fireEvent.click(within(row).getByRole('link'))
+    expect(await screen.findByRole('heading', { name: 'Kreeditarve 2026-0002', level: 2 })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Märgi tasutuks' })).not.toBeInTheDocument()
   })
 
   it('are linked from the credited invoice, without a "mark as paid" action on the credit note', async () => {
@@ -317,7 +325,7 @@ describe('credit notes', () => {
 })
 
 describe('status changes', () => {
-  it('marks an invoice paid from the list through the repository status call', async () => {
+  it('marks an invoice paid from the Arved screen through the repository status call', async () => {
     const profile = sampleProfile()
     const inv = {
       id: newId(),
@@ -340,15 +348,17 @@ describe('status changes', () => {
     }
     const repo = createMemoryRepo({ profile, invoices: [inv] })
     renderAt('#/', repo)
-    const row = (await screen.findByText('2026-0007')).closest('tr')!
-    fireEvent.click(within(row).getByRole('button', { name: 'Märgi tasutuks' }))
+    const row = (await screen.findByText('2026-0007')).closest('li')!
+    // The only invoice is shown beside the list; not sent yet, so marking it paid is the quiet link in the status line.
+    expect(await screen.findByRole('button', { name: 'Saada e-kirjaga' })).toHaveClass('btn-primary')
+    fireEvent.click(screen.getByRole('button', { name: 'Märgi tasutuks' }))
     const dialog = await screen.findByRole('dialog')
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Märgi tasutuks' }))
     })
     expect(repo.markInvoicePaid).toHaveBeenCalledWith(inv.id, expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/))
     expect(repo.saveInvoice).not.toHaveBeenCalled()
-    expect(await within(row).findByText('Tasutud')).toBeInTheDocument()
+    expect(await within(row).findByText(/^Tasutud \d{2}\.\d{2}\.\d{4}$/)).toBeInTheDocument()
   })
 })
 
@@ -358,7 +368,11 @@ describe('issue button summary', () => {
     renderAt('#/invoices/new', repo)
     const summary = await screen.findByRole('button', { name: /^Vigu enne väljastamist: \d+$/ })
     expect(screen.getByRole('button', { name: 'Väljasta arve' })).toHaveAttribute('aria-describedby', 'issue-summary')
+    // The summary is the requirements check itself: one line that folds the list of problems.
+    expect(summary.closest('#validation-panel')).not.toBeNull()
+    expect(summary).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(summary)
-    expect(document.getElementById('validation-panel')).toHaveFocus()
+    expect(summary).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText('Saab numbri 2026-0001 ja lukustatakse.')).toBeInTheDocument()
   })
 })

@@ -19,25 +19,31 @@ interface Props {
   forceEdit?: boolean
 }
 
-function BuyerCard({ buyer, children }: { buyer: BuyerSnapshot; children?: React.ReactNode }) {
-  const codes = [buyer.registryCode || buyer.personalCode, buyer.vatNumber].filter(Boolean)
-  const contact = [buyer.contactPerson, buyer.email].filter(Boolean).join(', ')
+/** The chosen buyer as a short definition list, the way it will read on the invoice. */
+function BuyerCard({ buyer, hideEmail, children }: { buyer: BuyerSnapshot; hideEmail?: boolean; children?: React.ReactNode }) {
+  const { t } = useApp()
+  const contact = [buyer.contactPerson, hideEmail ? undefined : buyer.email].filter(Boolean).join(', ')
+  const address = formatAddress(buyer.address)
+  const rows: [string, string, boolean?][] = [
+    ...(buyer.registryCode ? [[t('field.registryCode'), buyer.registryCode, true] as [string, string, boolean]] : []),
+    ...(buyer.personalCode ? [[t('field.personalCode'), buyer.personalCode, true] as [string, string, boolean]] : []),
+    ...(buyer.vatNumber ? [[t('field.vatNumber'), buyer.vatNumber, true] as [string, string, boolean]] : []),
+    ...(address ? [[t('editor.buyerAddress'), address] as [string, string]] : []),
+    ...(contact ? [[t('editor.buyerContact'), contact] as [string, string]] : []),
+  ]
   return (
     <div className="buyer-card">
-      <div className="buyer-card-main">
-        <strong className="buyer-name">{buyer.name}</strong>
-        {codes.length > 0 && (
-          <span className="buyer-codes">
-            {codes.map((c) => (
-              <span key={c} className="mono">
-                {c}
-              </span>
-            ))}
-          </span>
-        )}
-        {formatAddress(buyer.address) && <span className="buyer-line">{formatAddress(buyer.address)}</span>}
-        {contact && <span className="buyer-line">{contact}</span>}
-      </div>
+      <p className="buyer-name">{buyer.name}</p>
+      {rows.length > 0 && (
+        <dl className="buyer-facts">
+          {rows.map(([label, value, mono]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd className={mono ? 'tnum' : undefined}>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {children && <div className="buyer-card-actions">{children}</div>}
     </div>
   )
@@ -193,6 +199,8 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
   const [newClient, setNewClient] = useState(false)
   const [editing, setEditing] = useState(false)
   const [changing, setChanging] = useState(false)
+  // Asked once per buyer: the field stays while typing, even though the address is then set.
+  const [askEmail, setAskEmail] = useState(!buyer.email)
   const hasBuyer = !!buyer.name
   const showFields = editing || !!forceEdit
   const changeRef = useRef<HTMLButtonElement>(null)
@@ -200,6 +208,7 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
   const pickClient = (c: Client) => {
     setChanging(false)
     setEditing(false)
+    setAskEmail(!c.email)
     onPickClient(c)
   }
 
@@ -229,12 +238,12 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
         <>
           <BuyerPicker onPickClient={pickClient} onPickRegistry={(r) => void fromRegister(r)} autoFocus={changing} />
           <div className="buyer-alt">
-            <button type="button" className="btn btn-sm" onClick={() => setNewClient(true)}>
+            <button type="button" className="ed-text-btn" onClick={() => setNewClient(true)}>
               <UserPlusIcon />
               {t('buyer.newClient')}
             </button>
             {!hasBuyer && (
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}>
+              <button type="button" className="ed-text-btn" onClick={() => setEditing(true)}>
                 <PencilSimpleIcon />
                 {t('buyer.enterManually')}
               </button>
@@ -242,7 +251,7 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
             {changing && (
               <button
                 type="button"
-                className="btn btn-sm btn-ghost"
+                className="ed-text-btn"
                 onClick={() => {
                   setChanging(false)
                   requestAnimationFrame(() => changeRef.current?.focus())
@@ -257,16 +266,31 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
       )}
 
       {!picking && hasBuyer && !showFields && (
-        <BuyerCard buyer={buyer}>
-          <button ref={changeRef} type="button" className="btn btn-sm btn-ghost" onClick={() => setChanging(true)}>
-            <ArrowsLeftRightIcon />
-            {t('buyer.change')}
-          </button>
-          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}>
-            <PencilSimpleIcon />
-            {t('buyer.editDetails')}
-          </button>
-        </BuyerCard>
+        <>
+          <BuyerCard buyer={buyer} hideEmail={askEmail}>
+            <button ref={changeRef} type="button" className="ed-text-btn" onClick={() => setChanging(true)}>
+              <ArrowsLeftRightIcon />
+              {t('buyer.change')}
+            </button>
+            <button type="button" className="ed-text-btn" onClick={() => setEditing(true)}>
+              <PencilSimpleIcon />
+              {t('buyer.editDetails')}
+            </button>
+          </BuyerCard>
+          {askEmail && (
+            <div className="buyer-email">
+              <TextField
+                label={t('field.email')}
+                type="email"
+                path="buyer.email"
+                autoComplete="email"
+                value={buyer.email}
+                onChange={(v) => onChange({ ...buyer, email: v.trim() || undefined })}
+                hint={t('editor.buyerEmailHint')}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {!picking && showFields && (

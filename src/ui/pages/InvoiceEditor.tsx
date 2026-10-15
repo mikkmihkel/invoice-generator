@@ -2,22 +2,21 @@ import {
   ArrowCounterClockwiseIcon,
   ArrowLeftIcon,
   ArrowUUpLeftIcon,
+  BellRingingIcon,
   CaretRightIcon,
-  CheckCircleIcon,
   CheckIcon,
   CloudArrowUpIcon,
   CopyIcon,
   DownloadSimpleIcon,
   EnvelopeSimpleIcon,
+  EyeIcon,
   FileCodeIcon,
   LockSimpleIcon,
   PrinterIcon,
   ProhibitIcon,
   TrashIcon,
-  WarningCircleIcon,
-  XIcon,
 } from '@phosphor-icons/react'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   computeTotals,
@@ -34,7 +33,6 @@ import {
   type BuyerSnapshot,
   type Client,
   type Invoice,
-  type InvoiceTotals,
   type InvoiceType,
   type ValidationIssue,
 } from '../../domain'
@@ -42,23 +40,23 @@ import { buildUblXml, eInvoiceIssues } from '../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../integrations'
 import { invoiceFileName, preloadPdfMake, renderInvoicePdf, renderInvoicePdfBase64 } from '../../pdf'
 import { useApp } from '../AppContext'
-import { AccentPicker, TemplatePicker } from '../components/Appearance'
+import { BrandColors, TemplatePicker } from '../components/Appearance'
 import { useConfirm } from '../components/Dialog'
 import { pick } from '../i18n'
 import { CheckboxField, DecimalInput, FieldShell, fieldId, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
-import { StatusChip } from '../components/misc'
 import { IconButton, Menu, Skeleton, type MenuItem } from '../components/ui'
-import { formatDate, formatIban, formatMoney } from '../format'
-import { CURRENCIES, languageOptions, vatSchemeOptions } from '../options'
+import { formatDate, formatIban } from '../format'
+import { CURRENCIES, languageOptions, templateName, vatSchemeOptions } from '../options'
 import { useToast } from '../Toasts'
-import { addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
+import { accentColor, addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
 import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './editor/builders'
+import { DueAmount, EdSection, MoreOptions, NextStep, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
 import { LinesEditor } from './editor/LinesEditor'
-import { PdfPreview } from './editor/PdfPreview'
+import { PreviewDrawer } from './editor/PdfPreview'
 import { IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
-import { useAutosave, type SaveState } from './editor/useAutosave'
+import { useAutosave } from './editor/useAutosave'
 import { ValidationPanel } from './editor/ValidationPanel'
 import { numberingPreview } from './ProfileForm'
 
@@ -76,175 +74,38 @@ export default function InvoiceEditorRoute() {
   return <InvoiceEditor key={key} id={id} editorKey={key} />
 }
 
-/** One numbered block of the editor flow: Buyer → Lines → Terms → Design. */
-function Step({ n, id, title, done, hint, children }: { n: number; id: string; title: string; done?: boolean; hint?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="panel step" id={id} aria-labelledby={id + '-title'}>
-      <header className="step-head">
-        <span className={`step-no${done ? ' step-done' : ''}`} aria-hidden="true">
-          {done ? <CheckIcon size={12} /> : n}
-        </span>
-        <h2 id={id + '-title'}>{title}</h2>
-      </header>
-      {hint && <p className="step-hint">{hint}</p>}
-      <div className="step-body">{children}</div>
-    </section>
-  )
-}
-
-function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
-  const { t } = useApp()
-  if (state === 'error') {
-    return (
-      <span className="save-state save-error" aria-live="polite">
-        <WarningCircleIcon />
-        {t('editor.saveError')}{' '}
-        <button type="button" className="link-btn" onClick={onRetry}>
-          {t('editor.retrySave')}
-        </button>
-      </span>
-    )
-  }
-  const text = state === 'saving' || state === 'pending' ? t('editor.saving') : state === 'saved' ? t('editor.saved') : t('editor.autosaveHint')
-  return (
-    <span className={`save-state save-${state}`} aria-live="polite">
-      {state === 'saved' && <CheckIcon />}
-      {text}
-    </span>
-  )
-}
-
-function SideTotals({ totals, currency }: { totals: InvoiceTotals; currency: string }) {
-  const { t } = useApp()
-  return (
-    <dl className="side-totals">
-      {totals.showVat && (
-        <>
-          <div>
-            <dt>{t('totals.netShort')}</dt>
-            <dd>{formatMoney(totals.net, currency)}</dd>
-          </div>
-          <div>
-            <dt>{t('totals.vatShort')}</dt>
-            <dd>{formatMoney(totals.vat, currency)}</dd>
-          </div>
-        </>
-      )}
-      <div className="grand">
-        <dt>{t('totals.grossShort')}</dt>
-        <dd>{formatMoney(totals.gross, currency)}</dd>
-      </div>
-    </dl>
-  )
-}
-
-/** The moment right after issuing: the number, and the three ways to send it on. */
-function NextStep({
-  invoice,
-  busy,
-  hasGoogle,
-  folder,
-  onEmail,
-  onPdf,
-  onDrive,
-  onDismiss,
-}: {
-  invoice: Invoice
-  busy: string | null
-  hasGoogle: boolean
-  folder: string
-  onEmail: () => void
-  onPdf: () => void
-  onDrive: () => void
-  onDismiss: () => void
-}) {
-  const { t } = useApp()
-  const ref = useRef<HTMLElement>(null)
-  useEffect(() => ref.current?.focus({ preventScroll: true }), [])
-  return (
-    <section ref={ref} className="next-step" aria-labelledby="next-title" tabIndex={-1}>
-      <div className="next-head">
-        <span className="next-icon">
-          <CheckCircleIcon size={22} />
-        </span>
-        <div className="next-text">
-          <h2 id="next-title">{t('next.title', { number: invoice.number })}</h2>
-          <p>{t('next.text')}</p>
-        </div>
-        <IconButton label={t('next.dismiss')} icon={<XIcon />} onClick={onDismiss} />
-      </div>
-      <div className="next-actions" role="group" aria-label={t('next.actions')}>
-        <button type="button" className="next-action next-primary" onClick={onEmail} disabled={busy !== null}>
-          <EnvelopeSimpleIcon size={20} />
-          <span className="na-text">
-            <span className="na-title">{t('actions.email')}</span>
-            <span className="na-sub">{invoice.buyer.email ? t('next.emailTo', { email: invoice.buyer.email }) : t('next.emailNoAddress')}</span>
-          </span>
-        </button>
-        <button type="button" className="next-action" onClick={onPdf} disabled={busy !== null}>
-          <DownloadSimpleIcon size={20} />
-          <span className="na-text">
-            <span className="na-title">{busy === 'pdf' ? t('common.working') : t('actions.downloadPdf')}</span>
-            <span className="na-sub">{t('next.pdf', { file: invoiceFileName(invoice, 'pdf') })}</span>
-          </span>
-        </button>
-        <button type="button" className="next-action" onClick={onDrive} disabled={busy !== null}>
-          <CloudArrowUpIcon size={20} />
-          <span className="na-text">
-            <span className="na-title">{busy === 'drive' ? t('common.working') : t('actions.drive')}</span>
-            <span className="na-sub">{hasGoogle ? t('next.driveFolder', { folder }) : t('next.driveSetup')}</span>
-          </span>
-        </button>
-      </div>
-    </section>
-  )
-}
-
-/** Secondary terms, collapsed unless the invoice already uses one of them. */
-function MoreOptions({ initiallyOpen, children }: { initiallyOpen: boolean; children: ReactNode }) {
-  const { t } = useApp()
-  const [open, setOpen] = useState(initiallyOpen)
-  return (
-    <details className="disclosure" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary>
-        <CaretRightIcon className="caret" />
-        <span className="disclosure-title">{t('editor.more')}</span>
-        <span className="disclosure-hint">{t('editor.moreHint')}</span>
-      </summary>
-      <div className="disclosure-body">{children}</div>
-    </details>
-  )
-}
-
 function EditorSkeleton() {
   const { t } = useApp()
   return (
-    <div className="page page-wide editor" role="status" aria-label={t('common.loading')}>
-      <Skeleton w={90} />
-      <Skeleton w={220} h={24} className="sk-title" />
-      <div className="editor-grid">
-        <div className="editor-form">
+    <div className="page ed" role="status" aria-label={t('common.loading')}>
+      <div className="ed-layout">
+        <div className="ed-main">
+          <Skeleton w={90} />
+          <Skeleton w={220} h={24} className="sk-title" />
           {[0, 1, 2].map((i) => (
-            <div className="panel step" key={i}>
+            <div className="ed-section" key={i}>
               <Skeleton w={140} h={16} />
               <Skeleton w="100%" h={32} />
               <Skeleton w="60%" h={32} />
             </div>
           ))}
         </div>
-        <div className="editor-side">
-          <div className="panel summary-panel">
-            <Skeleton w="50%" />
-            <Skeleton w="80%" h={28} />
-            <Skeleton w="100%" h={36} />
-          </div>
+        <div className="ed-side ed-side-skeleton">
+          <Skeleton w="50%" />
+          <Skeleton w="80%" h={28} />
+          <Skeleton w="100%" h={36} />
         </div>
       </div>
     </div>
   )
 }
 
-const errorsUnder = (issues: ValidationIssue[], test: (field: string) => boolean) => issues.some((i) => i.severity === 'error' && test(i.field))
+/** UI-level suggestion: without an e-mail address the invoice cannot be sent from the app. */
+const EMAIL_SUGGESTION: ValidationIssue = {
+  field: 'buyer.email',
+  severity: 'warning',
+  message: { et: 'Lisa ostja e-posti aadress, et arvet e-kirjaga saata.', en: 'Add the buyer’s e-mail address to send the invoice by e-mail.' },
+}
 
 function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const app = useApp()
@@ -256,11 +117,13 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
   const [invoice, setInvoiceState] = useState<Invoice | null>(null)
   const [notFound, setNotFound] = useState(false)
-  const [dialog, setDialog] = useState<null | 'issue' | 'paid' | 'email'>(null)
+  const [dialog, setDialog] = useState<null | 'issue' | 'paid' | 'email' | 'reminder'>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [justIssued, setJustIssued] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const persistedRef = useRef(false)
+  const previewBtn = useRef<HTMLButtonElement>(null)
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
@@ -357,6 +220,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const status = displayStatus(invoice)
   const errors = issues.filter((i) => i.severity === 'error')
   const warnings = issues.filter((i) => i.severity === 'warning')
+  const checklist = !ro && invoice.buyer.name && !invoice.buyer.email ? [...issues, EMAIL_SUGGESTION] : issues
   const predicted = numberingPreview(profile.numbering, Number(invoice.issueDate.slice(0, 4)) || undefined)
   const term = daysBetween(invoice.issueDate, invoice.dueDate)
   const note = vatSchemeNote(invoice.vatScheme, invoice.language, invoice.vatExemptionNote)
@@ -396,23 +260,20 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const title = invoice.number
     ? t(invoice.type === 'credit-note' ? 'editor.titleCredit' : 'editor.title', { number: invoice.number })
     : t(invoice.type === 'credit-note' ? 'editor.newCredit' : 'editor.new')
-  const meta = [invoice.buyer.name || t('list.noClient'), formatMoney(totals.gross, invoice.currency), ro && invoice.dueDate ? t('editor.dueMeta', { date: formatDate(invoice.dueDate) }) : '']
-    .filter(Boolean)
-    .join(' · ')
+  const meta = [invoice.buyer.name || t('list.noClient'), invoice.dueDate ? t('editor.dueMeta', { date: formatDate(invoice.dueDate) }) : ''].filter(Boolean).join(' · ')
 
-  // Step progress (drafts only): a step is done when it has its content and no blocking errors.
-  const isTermsField = (f: string) => !f.startsWith('buyer') && !f.startsWith('lines') && !f.startsWith('seller')
-  const stepDone = {
-    buyer: !ro && !!invoice.buyer.name && !errorsUnder(issues, (f) => f.startsWith('buyer')),
-    lines: !ro && invoice.lines.length > 0 && !errorsUnder(issues, (f) => f.startsWith('lines')),
-    terms: !ro && !errorsUnder(issues, isTermsField),
-  }
-  const moreOpen =
-    ro ||
-    invoice.type === 'prepayment' ||
-    !!(invoice.supplyDate || invoice.periodStart || invoice.periodEnd || invoice.orderReference || invoice.referenceNumber || invoice.eurExchangeRate) ||
-    invoice.currency.toUpperCase() !== 'EUR' ||
-    invoice.bankAccountIds.length > 0
+  // What "Lisavalikud" holds right now, so a closed section still tells what is in use.
+  const inUse = [
+    invoice.type !== 'invoice' ? t(`invoice.type.${invoice.type}`) : '',
+    invoice.supplyDate ? t('field.supplyDate') : '',
+    invoice.periodStart || invoice.periodEnd ? t('editor.period') : '',
+    invoice.orderReference ? t('field.orderReference') : '',
+    invoice.lateInterestPercentPerDay ? t('field.lateInterest') : '',
+    invoice.currency.toUpperCase() !== 'EUR' ? invoice.currency : '',
+    accounts.length > 1 && invoice.bankAccountIds.length > 0 ? t('editor.bankAccounts') : '',
+    invoice.notes ? t('field.notes') : '',
+  ].filter(Boolean)
+  const moreSummary = inUse.length ? t('editor.moreInUse', { list: inUse.join(', ') }) : t('editor.moreHintCalm')
 
   // ---- actions --------------------------------------------------------------
   const act = async (key: string, fn: () => Promise<void>) => {
@@ -558,197 +419,258 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const setTerm = (days: number) => set({ dueDate: addDaysISO(invoice.issueDate, Math.max(0, Math.round(days))) })
 
   const busyAny = busy !== null
+  // One obvious action for an issued invoice; everything else lives in "Rohkem".
+  const primary: null | 'email' | 'reminder' =
+    !ro || justIssued || invoice.status === 'cancelled' || invoice.status === 'paid' ? null : status === 'overdue' ? 'reminder' : 'email'
   const menuItems: MenuItem[] = [
+    ...(invoice.status === 'paid' ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
+    ...(primary === 'reminder' ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
+    { key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void saveToDrive() },
+    { key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void downloadXml() },
     { key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void print() },
-    { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, onSelect: () => void duplicate() },
+    { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: true, onSelect: () => void duplicate() },
     ...(invoice.type !== 'credit-note' && invoice.status !== 'cancelled' ? [{ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void creditNote() }] : []),
     ...(invoice.status === 'paid' ? [{ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void act('unpaid', () => changeStatus(app.markInvoiceUnpaid)) }] : []),
     ...(invoice.status === 'issued' ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
   ]
 
-  const scrollToValidation = () => {
-    const panel = document.getElementById('validation-panel')
-    panel?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
-    panel?.focus({ preventScroll: true })
-  }
+  const pdfButton = (
+    <button type="button" className="btn btn-sm" onClick={() => void downloadPdf()} disabled={busyAny}>
+      <DownloadSimpleIcon />
+      {busy === 'pdf' ? t('common.working') : ro ? t('actions.downloadPdf') : t('actions.previewPdf')}
+    </button>
+  )
 
   return (
-    <div className="page page-wide editor">
-      <div className="editor-head">
-        <Link to="/" className="back-link">
-          <ArrowLeftIcon />
-          {t('nav.invoices')}
-        </Link>
-        <div className="editor-head-row">
-          <div className="editor-title">
-            <div className="title-line">
-              <h1>{title}</h1>
-              <StatusChip status={status} />
-            </div>
-            <p className="editor-meta">
-              <span>{meta}</span>
-              {!ro && <SaveIndicator state={autosave.state} onRetry={() => void autosave.flush()} />}
-            </p>
-          </div>
-          <div className="editor-actions" role="toolbar" aria-label={t('editor.actions')}>
-            {!ro && (
-              <>
-                <button type="button" className="btn btn-ghost" onClick={() => void downloadPdf()} disabled={busyAny} title={t('actions.previewPdf')}>
-                  <DownloadSimpleIcon />
-                  <span className="collapse-label">{t('actions.previewPdf')}</span>
+    <div className={`page ed${ro ? ' ed-ro' : ' ed-draft'}`}>
+      <div className="ed-layout">
+        <div className="ed-main">
+          <header className="ed-head">
+            <Link to="/" className="back-link">
+              <ArrowLeftIcon />
+              {t('nav.invoices')}
+            </Link>
+            <div className="ed-head-row">
+              <div className="ed-title">
+                <div className="ed-title-line">
+                  <h1>{title}</h1>
+                  {ro && <StatusWord status={status} />}
+                </div>
+                <p className="ed-meta">{ro ? meta : <SaveIndicator state={autosave.state} onRetry={() => void autosave.flush()} />}</p>
+              </div>
+              <div className="ed-head-actions" role="group" aria-label={t('editor.actions')}>
+                <button ref={previewBtn} type="button" className={`btn${ro ? ' btn-text' : ''}`} onClick={() => setPreviewOpen(true)}>
+                  <EyeIcon />
+                  {t('preview.title')}
                 </button>
-                <button type="button" className="btn btn-ghost btn-danger-ghost" onClick={() => void deleteDraft()} disabled={busyAny} title={t('actions.deleteDraft')}>
-                  <TrashIcon />
-                  <span className="collapse-label">{t('actions.deleteDraft')}</span>
-                </button>
-              </>
-            )}
-            {ro && (
-              <>
-                {!justIssued && invoice.status !== 'cancelled' && (
-                  <button type="button" className="btn btn-primary" onClick={() => setDialog('email')} disabled={busyAny}>
-                    <EnvelopeSimpleIcon />
-                    {t('actions.email')}
-                  </button>
-                )}
-                {!justIssued && (
+                {!ro && <IconButton label={t('actions.deleteDraft')} icon={<TrashIcon size={18} />} className="icon-btn-danger" onClick={() => void deleteDraft()} disabled={busyAny} />}
+                {ro && (
                   <>
-                    <button type="button" className="btn" onClick={() => void downloadPdf()} disabled={busyAny} title={t('actions.downloadPdf')}>
+                    <button type="button" className="btn btn-text" onClick={() => void downloadPdf()} disabled={busyAny} title={t('actions.downloadPdf')}>
                       <DownloadSimpleIcon />
-                      <span className="collapse-label">{busy === 'pdf' ? t('common.working') : t('actions.downloadPdf')}</span>
+                      {busy === 'pdf' ? t('common.working') : t('editor.pdf')}
                     </button>
-                    <button type="button" className="btn" onClick={() => void saveToDrive()} disabled={busyAny} title={t('actions.drive')}>
-                      <CloudArrowUpIcon />
-                      <span className="collapse-label">{busy === 'drive' ? t('common.working') : t('actions.drive')}</span>
-                    </button>
+                    <Menu label={t('common.more')} text={t('editor.moreActions')} items={menuItems} disabled={busyAny} />
                   </>
                 )}
-                <button type="button" className="btn" onClick={() => void downloadXml()} disabled={busyAny} title={t('einvoice.title')}>
-                  <FileCodeIcon />
-                  <span className="collapse-label">{t('actions.downloadXml')}</span>
-                </button>
-                <Menu label={t('common.more')} items={menuItems} disabled={busyAny} />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+              </div>
+            </div>
+          </header>
 
-      {ro && justIssued && (
-        <NextStep
-          invoice={effective}
-          busy={busy}
-          hasGoogle={hasGoogle}
-          folder={settings.driveFolderName}
-          onEmail={() => setDialog('email')}
-          onPdf={() => void downloadPdf()}
-          onDrive={() => void saveToDrive()}
-          onDismiss={() => setJustIssued(false)}
-        />
-      )}
-
-      {ro && (
-        <div className={`status-strip${invoice.status === 'cancelled' ? ' strip-warn' : ''}`}>
-          <LockSimpleIcon size={18} className="strip-icon" />
-          <div className="strip-text">
-            <p>{invoice.status === 'cancelled' ? t('editor.cancelledBanner') : t('editor.lockedBanner')}</p>
-            {creditedBy.length > 0 && (
-              <p className="credited-by">
-                {t('editor.creditedBy')}{' '}
-                {creditedBy.map((cn, i) => (
-                  <span key={cn.id}>
-                    {i > 0 && ', '}
-                    <Link to={`/invoices/${cn.id}`}>{cn.number || t('list.draftNumber')}</Link>
-                  </span>
-                ))}
-              </p>
-            )}
-          </div>
-          {isUnpaid(invoice) && (
-            <button type="button" className="btn btn-sm btn-primary" onClick={() => setDialog('paid')} disabled={busyAny}>
-              <CheckIcon />
-              {t('actions.markPaid')}
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="editor-grid">
-        <fieldset className="editor-form plain-fieldset" disabled={ro}>
-          <legend className="visually-hidden">{title}</legend>
-
-          <Step n={1} id="sec-buyer" title={t('editor.buyer')} done={stepDone.buyer}>
-            <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} />
-          </Step>
-
-          <Step n={2} id="sec-lines" title={t('editor.lines')} done={stepDone.lines} hint={invoice.type === 'credit-note' ? t('editor.creditLinesHint') : undefined}>
-            <LinesEditor
-              lines={invoice.lines}
-              onChange={(lines) => set({ lines })}
-              vatScheme={invoice.vatScheme}
-              currency={invoice.currency}
-              totals={totals}
-              defaultUnit={profile.defaults.defaultUnit}
-              defaultVatRate={profile.defaults.defaultVatRate}
-              disabled={ro}
+          {ro && justIssued && (
+            <NextStep
+              invoice={effective}
+              busy={busy}
+              hasGoogle={hasGoogle}
+              folder={settings.driveFolderName}
+              onEmail={() => setDialog('email')}
+              onPdf={() => void downloadPdf()}
+              onDrive={() => void saveToDrive()}
+              onDismiss={() => setJustIssued(false)}
             />
-          </Step>
+          )}
 
-          <Step n={3} id="sec-terms" title={t('editor.terms')} done={stepDone.terms}>
-            <div className="grid">
-              <TextField
-                label={t('field.issueDate')}
-                type="date"
-                path="issueDate"
-                value={invoice.issueDate}
-                onChange={(v) => v && set({ issueDate: v, dueDate: addDaysISO(v, Math.max(0, term)) })}
-                required
+          {ro && (
+            <div className={`ed-locked${invoice.status === 'cancelled' ? ' ed-locked-warn' : ''}`}>
+              <LockSimpleIcon size={16} className="ed-locked-icon" />
+              <div>
+                <p>{invoice.status === 'cancelled' ? t('editor.cancelledBanner') : t('editor.lockedBanner')}</p>
+                {creditedBy.length > 0 && (
+                  <p className="credited-by">
+                    {t('editor.creditedBy')}{' '}
+                    {creditedBy.map((cn, i) => (
+                      <span key={cn.id}>
+                        {i > 0 && ', '}
+                        <Link to={`/invoices/${cn.id}`}>{cn.number || t('list.draftNumber')}</Link>
+                      </span>
+                    ))}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <fieldset className="ed-form" disabled={ro}>
+            <legend className="visually-hidden">{title}</legend>
+
+            <EdSection id="sec-buyer" title={t('editor.buyer')}>
+              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} />
+            </EdSection>
+
+            <EdSection
+              id="sec-lines"
+              title={t('editor.sectionLines')}
+              aside={totals.showVat ? t('editor.pricesExclVat') : undefined}
+              hint={invoice.type === 'credit-note' ? t('editor.creditLinesHint') : undefined}
+            >
+              <LinesEditor
+                lines={invoice.lines}
+                onChange={(lines) => set({ lines })}
+                vatScheme={invoice.vatScheme}
+                currency={invoice.currency}
+                totals={totals}
+                defaultUnit={profile.defaults.defaultUnit}
+                defaultVatRate={profile.defaults.defaultVatRate}
+                disabled={ro}
               />
-              <TextField label={t('field.dueDate')} type="date" path="dueDate" value={invoice.dueDate} onChange={(v) => v && set({ dueDate: v })} min={invoice.issueDate} required />
-              <FieldShell id={fieldId('paymentTerm')} label={t('field.paymentTerm')} className="span-2">
-                <div className="term-row">
-                  <div className="input-suffix term-days">
-                    <DecimalInput id={fieldId('paymentTerm')} className="num" value={term} onChange={(v) => setTerm(v ?? 0)} />
-                    <span aria-hidden="true">{t('common.days')}</span>
+            </EdSection>
+
+            <EdSection id="sec-terms" title={t('editor.sectionPayment')}>
+              <div className="grid">
+                {invoice.type === 'credit-note' && (
+                  <TextField
+                    className="span-2"
+                    label={t('field.creditedInvoiceNumber')}
+                    path="creditedInvoiceNumber"
+                    value={invoice.creditedInvoiceNumber}
+                    onChange={(v) => set({ creditedInvoiceNumber: v || undefined })}
+                    required
+                  />
+                )}
+                <TextField
+                  label={t('field.issueDate')}
+                  type="date"
+                  path="issueDate"
+                  value={invoice.issueDate}
+                  onChange={(v) => v && set({ issueDate: v, dueDate: addDaysISO(v, Math.max(0, term)) })}
+                  required
+                />
+                <TextField label={t('field.dueDate')} type="date" path="dueDate" value={invoice.dueDate} onChange={(v) => v && set({ dueDate: v })} min={invoice.issueDate} required />
+                <FieldShell id={fieldId('paymentTerm')} label={t('field.paymentTerm')} className="span-2">
+                  <div className="term-row">
+                    <div className="input-suffix term-days">
+                      <DecimalInput id={fieldId('paymentTerm')} className="num" value={term} onChange={(v) => setTerm(v ?? 0)} />
+                      <span aria-hidden="true">{t('common.days')}</span>
+                    </div>
+                    {!ro && (
+                      <div className="chip-group" role="group" aria-label={t('field.paymentTerm')}>
+                        {TERM_PRESETS.map((d) => (
+                          <button key={d} type="button" className="chip-btn" aria-pressed={term === d} onClick={() => setTerm(d)}>
+                            {t('editor.termDays', { days: d })}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {!ro && (
-                    <div className="chip-group" role="group" aria-label={t('field.paymentTerm')}>
-                      {TERM_PRESETS.map((d) => (
-                        <button key={d} type="button" className="chip-btn" aria-pressed={term === d} onClick={() => setTerm(d)}>
-                          {t('editor.termDays', { days: d })}
-                        </button>
-                      ))}
+                </FieldShell>
+                <SelectField
+                  className="span-2"
+                  label={t('field.vatScheme')}
+                  path="vatScheme"
+                  value={invoice.vatScheme}
+                  onChange={(vatScheme) => edit((inv) => withVatScheme(inv, vatScheme, profile.defaults.defaultVatRate))}
+                  options={vatSchemeOptions(t)}
+                  hint={t(`vat.explain.${invoice.vatScheme}`)}
+                />
+                {shown(invoice.referenceNumber) && (
+                  <FieldShell
+                    id={fieldId('referenceNumber')}
+                    label={t('field.referenceNumber')}
+                    hint={invoice.referenceNumber ? undefined : t('field.referenceNumberHint')}
+                    error={invoice.referenceNumber && !isValidReferenceNumber(invoice.referenceNumber) ? t('field.referenceNumberInvalid') : undefined}
+                  >
+                    <input
+                      id={fieldId('referenceNumber')}
+                      type="text"
+                      inputMode="numeric"
+                      className="tnum"
+                      value={invoice.referenceNumber ?? ''}
+                      aria-invalid={invoice.referenceNumber && !isValidReferenceNumber(invoice.referenceNumber) ? true : undefined}
+                      aria-describedby={invoice.referenceNumber ? undefined : fieldId('referenceNumber') + '-hint'}
+                      onChange={(e) => set({ referenceNumber: e.target.value.replace(/\s+/g, '') || undefined })}
+                    />
+                  </FieldShell>
+                )}
+              </div>
+              {!profile.vatRegistered && invoice.vatScheme !== 'not-registered' && !ro && <p className="notice notice-warn">{t('editor.notVatRegistered')}</p>}
+              {showNoteField && shown(invoice.vatExemptionNote) && (
+                <TextField label={noteField.label} path="vatExemptionNote" value={invoice.vatExemptionNote} onChange={(v) => set({ vatExemptionNote: v || undefined })} hint={noteField.hint} />
+              )}
+              {note && (
+                <p className="printed-note">
+                  <span className="printed-label">{t('editor.printedNote')}</span> {note}
+                </p>
+              )}
+            </EdSection>
+
+            <EdSection id="sec-appearance" title={t('editor.appearance')}>
+              {ro ? (
+                <dl className="ed-design-facts">
+                  <div>
+                    <dt>{t('field.invoiceLanguage')}</dt>
+                    <dd>{languageOptions(t).find((o) => o.value === invoice.language)?.label ?? invoice.language}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('appearance.template')}</dt>
+                    <dd>{templateName(invoice.templateId, lang)}</dd>
+                  </div>
+                  <div>
+                    <dt>{t('appearance.mode')}</dt>
+                    <dd className="ed-design-colors">
+                      {(invoice.colorMode ?? 'accent') !== 'mono' && <span className="ed-swatch" style={{ background: accentColor(invoice.accentColor) }} aria-hidden="true" />}
+                      {invoice.colorMode === 'duo' && invoice.secondaryColor && <span className="ed-swatch" style={{ background: accentColor(invoice.secondaryColor) }} aria-hidden="true" />}
+                      {t(`appearance.mode.${invoice.colorMode ?? 'accent'}`)}
+                    </dd>
+                  </div>
+                  {invoice.paymentQr && (
+                    <div>
+                      <dt>{t('editor.paymentQrShort')}</dt>
+                      <dd>{t('editor.paymentQrOn')}</dd>
                     </div>
                   )}
+                </dl>
+              ) : (
+                <>
+                <div className="grid">
+                  <SelectField label={t('field.invoiceLanguage')} path="language" value={invoice.language} onChange={(language) => set({ language })} options={languageOptions(t)} />
                 </div>
-              </FieldShell>
-              <SelectField
-                className="span-2"
-                label={t('field.vatScheme')}
-                path="vatScheme"
-                value={invoice.vatScheme}
-                onChange={(vatScheme) => edit((inv) => withVatScheme(inv, vatScheme, profile.defaults.defaultVatRate))}
-                options={vatSchemeOptions(t)}
-                hint={t(`vat.explain.${invoice.vatScheme}`)}
-              />
-            </div>
-            {!profile.vatRegistered && invoice.vatScheme !== 'not-registered' && !ro && <p className="notice notice-warn">{t('editor.notVatRegistered')}</p>}
-            {showNoteField && shown(invoice.vatExemptionNote) && (
-              <TextField label={noteField.label} path="vatExemptionNote" value={invoice.vatExemptionNote} onChange={(v) => set({ vatExemptionNote: v || undefined })} hint={noteField.hint} />
-            )}
-            {note && (
-              <p className="printed-note">
-                <span className="printed-label">{t('editor.printedNote')}</span> {note}
-              </p>
-            )}
-            {invoice.type === 'credit-note' && (
-              <div className="grid">
-                <TextField label={t('field.creditedInvoiceNumber')} path="creditedInvoiceNumber" value={invoice.creditedInvoiceNumber} onChange={(v) => set({ creditedInvoiceNumber: v || undefined })} required />
-              </div>
-            )}
-            {shown(invoice.notes) && <TextAreaField label={t('field.notes')} path="notes" value={invoice.notes} onChange={(v) => set({ notes: v || undefined })} hint={t('field.notesHint')} rows={2} />}
+                <TemplatePicker
+                  value={invoice.templateId}
+                  onChange={(templateId) => set({ templateId })}
+                  accent={invoice.accentColor}
+                  secondary={invoice.secondaryColor}
+                  mode={invoice.colorMode}
+                  disabled={ro}
+                  compact
+                />
+                <BrandColors
+                  value={{ accentColor: invoice.accentColor, secondaryColor: invoice.secondaryColor, colorMode: invoice.colorMode }}
+                  onChange={(patch) => set(patch)}
+                  logoDataUrl={effective.seller.logoDataUrl ?? profile.logoDataUrl}
+                  disabled={ro}
+                  compact
+                />
+                <CheckboxField label={t('field.paymentQr')} hint={t('field.paymentQrHint')} checked={!!invoice.paymentQr} onChange={(paymentQr) => set({ paymentQr })} disabled={ro} />
+                {!ro && (
+                  <p className="ed-quiet">
+                    {t('editor.designNote')} <Link to="/company">{t('editor.designNoteLink')}</Link>.
+                  </p>
+                )}
+                </>
+              )}
+            </EdSection>
 
-            <MoreOptions initiallyOpen={moreOpen}>
+            <MoreOptions initiallyOpen={ro} summary={moreSummary}>
               <div className="grid">
                 <SelectField<InvoiceType>
                   label={t('field.invoiceType')}
@@ -762,31 +684,17 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 )}
                 {shown(invoice.periodStart) && <TextField label={t('field.periodStart')} type="date" path="periodStart" value={invoice.periodStart} onChange={(v) => set({ periodStart: v || undefined })} />}
                 {shown(invoice.periodEnd) && <TextField label={t('field.periodEnd')} type="date" path="periodEnd" value={invoice.periodEnd} onChange={(v) => set({ periodEnd: v || undefined })} min={invoice.periodStart} />}
-                <FieldShell
-                  id={fieldId('referenceNumber')}
-                  label={t('field.referenceNumber')}
-                  hint={invoice.referenceNumber ? undefined : t('field.referenceNumberHint')}
-                  error={invoice.referenceNumber && !isValidReferenceNumber(invoice.referenceNumber) ? t('field.referenceNumberInvalid') : undefined}
-                >
-                  <input
-                    id={fieldId('referenceNumber')}
-                    type="text"
-                    inputMode="numeric"
-                    className="mono"
-                    value={invoice.referenceNumber ?? ''}
-                    aria-invalid={invoice.referenceNumber && !isValidReferenceNumber(invoice.referenceNumber) ? true : undefined}
-                    onChange={(e) => set({ referenceNumber: e.target.value.replace(/\s+/g, '') || undefined })}
-                  />
-                </FieldShell>
                 {shown(invoice.orderReference) && <TextField label={t('field.orderReference')} path="orderReference" value={invoice.orderReference} onChange={(v) => set({ orderReference: v || undefined })} />}
-                {shown(invoice.lateInterestPercentPerDay) && <NumberField
-                  label={t('field.lateInterest')}
-                  path="lateInterestPercentPerDay"
-                  value={invoice.lateInterestPercentPerDay}
-                  onChange={(v) => set({ lateInterestPercentPerDay: v ?? undefined })}
-                  allowEmpty
-                  suffix={t('common.percentPerDay')}
-                />}
+                {shown(invoice.lateInterestPercentPerDay) && (
+                  <NumberField
+                    label={t('field.lateInterest')}
+                    path="lateInterestPercentPerDay"
+                    value={invoice.lateInterestPercentPerDay}
+                    onChange={(v) => set({ lateInterestPercentPerDay: v ?? undefined })}
+                    allowEmpty
+                    suffix={t('common.percentPerDay')}
+                  />
+                )}
                 <SelectField label={t('field.currency')} path="currency" value={invoice.currency} onChange={(currency) => set({ currency })} options={[...new Set([invoice.currency, ...CURRENCIES])].map((c) => ({ value: c, label: c }))} />
                 {invoice.currency.toUpperCase() !== 'EUR' && totals.vat !== 0 && (
                   <NumberField
@@ -815,109 +723,107 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                             set({ bankAccountIds: next.length === accounts.length ? [] : next })
                           }}
                         />
-                        <span className="mono">{formatIban(a.iban)}</span>
+                        <span className="tnum">{formatIban(a.iban)}</span>
                         {a.bankName && <span className="muted">{a.bankName}</span>}
                       </label>
                     )
                   })}
                 </fieldset>
               )}
+              {shown(invoice.notes) && <TextAreaField label={t('field.notes')} path="notes" value={invoice.notes} onChange={(v) => set({ notes: v || undefined })} hint={t('field.notesHint')} rows={3} />}
             </MoreOptions>
-          </Step>
+          </fieldset>
+        </div>
 
-          <Step n={4} id="sec-appearance" title={t('editor.appearance')}>
-            <div className="grid">
-              <SelectField label={t('field.invoiceLanguage')} path="language" value={invoice.language} onChange={(language) => set({ language })} options={languageOptions(t)} />
-              <AccentPicker value={invoice.accentColor} onChange={(accentColor) => set({ accentColor })} disabled={ro} />
+        {!ro ? (
+          <aside className="ed-side" aria-label={t('editor.sideLabel')}>
+            <DueAmount totals={totals} currency={invoice.currency} />
+            <ValidationPanel issues={checklist} summaryId="issue-summary" />
+            <div className="ed-issue">
+              <button
+                type="button"
+                className="btn btn-primary ed-issue-btn"
+                onClick={() => setDialog('issue')}
+                disabled={errors.length > 0 || busyAny}
+                title={errors.length ? t('issue.blocked') : undefined}
+                aria-describedby={errors.length ? 'issue-summary' : 'issue-note'}
+              >
+                {t('actions.issue')}
+              </button>
+              <p id="issue-note" className="ed-issue-note">
+                {t('editor.willGetNumber', { number: predicted })}
+              </p>
             </div>
-            <TemplatePicker value={invoice.templateId} onChange={(templateId) => set({ templateId })} accent={invoice.accentColor} disabled={ro} compact />
-            <CheckboxField label={t('field.paymentQr')} hint={t('field.paymentQrHint')} checked={!!invoice.paymentQr} onChange={(paymentQr) => set({ paymentQr })} disabled={ro} />
-          </Step>
-        </fieldset>
-
-        <aside className="editor-side">
-          <section className="panel summary-panel" aria-labelledby="summary-title">
-            <h2 id="summary-title" className="panel-title">
-              {t('totals.title')}
-            </h2>
-            <SideTotals totals={totals} currency={invoice.currency} />
-            {!ro ? (
-              <div className="issue-box">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-block"
-                  onClick={() => setDialog('issue')}
-                  disabled={errors.length > 0 || busyAny}
-                  title={errors.length ? t('issue.blocked') : undefined}
-                  aria-describedby={errors.length ? 'issue-summary' : undefined}
-                >
-                  {t('actions.issue')}
-                </button>
-                {errors.length > 0 ? (
-                  <button type="button" id="issue-summary" className="link-btn issue-summary" onClick={scrollToValidation}>
-                    <WarningCircleIcon />
-                    {t('issue.errorsSummary', { count: errors.length })}
+          </aside>
+        ) : (
+          <aside className="ed-side ed-side-ro" aria-label={t('editor.sideLabel')}>
+            <DueAmount totals={totals} currency={invoice.currency} />
+            <dl className="ed-facts">
+              {invoice.issuedAt && (
+                <div>
+                  <dt>{t('status.issued')}</dt>
+                  <dd>{formatDate(invoice.issuedAt.slice(0, 10))}</dd>
+                </div>
+              )}
+              <div>
+                <dt>{t('field.dueDate')}</dt>
+                <dd className={status === 'overdue' ? 'ed-overdue' : undefined}>{formatDate(invoice.dueDate)}</dd>
+              </div>
+              {invoice.paidAt && (
+                <div>
+                  <dt>{t('status.paid')}</dt>
+                  <dd>{formatDate(invoice.paidAt)}</dd>
+                </div>
+              )}
+              {invoice.referenceNumber && (
+                <div>
+                  <dt>{t('field.referenceNumber')}</dt>
+                  <dd className="tnum">{invoice.referenceNumber}</dd>
+                </div>
+              )}
+            </dl>
+            {(primary || isUnpaid(invoice)) && (
+              <div className="ed-issue">
+                {primary && (
+                  <button type="button" className="btn btn-primary ed-issue-btn" onClick={() => setDialog(primary)} disabled={busyAny}>
+                    {primary === 'reminder' ? <BellRingingIcon /> : <EnvelopeSimpleIcon />}
+                    {primary === 'reminder' ? t('editor.sendReminder') : t('actions.email')}
                   </button>
-                ) : (
-                  <p className="issue-hint">{warnings.length ? t('issue.readyWithWarnings') : t('issue.ready', { number: predicted })}</p>
+                )}
+                {isUnpaid(invoice) && (
+                  <button type="button" className={`btn ed-issue-btn${primary ? '' : ' btn-primary'}`} onClick={() => setDialog('paid')} disabled={busyAny}>
+                    <CheckIcon />
+                    {t('actions.markPaid')}
+                  </button>
                 )}
               </div>
-            ) : (
-              <dl className="side-facts">
-                {invoice.issuedAt && (
-                  <div>
-                    <dt>{t('status.issued')}</dt>
-                    <dd>{formatDate(invoice.issuedAt.slice(0, 10))}</dd>
-                  </div>
-                )}
-                <div>
-                  <dt>{t('field.dueDate')}</dt>
-                  <dd>{formatDate(invoice.dueDate)}</dd>
-                </div>
-                {invoice.paidAt && (
-                  <div>
-                    <dt>{t('status.paid')}</dt>
-                    <dd>{formatDate(invoice.paidAt)}</dd>
-                  </div>
-                )}
-                {invoice.referenceNumber && (
-                  <div>
-                    <dt>{t('field.referenceNumber')}</dt>
-                    <dd>{invoice.referenceNumber}</dd>
-                  </div>
-                )}
-              </dl>
             )}
-          </section>
-          {!ro && <ValidationPanel issues={issues} />}
-          {ro && (
-            <section className="panel einvoice-panel" aria-labelledby="einvoice-title">
-              <h2 id="einvoice-title" className="panel-title">
-                {t('einvoice.title')}
-              </h2>
-              {xmlIssues.length > 0 && (
-                <ul className="notice notice-warn xml-issues">
+            {xmlIssues.length > 0 && (
+              <section className="ed-einvoice" aria-labelledby="einvoice-title">
+                <h2 id="einvoice-title">{t('einvoice.title')}</h2>
+                <ul className="xml-issues">
                   {xmlIssues.map((i) => (
                     <li key={i.field + i.message.et}>{pick(i.message, lang)}</li>
                   ))}
                 </ul>
-              )}
-              <details className="disclosure disclosure-plain">
-                <summary>
-                  <CaretRightIcon className="caret" />
-                  <span className="disclosure-title">{t('editor.einvoiceMore')}</span>
-                </summary>
-                <p className="disclosure-body small">{t('einvoice.explain')}</p>
-              </details>
-            </section>
-          )}
-          <PdfPreview invoice={effective} />
-        </aside>
+                <details className="disclosure disclosure-plain">
+                  <summary>
+                    <CaretRightIcon className="caret" />
+                    <span className="disclosure-title">{t('editor.einvoiceMore')}</span>
+                  </summary>
+                  <p className="disclosure-body small">{t('einvoice.explain')}</p>
+                </details>
+              </section>
+            )}
+          </aside>
+        )}
       </div>
+
+      <PreviewDrawer invoice={effective} open={previewOpen} onClose={() => setPreviewOpen(false)} actions={pdfButton} returnFocus={previewBtn} />
 
       {dialog === 'issue' && <IssueDialog predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
       {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus((id) => app.markInvoicePaid(id, paidAt)).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}
-      {dialog === 'email' && <EmailDialog invoice={effective} onClose={() => setDialog(null)} />}
+      {(dialog === 'email' || dialog === 'reminder') && <EmailDialog invoice={effective} kind={dialog === 'reminder' ? 'reminder' : 'invoice'} onClose={() => setDialog(null)} />}
     </div>
   )
 }

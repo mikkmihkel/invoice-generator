@@ -1,10 +1,14 @@
 /*
- * Design tokens. One neutral ramp (cool zinc), one accent (deep petrol), semantic colours only for real state.
- * Shape: 4 px (chips, kbd) / 6 px (controls) / 10 px (panels, overlays). Spacing on a 4 px grid.
+ * Design tokens. Calm desktop-tool system: the platform's own font, cool neutrals, one deep green accent,
+ * semantic colours only for real state (overdue, due soon, paid). Hairlines instead of boxes; shadows only on overlays.
+ * Shape: 4 px (chips, kbd) / 6 px (controls) / 8 px (panels, overlays). Spacing on a 4 px grid.
  */
 :root {
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  /* Figures (numbers, IBANs, invoice numbers) use the same face with tabular digits. */
+  --font-mono: var(--font-sans);
+  /* Real code only (client IDs, error details). */
+  --font-code: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   --fs-xs: 12px;
   --fs-sm: 13px;
@@ -15,7 +19,7 @@
 
   --r-xs: 4px;
   --r-sm: 6px;
-  --r-md: 10px;
+  --r-md: 8px;
 
   --s-1: 4px;
   --s-2: 8px;
@@ -31,73 +35,78 @@
   --h-control-sm: 28px;
   --topbar-h: 56px;
   --tabbar-h: 0px;
+  --list-w: 420px;
 
   --dur-fast: 120ms;
   --dur: 160ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
 
   /* Light */
-  --bg: #f4f5f6;
-  --surface: #fbfbfc;
-  --surface-2: #f0f1f3;
-  --surface-3: #e6e8eb;
-  --border: #e0e3e7;
-  --border-strong: #c6cbd2;
-  --border-input: #878e98;
-  --text: #16191d;
-  --text-2: #434a53;
-  --text-3: #5f6772;
+  --bg: #fbfbfc;
+  --surface: #ffffff;
+  --surface-2: #f6f7f8;
+  --surface-3: #f1f2f4;
+  --border: #e6e8eb;
+  --border-soft: #ecedf0;
+  --border-strong: #d3d6db;
+  --border-input: #8f959d;
+  --text: #1d1f23;
+  --text-2: #5b616a;
+  --text-3: #6b717a;
 
-  --accent: #1a5d6e;
-  --accent-hover: #154e5c;
-  --accent-active: #11414d;
-  --accent-text: #175769;
-  --accent-soft: #e3eef0;
-  --accent-soft-border: #bcd5db;
-  --on-accent: #f5fafb;
-  --focus: #2a7d92;
-  --ring: rgb(26 93 110 / 0.18);
+  --accent: #1f6b4a;
+  --accent-hover: #185a3d;
+  --accent-active: #134a32;
+  --accent-text: #1f6b4a;
+  --accent-soft: #eff3f1;
+  --accent-soft-border: #c9dbd1;
+  --on-accent: #ffffff;
+  --focus: #1f6b4a;
+  --ring: rgb(31 107 74 / 0.15);
+  --selected: #eff3f1;
 
-  --success: #1d6a44;
-  --success-soft: #e2f0e7;
-  --danger: #b0281f;
-  --danger-hover: #95211a;
-  --danger-soft: #fbe9e7;
-  --danger-border: #f0c3be;
-  --warning: #7f5600;
-  --warning-soft: #faf0d9;
-  --warning-border: #e9d29b;
-  --on-danger: #fdf6f5;
+  --success: #1e6b45;
+  --success-soft: #e8f1ec;
+  --danger: #b3261e;
+  --danger-hover: #941f18;
+  --danger-soft: #fbeae8;
+  --danger-border: #f0c4bf;
+  --warning: #8a5300;
+  --warning-soft: #fbf1e1;
+  --warning-border: #ebd3a6;
+  --on-danger: #ffffff;
 
-  --backdrop: rgb(14 18 22 / 0.42);
-  --shadow-overlay: 0 12px 32px -8px rgb(16 32 40 / 0.18), 0 2px 6px rgb(16 32 40 / 0.06);
-  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath d='M48 96l80 80 80-80' fill='none' stroke='%235f6772' stroke-width='20' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --backdrop: rgb(17 20 24 / 0.36);
+  --shadow-overlay: 0 12px 32px -8px rgb(20 24 30 / 0.16), 0 2px 6px rgb(20 24 30 / 0.06);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath d='M48 96l80 80 80-80' fill='none' stroke='%235b616a' stroke-width='20' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e1012;
-    --surface: #15181b;
-    --surface-2: #1b1f23;
-    --surface-3: #252a30;
-    --border: #272c32;
-    --border-strong: #3a4149;
-    --border-input: #646c76;
-    --text: #e6e8eb;
-    --text-2: #b4bac2;
-    --text-3: #8f97a1;
+    --bg: #141618;
+    --surface: #1a1d20;
+    --surface-2: #212428;
+    --surface-3: #282c31;
+    --border: #2d3136;
+    --border-soft: #26292e;
+    --border-strong: #3c4148;
+    --border-input: #6c727b;
+    --text: #e7e9ec;
+    --text-2: #aab0b8;
+    --text-3: #969ca4;
 
-    --accent: #5aa3b5;
-    --accent-hover: #6db1c2;
-    --accent-active: #7fbecd;
-    --accent-text: #78bccc;
-    --accent-soft: #14282d;
-    --accent-soft-border: #24454d;
-    --on-accent: #071518;
-    --focus: #78bccc;
-    --ring: rgb(120 188 204 / 0.22);
+    --accent: #4dae80;
+    --accent-hover: #5dbd8f;
+    --accent-active: #6cc79b;
+    --accent-text: #6cc79b;
+    --accent-soft: #17271f;
+    --accent-soft-border: #27493a;
+    --on-accent: #04120b;
+    --focus: #6cc79b;
+    --ring: rgb(108 199 155 / 0.22);
+    --selected: #1a2a22;
 
     --success: #6cc596;
     --success-soft: #13261b;
@@ -112,7 +121,7 @@
 
     --backdrop: rgb(0 0 0 / 0.6);
     --shadow-overlay: 0 16px 40px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.4);
-    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath d='M48 96l80 80 80-80' fill='none' stroke='%238f97a1' stroke-width='20' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath d='M48 96l80 80 80-80' fill='none' stroke='%23969ca4' stroke-width='20' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 
     color-scheme: dark;
   }

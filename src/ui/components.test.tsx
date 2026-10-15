@@ -35,7 +35,8 @@ describe('ValidationPanel', () => {
         <ValidationPanel issues={ISSUES} />
       </AppProvider>,
     )
-    expect(screen.getByText(/Vigu: 1 · Hoiatusi: 1/)).toBeInTheDocument()
+    // Blocking problems are listed right away under a one-line summary.
+    expect(screen.getByRole('button', { name: 'Vigu enne väljastamist: 1' })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('KMS § 37 lg 7 p 4')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Ostja KMKR number puudub.' }))
     expect(screen.getByLabelText('VAT')).toHaveFocus()
@@ -50,6 +51,20 @@ describe('ValidationPanel', () => {
     )
     expect(screen.queryByRole('button', { name: 'Müüja KMKR number on vigane.' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Paranda ettevõtte andmetes/ })).toHaveAttribute('href', '#/company?focus=vatNumber')
+  })
+
+  it('folds suggestions into one line that expands', () => {
+    render(
+      <AppProvider repository={createMemoryRepo()}>
+        <ValidationPanel issues={[ISSUES[1]]} />
+      </AppProvider>,
+    )
+    const summary = screen.getByRole('button', { name: 'Kõik kohustuslikud andmed on olemas. 1 soovitus' })
+    expect(summary).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: 'Maksetähtaeg on minevikus.' })).not.toBeInTheDocument()
+    fireEvent.click(summary)
+    expect(summary).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Maksetähtaeg on minevikus.' })).toBeInTheDocument()
   })
 
   it('confirms when there are no issues', () => {

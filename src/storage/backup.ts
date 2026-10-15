@@ -20,6 +20,7 @@ const INVOICE_TYPES = ['invoice', 'credit-note', 'prepayment']
 const LANGUAGES = ['et', 'en', 'et-en']
 const UI_LANGUAGES = ['et', 'en']
 const CLIENT_KINDS = ['company', 'person']
+const COLOR_MODES = ['mono', 'accent', 'duo']
 const VAT_SCHEMES = [
   'not-registered',
   'domestic',
@@ -258,6 +259,8 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
     c.optStr(k, { et, en })
   }
   c.optMatch('accentColor', { et: 'värv', en: 'accent colour' }, HEX_COLOR)
+  c.optMatch('secondaryColor', { et: 'lisavärv', en: 'secondary colour' }, HEX_COLOR)
+  c.optOneOf('colorMode', { et: 'värvilahendus', en: 'colour mode' }, COLOR_MODES)
   if (seller) {
     c.optMatch('logoDataUrl', { et: 'müüja logo', en: 'seller logo' }, LOGO_DATA_URL, seller)
     c.optStr('website', { et: 'müüja veebileht', en: 'seller website' }, seller)
@@ -286,6 +289,8 @@ function checkProfile(r: Record<string, unknown>): Text | null {
     c.str('templateId', { et: 'arve kujundus', en: 'invoice template' }, false, d)
     c.str('accentColor', { et: 'arve värv', en: 'invoice accent colour' }, false, d)
     c.optMatch('accentColor', { et: 'arve värv', en: 'invoice accent colour' }, HEX_COLOR, d)
+    c.optMatch('secondaryColor', { et: 'arve lisavärv', en: 'invoice secondary colour' }, HEX_COLOR, d)
+    c.optOneOf('colorMode', { et: 'arve värvilahendus', en: 'invoice colour mode' }, COLOR_MODES, d)
     c.oneOf('language', { et: 'arve keel', en: 'invoice language' }, LANGUAGES, d)
     c.str('currency', { et: 'valuuta', en: 'currency' }, false, d)
     c.oneOf('vatScheme', { et: 'käibemaksurežiim', en: 'VAT scheme' }, VAT_SCHEMES, d)

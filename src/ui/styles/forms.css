@@ -258,6 +258,29 @@ fieldset:disabled .template-card:not(.selected) {
   background: repeating-linear-gradient(#e1e4e8 0 1px, transparent 1px 6px);
 }
 
+/* Two-colour thumbnails ('duo'): the same elements the PDF templates give the secondary colour. */
+.tpl-duo.tpl-standard .tpl-line.short,
+.tpl-duo.tpl-minimal .tpl-line,
+.tpl-duo.tpl-modern .tpl-line.short {
+  background: var(--tpl-second);
+}
+.tpl-duo.tpl-modern .tpl-table {
+  border-top: 2px solid var(--tpl-second);
+}
+.tpl-duo.tpl-classic .tpl-table {
+  border-color: var(--tpl-second);
+}
+.tpl-duo.tpl-classic .tpl-head {
+  background: color-mix(in srgb, var(--tpl-accent) 20%, #ffffff);
+}
+.tpl-duo.tpl-bold {
+  border-left: 4px solid var(--tpl-second);
+}
+.tpl-duo.tpl-compact .tpl-table {
+  border-top: 4px solid var(--tpl-accent);
+  background: repeating-linear-gradient(color-mix(in srgb, var(--tpl-second) 22%, #ffffff) 0 3px, transparent 3px 6px);
+}
+
 .accent-row {
   display: flex;
   flex-wrap: wrap;
@@ -283,6 +306,189 @@ fieldset:disabled .template-card:not(.selected) {
 .swatch:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+/* ---------- Brand colours and invoice design ---------- */
+
+.color-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.color-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.color-input-row .color-hex {
+  width: 112px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.swatch-label {
+  min-width: 0;
+  margin-right: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.color-field .swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-xs);
+}
+
+.brand-colors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.brand-mode {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.brand-mode .segmented {
+  max-width: 100%;
+}
+.brand-color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s-4) var(--s-6);
+}
+.brand-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 62ch;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.brand-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--warning);
+}
+.brand-logo-colors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-top: calc(-1 * var(--s-2));
+}
+.brand-logo-colors .btn {
+  margin-left: -8px;
+}
+
+.invoice-design {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: var(--s-8);
+}
+.invoice-design-compact {
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--s-6);
+}
+.design-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  min-width: 0;
+}
+.design-preview {
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--s-4));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.design-preview-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.design-preview-head .label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+/* The real first page of a PDF, as an image on a quiet ground. */
+.pdf-page-preview {
+  position: relative;
+  width: 100%;
+}
+.pdf-page-preview img,
+.pdf-page-placeholder {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 210 / 297;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  box-shadow: 0 1px 2px rgb(20 24 30 / 0.06);
+}
+.pdf-page-preview img {
+  transition: opacity var(--dur) var(--ease);
+}
+.pdf-page-preview.is-busy img {
+  opacity: 0.72;
+}
+.pdf-page-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10% 9%;
+}
+.pdf-page-placeholder .sk-right {
+  align-self: flex-end;
+}
+.pdf-page-status {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+}
+.pdf-page-failed {
+  padding: var(--s-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-xs);
+}
+
+/* On the company page the design section uses the full width: controls left, preview right. */
+@media (min-width: 1024px) {
+  .form-page #sec-design {
+    display: block;
+  }
+  .form-page #sec-design .section-head {
+    margin-bottom: var(--s-5);
+  }
+}
+
+@media (max-width: 899px) {
+  .invoice-design,
+  .invoice-design-compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .design-preview {
+    position: static;
+    max-width: 340px;
+  }
 }
 
 /* Settings rows: description left, actions right. */
@@ -470,6 +676,23 @@ fieldset:disabled .template-card:not(.selected) {
   display: flex;
   flex-direction: column;
   gap: var(--s-4);
+}
+.onb-more {
+  padding: 6px var(--s-4);
+}
+.onb-more[open] {
+  padding-bottom: var(--s-4);
+}
+.onb-more .disclosure-body > .stack > .section {
+  padding: var(--s-4) 0 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+.onb-more .disclosure-body > .stack > .section:first-child {
+  border-top: 0;
 }
 .onb-actions {
   display: flex;

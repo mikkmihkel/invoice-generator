@@ -88,7 +88,7 @@ export default function CompanyPage() {
           {t('company.refresh')}
         </button>
       </div>
-      <ProfileForm value={draft} onChange={change} sections={['company', 'vat', 'bank', 'logo', 'defaults', 'numbering', 'email']} />
+      <ProfileForm value={draft} onChange={change} sections={['company', 'vat', 'bank', 'design', 'defaults', 'numbering', 'email']} />
       <div className={`form-actions sticky-actions${dirty ? ' is-dirty' : ''}`}>
         {dirty && <span className="unsaved">{t('common.unsavedChanges')}</span>}
         <button

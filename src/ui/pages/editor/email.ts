@@ -87,3 +87,29 @@ export function emailTemplates(lang: InvoiceLanguage, d: Partial<InvoiceDefaults
   if (lang === 'et-en') return { subject: et.subject, body: `${et.body}\n\n---\n\n${en.body}` }
   return et
 }
+
+export type EmailKind = 'invoice' | 'reminder'
+
+const REMINDER_ET = {
+  subject: 'Meeldetuletus: arve {number} on tasumata',
+  body:
+    'Tere!\n\n' +
+    'Tuletame meelde, et arve nr {number} summas {total} maksetähtaeg oli {dueDate} ja meile ei ole makset veel laekunud. ' +
+    'Arve on uuesti manuses. Kui olete arve juba tasunud, pole selle kirjaga vaja midagi teha.\n\n' +
+    'Lugupidamisega\n{company}',
+}
+const REMINDER_EN = {
+  subject: 'Reminder: invoice {number} is unpaid',
+  body:
+    'Hello,\n\n' +
+    'This is a friendly reminder that invoice no. {number} for {total} was due on {dueDate} and we have not received the payment yet. ' +
+    'The invoice is attached again. If you have already paid it, please ignore this message.\n\n' +
+    'Best regards,\n{company}',
+}
+
+/** Payment reminder for an overdue invoice, in the invoice language (bilingual: Estonian subject, both bodies). */
+export function reminderTemplates(lang: InvoiceLanguage): { subject: string; body: string } {
+  if (lang === 'en') return REMINDER_EN
+  if (lang === 'et-en') return { subject: REMINDER_ET.subject, body: `${REMINDER_ET.body}\n\n---\n\n${REMINDER_EN.body}` }
+  return REMINDER_ET
+}

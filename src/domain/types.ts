@@ -20,6 +20,12 @@ export type InvoiceLanguage = 'et' | 'en' | 'et-en'
 /** Visual style of the generated PDF. `standard` is the default for new profiles; `compact` suits long invoices. */
 export type TemplateId = 'standard' | 'classic' | 'modern' | 'minimal' | 'bold' | 'compact'
 
+/**
+ * How the brand colours are used on the PDF: `mono` = ink and greys only (colour only in the logo),
+ * `accent` = the primary colour as accent (default), `duo` = primary + secondary colour.
+ */
+export type ColorMode = 'mono' | 'accent' | 'duo'
+
 export interface Address {
   /** Street, house and apartment, e.g. "Narva mnt 5-12". */
   street: string
@@ -79,6 +85,10 @@ export interface InvoiceDefaults {
   templateId: TemplateId
   /** Hex colour used by templates, e.g. "#1f6feb". */
   accentColor: string
+  /** Optional second brand colour (`#rrggbb`), used when `colorMode` is 'duo'. */
+  secondaryColor?: string
+  /** How the colours are applied; absent = 'accent'. */
+  colorMode?: ColorMode
   language: InvoiceLanguage
   /** ISO 4217, default "EUR". */
   currency: string
@@ -208,6 +218,10 @@ export interface Invoice {
   language: InvoiceLanguage
   templateId: TemplateId
   accentColor: string
+  /** Snapshot of `InvoiceDefaults.secondaryColor` (or a per-invoice override). */
+  secondaryColor?: string
+  /** Snapshot of `InvoiceDefaults.colorMode`; absent = 'accent'. */
+  colorMode?: ColorMode
   /**
    * Print an EPC069-12 "SEPA Credit Transfer" QR code (scan-to-pay) on the PDF. Optional, default off.
    * Only effective for EUR invoices with a positive total and an IBAN (see `src/pdf/machine.ts`).

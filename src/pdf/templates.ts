@@ -28,7 +28,7 @@ import {
   type PartyStyle,
   type TableStyle,
 } from './blocks'
-import { COLORS, readableOnWhite, shade, tint, type DocContext } from './context'
+import { COLORS, mutedOn, readableOnWhite, shade, tint, type DocContext } from './context'
 import { FONT } from './fonts'
 import type { LabelKey } from './labels'
 
@@ -99,6 +99,17 @@ const bilingual = (ctx: DocContext) => ctx.lang === 'et-en'
 /** Long invoices get tighter table rows so ~40 lines fit on two pages in the airy templates. */
 const isLong = (ctx: DocContext) => ctx.invoice.lines.length > 12
 
+// Colour modes: every template maps `ctx.accent` (the primary colour; a neutral ink in 'mono') to its main
+// coloured element and, in 'duo', gives its supporting elements (labels, rules, bars, zebra) `ctx.secondary`.
+
+/** A supporting element's colour: `duo(ctx.secondary)` in duo mode, otherwise the template's own `otherwise`. */
+function second(ctx: DocContext, otherwise: string, duo: (secondary: string) => string = (c) => c): string {
+  return ctx.colorMode === 'duo' ? duo(ctx.secondary) : otherwise
+}
+
+/** Secondary colour for small label text (≥ 4.5:1 on white). */
+const labelInk = (c: string) => readableOnWhite(c, 4.5)
+
 /** Small uppercase section heading ("MÜÜJA", "MAKSEANDMED"). */
 function heading(color: string, fontSize = 7.5, secondaryColor?: string): LabelStyle {
   return { fontSize, color, secondaryColor: secondaryColor ?? color, bold: true, uppercase: true, characterSpacing: 0.6 }
@@ -138,11 +149,12 @@ function standard(ctx: DocContext): TemplateDefinition {
   const W = PAGE_WIDTH - 2 * mx
   const bi = bilingual(ctx)
   const accentText = readableOnWhite(ctx.accent)
-  const head = heading(COLORS.muted, 7.5, COLORS.faint)
+  // Duo: headline amount in the primary colour, section labels and the table's header rule in the secondary.
+  const head = heading(second(ctx, COLORS.muted, labelInk), 7.5, second(ctx, COLORS.faint, () => COLORS.muted))
   const party: PartyStyle = { heading: head, headingGap: 6, nameSize: 10, fontSize: 9, color: COLORS.text, labelColor: COLORS.muted }
   const brand = logo(ctx, [170, 52], 'right') ?? { text: ctx.invoice.seller.name, font: FONT.strong, fontSize: 12, color: COLORS.ink, alignment: 'right' }
   const table: TableStyle = {
-    layout: tableLayout({ header: [0.8, COLORS.text], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.hairline], paddingX: 7, paddingY: isLong(ctx) ? 3.6 : 6.7, headerPaddingY: 5.5 }),
+    layout: tableLayout({ header: [0.8, second(ctx, COLORS.text)], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.hairline], paddingX: 7, paddingY: isLong(ctx) ? 3.6 : 6.7, headerPaddingY: 5.5 }),
     headerColor: COLORS.muted,
     headerSecondaryColor: COLORS.faint,
     headerFontSize: 8,
@@ -165,7 +177,7 @@ function standard(ctx: DocContext): TemplateDefinition {
   })
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 80, { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
-  const notes = notesBlock(ctx, { fontSize: 8, color: COLORS.text, mutedColor: COLORS.muted, heading: heading(COLORS.muted, 7, COLORS.faint), gap: 4 })
+  const notes = notesBlock(ctx, { fontSize: 8, color: COLORS.text, mutedColor: COLORS.muted, heading: { ...head, fontSize: 7 }, gap: 4 })
 
   const content: Content[] = [
     {
@@ -227,7 +239,8 @@ function classic(ctx: DocContext): TemplateDefinition {
   const bi = bilingual(ctx)
   const accentText = readableOnWhite(ctx.accent)
   const fill = ctx.accentTint
-  const line: [number, string] = [0.6, COLORS.rule]
+  // Duo: header fills stay a tint of the primary colour, the box rules take a softened secondary colour.
+  const line: [number, string] = [0.6, second(ctx, COLORS.rule, (c) => tint(c, 0.35))]
   const grid = (pad: number, py = pad - 2) => tableLayout({ top: line, header: line, rows: line, bottom: line, vertical: line, paddingX: pad, paddingY: py, edge: pad })
   const headStyle: LabelStyle = { fontSize: 7.5, color: shade(accentText, 0.1), secondaryColor: COLORS.muted, bold: true, uppercase: true, characterSpacing: 0.4 }
   const headCell = (key: LabelKey, props: Record<string, unknown> = {}) => withProps(inlineLabel(ctx, key, headStyle), { fillColor: fill, ...props })
@@ -332,8 +345,11 @@ function modern(ctx: DocContext): TemplateDefinition {
   const on = ctx.onAccent
   const onMuted = on === COLORS.white ? tint(ctx.accent, 0.68) : shade(ctx.accent, 0.6)
   const accentText = readableOnWhite(ctx.accent)
+  // Duo: the band in the primary colour; rules, labels and the payment box in the secondary.
+  const secondText = second(ctx, accentText, labelInk)
+  const secondRule = second(ctx, ctx.accent)
   const grand = grandTotal(ctx)
-  const head = heading(accentText, 7.5, COLORS.muted)
+  const head = heading(secondText, 7.5, COLORS.muted)
   const party: PartyStyle = { heading: head, headingGap: 7, nameSize: 10.5, fontSize: 9, color: COLORS.text, labelColor: COLORS.muted }
   // All document facts live in the band; its height follows the number of rows (Plex line = 1.3 em).
   const bandRows = metaRows(ctx)
@@ -344,15 +360,15 @@ function modern(ctx: DocContext): TemplateDefinition {
   const bandContent = Math.ceil(Math.max(leftHeight, rightHeight, 104))
   const bandHeight = top + bandContent + 28
   const table: TableStyle = {
-    layout: tableLayout({ header: [1.2, ctx.accent], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.hairline], paddingX: 8, paddingY: isLong(ctx) ? 3.1 : 6.7, headerPaddingY: 6 }),
-    headerColor: accentText,
+    layout: tableLayout({ header: [1.2, secondRule], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.hairline], paddingX: 8, paddingY: isLong(ctx) ? 3.1 : 6.7, headerPaddingY: 6 }),
+    headerColor: secondText,
     headerSecondaryColor: COLORS.muted,
     headerFontSize: 7.5,
     headerUppercase: true,
     headerCharacterSpacing: 0.5,
     bodyFontSize: isLong(ctx) ? 8.5 : 9,
   }
-  const breakdown = vatBreakdownTable(ctx, { ...table, bodyFontSize: 8.5, layout: tableLayout({ header: [0.8, ctx.accent], rows: [0.5, COLORS.hairline], paddingX: 8, paddingY: 4 }) })
+  const breakdown = vatBreakdownTable(ctx, { ...table, bodyFontSize: 8.5, layout: tableLayout({ header: [0.8, secondRule], rows: [0.5, COLORS.hairline], paddingX: 8, paddingY: 4 }) })
   const totals = totalsTable(ctx, {
     fontSize: 9,
     labelColor: COLORS.muted,
@@ -361,14 +377,15 @@ function modern(ctx: DocContext): TemplateDefinition {
     grandLabelSize: 9.5,
     grandFontSize: 13,
     grandColor: COLORS.ink,
-    grandLabelColor: accentText,
-    grandRule: [1.2, ctx.accent],
+    grandLabelColor: secondText,
+    grandRule: [1.2, secondRule],
     paddingY: 3.5,
     grandPaddingY: 6,
   })
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 80, { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
-  const notes = notesBlock(ctx, { fontSize: 8, color: COLORS.text, mutedColor: COLORS.muted, heading: heading(accentText, 7, COLORS.muted), gap: 4 })
+  const notes = notesBlock(ctx, { fontSize: 8, color: COLORS.text, mutedColor: COLORS.muted, heading: heading(secondText, 7, COLORS.muted), gap: 4 })
+  const boxFill = second(ctx, ctx.accentTint, () => ctx.secondaryTint)
 
   const band: Content = {
     table: {
@@ -426,8 +443,8 @@ function modern(ctx: DocContext): TemplateDefinition {
         widths: qr ? ['*', 'auto'] : ['*'],
         body: [
           [
-            { stack: [{ ...inlineLabel(ctx, 'bankDetails', head), margin: [0, 0, 0, 7] }, ...(pay.length ? [defList(ctx, pay, { fontSize: 9, labelSize: 8.5, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 18, paddingY: 1.2 })] : [])], fillColor: ctx.accentTint },
-            ...(qr ? [{ stack: [qr], fillColor: ctx.accentTint }] : []),
+            { stack: [{ ...inlineLabel(ctx, 'bankDetails', head), margin: [0, 0, 0, 7] }, ...(pay.length ? [defList(ctx, pay, { fontSize: 9, labelSize: 8.5, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 18, paddingY: 1.2 })] : [])], fillColor: boxFill },
+            ...(qr ? [{ stack: [qr], fillColor: boxFill }] : []),
           ],
         ],
       },
@@ -456,7 +473,8 @@ function minimal(ctx: DocContext): TemplateDefinition {
   const COL = (W - 3 * GAP) / 4
   const span = (n: number) => n * COL + (n - 1) * GAP
   const grand = grandTotal(ctx)
-  const lbl: LabelStyle = { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, uppercase: true, characterSpacing: 0.7 }
+  // Rules in the primary colour; in duo the small labels take the secondary colour.
+  const lbl: LabelStyle = { fontSize: 7, color: second(ctx, COLORS.muted, labelInk), secondaryColor: second(ctx, COLORS.faint, () => COLORS.muted), uppercase: true, characterSpacing: 0.7 }
   const party: PartyStyle = { heading: lbl, headingGap: 7, nameSize: 9.5, fontSize: 8.5, color: COLORS.ink, labelColor: COLORS.muted, lineGap: 1 }
   const brand = logo(ctx, [150, 40], 'right') ?? { text: ctx.invoice.seller.name, fontSize: 9.5, bold: true, color: COLORS.ink, alignment: 'right' }
   const facts: DefRow[] = [...metaRows(ctx), { key: grand.key, value: grand.value, strong: true }]
@@ -649,7 +667,8 @@ function bold(ctx: DocContext): TemplateDefinition {
     pageMargins: margins,
     defaultStyle: { font: FONT.sans, fontSize: 9, color: COLORS.text, lineHeight: 1.18 },
     header: continuationHeader(ctx, { marginX: mx, top: 22, fontSize: 7.5, color: COLORS.faint }),
-    background: (_page: number, size: ContextPageSize) => ({ canvas: [{ type: 'rect', x: 0, y: 0, w: 10, h: size.height, color: ctx.accent }] }),
+    // Duo: the amount block keeps the primary colour, the bar along the left edge takes the secondary.
+    background: (_page: number, size: ContextPageSize) => ({ canvas: [{ type: 'rect', x: 0, y: 0, w: 10, h: size.height, color: second(ctx, ctx.accent) }] }),
     content,
     footer: footer(ctx, { marginX: mx, fontSize: 7.5, color: COLORS.faint, top: 24 }),
   }
@@ -662,23 +681,25 @@ function compact(ctx: DocContext): TemplateDefinition {
   const margins: Margins = [mx, 36, mx, 46]
   const bi = bilingual(ctx)
   const accentText = readableOnWhite(ctx.accent)
+  const duo = ctx.colorMode === 'duo'
   const head = heading(COLORS.muted, 6.5, COLORS.faint)
   const party: PartyStyle = { heading: head, headingGap: 3, nameSize: 8.5, fontSize: 7.6, color: COLORS.text, labelColor: COLORS.muted }
   const brand = logo(ctx, [130, 34], 'right') ?? { text: ctx.invoice.seller.name, bold: true, fontSize: 9.5, color: COLORS.ink, alignment: 'right' }
   const def = { fontSize: 7.6, labelSize: 7.3, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 10, paddingY: 0.8 }
+  // Duo: the table header row filled with the primary colour, zebra rows in a tint of the secondary.
   const table: TableStyle = {
-    layout: tableLayout({ header: [0.6, COLORS.rule], bottom: [0.6, COLORS.rule], paddingX: 5, paddingY: 2.7, headerPaddingY: 4, edge: 4 }),
-    headerFill: COLORS.fill,
-    headerColor: COLORS.muted,
-    headerSecondaryColor: COLORS.faint,
+    layout: tableLayout({ header: [0.6, duo ? ctx.accent : COLORS.rule], bottom: [0.6, COLORS.rule], paddingX: 5, paddingY: 2.7, headerPaddingY: 4, edge: 4 }),
+    headerFill: duo ? ctx.accent : COLORS.fill,
+    headerColor: duo ? ctx.onAccent : COLORS.muted,
+    headerSecondaryColor: duo ? mutedOn(ctx.accent, ctx.onAccent) : COLORS.faint,
     headerFontSize: 6.8,
     headerUppercase: true,
     headerCharacterSpacing: 0.3,
     bodyFontSize: 7.6,
-    zebra: '#f8f9fa',
+    zebra: duo ? tint(ctx.secondary, 0.92) : '#f8f9fa',
     lineNumbers: true,
   }
-  const breakdown = vatBreakdownTable(ctx, { ...table, zebra: undefined, layout: tableLayout({ header: [0.5, COLORS.rule], bottom: [0.5, COLORS.rule], paddingX: 5, paddingY: 2, headerPaddingY: 3, edge: 4 }) })
+  const breakdown = vatBreakdownTable(ctx, { ...table, headerFill: COLORS.fill, headerColor: COLORS.muted, headerSecondaryColor: COLORS.faint, zebra: undefined, layout: tableLayout({ header: [0.5, COLORS.rule], bottom: [0.5, COLORS.rule], paddingX: 5, paddingY: 2, headerPaddingY: 3, edge: 4 }) })
   const totals = totalsTable(ctx, {
     fontSize: 7.8,
     labelColor: COLORS.muted,

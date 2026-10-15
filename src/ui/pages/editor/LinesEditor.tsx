@@ -71,7 +71,6 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
   return (
     <div className={cls}>
       <div className="line line-header" aria-hidden="true">
-        <span className="c-no">{t('lines.number')}</span>
         <span className="c-desc">{t('lines.description')}</span>
         <span className="c-qty">{t('lines.quantity')}</span>
         <span className="c-unit">{t('lines.unit')}</span>
@@ -87,9 +86,6 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
           const p = `lines.${i}`
           return (
             <li key={l.id} className="line" aria-label={t('lines.lineN', { n: i + 1 })} onKeyDown={onCellKey(i)}>
-              <span className="c-no" aria-hidden="true">
-                {i + 1}
-              </span>
               <div className="c-desc">
                 <label className="line-label" htmlFor={fieldId(`${p}.description`)}>
                   {t('lines.description')} {i + 1}
@@ -174,18 +170,17 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
       </datalist>
       <div className="lines-foot">
         {!disabled && (
-          <div className="btn-row">
-            <button type="button" className="btn btn-sm" onClick={add}>
+          <div className="lines-actions">
+            <button type="button" className="ed-text-btn" onClick={add} title={t('lines.enterHint')}>
               <PlusIcon />
               {t('lines.add')}
             </button>
             {!discountCol && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowDiscount(true)}>
+              <button type="button" className="ed-text-btn ed-text-btn-quiet" onClick={() => setShowDiscount(true)}>
                 <PercentIcon />
                 {t('lines.addDiscount')}
               </button>
             )}
-            <span className="lines-hint">{t('lines.enterHint')}</span>
           </div>
         )}
         <TotalsTable totals={totals} currency={currency} />

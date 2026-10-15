@@ -8,13 +8,17 @@ import { Dialog } from '../../components/Dialog'
 import { TextAreaField, TextField } from '../../components/fields'
 import { useToast } from '../../Toasts'
 import { errorMessage, fillTemplate } from '../../util'
-import { emailTemplates, emailVars, parseRecipients } from './email'
+import { emailTemplates, emailVars, parseRecipients, reminderTemplates, type EmailKind } from './email'
 
-export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
+/** Send the invoice PDF by e-mail; `kind="reminder"` starts from the payment reminder text instead. */
+export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { invoice: Invoice; onClose: () => void; kind?: EmailKind; onSent?: () => void }) {
   const { t, profile, settings } = useApp()
   const toast = useToast()
   const vars = useMemo(() => emailVars(invoice, invoice.seller.name || profile?.name || ''), [invoice, profile])
-  const tpl = useMemo(() => emailTemplates(invoice.language, profile?.defaults), [invoice.language, profile])
+  const tpl = useMemo(
+    () => (kind === 'reminder' ? reminderTemplates(invoice.language) : emailTemplates(invoice.language, profile?.defaults)),
+    [kind, invoice.language, profile],
+  )
   const [to, setTo] = useState(invoice.buyer.email ?? '')
   const [cc, setCc] = useState('')
   const [subject, setSubject] = useState(() => fillTemplate(tpl.subject, vars))
@@ -67,6 +71,7 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
       await googleSignIn(settings.googleClientId, ['gmail'])
       await sendViaGmail(settings.googleClientId, draft())
       toast.success(t('email.sent', { to: recipients.join(', ') }))
+      onSent?.()
       onClose()
     })
 
@@ -75,6 +80,7 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
       const shared = await shareFiles(draft())
       if (!shared) return // dismissed by the user
       toast.success(t('email.shared'))
+      onSent?.()
       onClose()
     })
 
@@ -85,6 +91,7 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
       // mailto: only takes bare addresses (RFC 6068).
       window.location.href = buildMailtoUrl({ ...rest, to: toList.valid.map((r) => r.address), cc: ccList.valid.map((r) => r.address) })
       toast.info(t('email.attachHint', { file: fileName }))
+      onSent?.()
       onClose()
     })
 
@@ -94,7 +101,7 @@ export function EmailDialog({ invoice, onClose }: { invoice: Invoice; onClose: (
 
   return (
     <Dialog
-      title={t('email.title', { number: invoice.number })}
+      title={t(kind === 'reminder' ? 'editor.reminderTitle' : 'email.title', { number: invoice.number })}
       onClose={onClose}
       closeLabel={t('common.close')}
       wide

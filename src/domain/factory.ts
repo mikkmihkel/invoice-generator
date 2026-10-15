@@ -1,3 +1,4 @@
+import { isColorMode, isHexColor } from './brand'
 import { STANDARD_VAT_RATE } from './law'
 import type {
   AppSettings,
@@ -183,5 +184,7 @@ export function createEmptyInvoice(profile: CompanyProfile, client?: Client): In
   }
   if (defaults.footerNote) invoice.footerNote = defaults.footerNote
   if (defaults.paymentQr) invoice.paymentQr = true
+  if (isHexColor(defaults.secondaryColor)) invoice.secondaryColor = defaults.secondaryColor
+  if (isColorMode(defaults.colorMode)) invoice.colorMode = defaults.colorMode
   return invoice
 }

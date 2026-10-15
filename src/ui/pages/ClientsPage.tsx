@@ -124,7 +124,7 @@ export default function ClientsPage() {
                       <td className="num col-count">{usage.get(c.id) ?? 0}</td>
                       <td className="col-actions">
                         <div className="row-actions row-actions-visible">
-                          <Link className="btn btn-sm" to={`/invoices/new?client=${encodeURIComponent(c.id)}`} aria-label={t('clients.newInvoiceFor', { name: c.name })} title={t('clients.newInvoiceFor', { name: c.name })}>
+                          <Link className="btn btn-text btn-sm" to={`/invoices/new?client=${encodeURIComponent(c.id)}`} aria-label={t('clients.newInvoiceFor', { name: c.name })} title={t('clients.newInvoiceFor', { name: c.name })}>
                             <FilePlusIcon />
                             <span className="collapse-label" aria-hidden="true">
                               {t('clients.newInvoice')}

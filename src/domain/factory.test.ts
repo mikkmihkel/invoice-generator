@@ -196,6 +196,27 @@ describe('createEmptyInvoice', () => {
     expect(createEmptyInvoice(p).vatScheme).toBe('domestic')
   })
 
+  it('snapshots the brand colours and colour mode', () => {
+    const p = registeredProfile()
+    expect(createEmptyInvoice(p)).not.toHaveProperty('secondaryColor')
+    expect(createEmptyInvoice(p)).not.toHaveProperty('colorMode')
+    p.defaults.secondaryColor = '#E0A100'
+    p.defaults.colorMode = 'duo'
+    const inv = createEmptyInvoice(p)
+    expect(inv).toMatchObject({ accentColor: '#1f4e79', secondaryColor: '#E0A100', colorMode: 'duo' })
+    p.defaults.colorMode = 'mono'
+    expect(inv.colorMode).toBe('duo')
+  })
+
+  it('drops an invalid secondary colour or colour mode', () => {
+    const p = registeredProfile()
+    p.defaults.secondaryColor = 'url(https://evil.example/x)'
+    p.defaults.colorMode = 'rainbow' as never
+    const inv = createEmptyInvoice(p)
+    expect(inv).not.toHaveProperty('secondaryColor')
+    expect(inv).not.toHaveProperty('colorMode')
+  })
+
   it('uses the configured payment term', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 11, 20, 12, 0))

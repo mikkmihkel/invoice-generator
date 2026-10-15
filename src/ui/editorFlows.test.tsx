@@ -227,3 +227,56 @@ describe('draft seller snapshot', () => {
     expect(repo.saveInvoice.mock.calls.at(-1)![0].seller).not.toHaveProperty('logoDataUrl')
   })
 })
+
+describe('preview drawer', () => {
+  it('renders the PDF only when opened, closes on Escape and revokes the document on unmount', async () => {
+    const { renderInvoicePdf } = await import('../pdf')
+    const render = vi.mocked(renderInvoicePdf)
+    render.mockClear()
+    vi.mocked(URL.revokeObjectURL).mockClear()
+    const draft = validDraft()
+    const repo = createMemoryRepo({ profile, clients: [client], invoices: [draft] })
+    const { unmount } = renderAt(`#/invoices/${draft.id}`, repo)
+    const open = await screen.findByRole('button', { name: 'Eelvaade' })
+    expect(render).not.toHaveBeenCalled()
+    fireEvent.click(open)
+    const drawer = await screen.findByRole('dialog', { name: 'Eelvaade' })
+    expect(await within(drawer).findByTitle('Arve PDF-eelvaade')).toHaveAttribute('src', expect.stringContaining('blob:preview'))
+    expect(render).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Eelvaade' })).not.toBeInTheDocument()
+    await waitFor(() => expect(open).toHaveFocus())
+    // Same invoice version: reopening reuses the rendered document.
+    fireEvent.click(open)
+    await screen.findByRole('dialog', { name: 'Eelvaade' })
+    expect(render).toHaveBeenCalledTimes(1)
+    unmount()
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview')
+  })
+})
+
+describe('issued invoice actions', () => {
+  it('offers a payment reminder as the one primary action once overdue', async () => {
+    const overdue = { ...validDraft(), number: '2026-0005', status: 'issued' as const, issueDate: '2026-01-05', dueDate: '2026-01-19', issuedAt: '2026-01-05T10:00:00Z' }
+    const repo = createMemoryRepo({ profile, clients: [client], invoices: [overdue] })
+    renderAt(`#/invoices/${overdue.id}`, repo)
+    fireEvent.click(await screen.findByRole('button', { name: 'Saada meeldetuletus' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Meeldetuletus arve 2026-0005 kohta' })
+    expect(within(dialog).getByLabelText('Teema')).toHaveValue('Meeldetuletus: arve 2026-0005 on tasumata')
+    expect(screen.getByRole('button', { name: 'Märgi tasutuks' })).toBeInTheDocument()
+  })
+})
+
+describe('buyer e-mail suggestion', () => {
+  it('suggests adding an e-mail address and asks for it under the buyer', async () => {
+    const draft = validDraft()
+    const repo = createMemoryRepo({ profile, clients: [client], invoices: [draft] })
+    renderAt(`#/invoices/${draft.id}`, repo)
+    expect(await screen.findByRole('button', { name: /Kõik kohustuslikud andmed on olemas\. 1 soovitus/ })).toBeInTheDocument()
+    const email = screen.getByLabelText('E-post')
+    fireEvent.change(email, { target: { value: 'arved@ostja.ee' } })
+    expect(await screen.findByText('Kõik kohustuslikud andmed on olemas.')).toBeInTheDocument()
+    // The field stays while typing, even though the address is now set.
+    expect(screen.getByLabelText('E-post')).toHaveValue('arved@ostja.ee')
+  })
+})

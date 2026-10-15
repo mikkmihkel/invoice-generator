@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ClockCounterClockwiseIcon, PencilSimpleIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ArrowRightIcon, CaretRightIcon, CheckIcon, ClockCounterClockwiseIcon, PencilSimpleIcon } from '@phosphor-icons/react'
 import { useRef, useState } from 'react'
 import { createDefaultProfile, newId, type CompanyProfile, type RegistryCompany } from '../../domain'
 import { useApp } from '../AppContext'
@@ -20,10 +20,13 @@ type Step = 1 | 2 | 3
 const SECTIONS: Record<Step, ProfileSection[]> = {
   1: ['company', 'vat'],
   2: ['bank', 'logo'],
-  3: ['defaults', 'numbering'],
+  3: ['design'],
 }
 
-/** First run in three calm steps: company (register search first) → bank account and logo → invoice defaults. */
+/**
+ * First run in three calm steps: company (register search first) → bank account and logo → invoice design
+ * (template, colours, live preview), with payment term, language and numbering behind a closed "Lisavalikud".
+ */
 export default function Onboarding() {
   const { t, saveProfile, lang, saveSettings, settings } = useApp()
   const toast = useToast()
@@ -34,8 +37,8 @@ export default function Onboarding() {
   const [showErrors, setShowErrors] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
 
-  const labels: Record<Step, string> = { 1: t('onboarding.step1'), 2: t('onboarding.step2'), 3: t('onboarding.step3') }
-  const hints: Record<Step, string> = { 1: t('onboarding.step1Hint'), 2: t('onboarding.step2Hint'), 3: t('onboarding.step3Hint') }
+  const labels: Record<Step, string> = { 1: t('onboarding.step1'), 2: t('onboarding.step2'), 3: t('onboarding.step3Design') }
+  const hints: Record<Step, string> = { 1: t('onboarding.step1Hint'), 2: t('onboarding.step2Hint'), 3: t('onboarding.step3DesignHint') }
 
   const onPick = (c: RegistryCompany) => {
     const party = partyFromRegistry(c)
@@ -154,7 +157,19 @@ export default function Onboarding() {
           </div>
         ) : (
           <form onSubmit={next} noValidate className="onb-form">
-            <ProfileForm value={profile} onChange={setProfile} sections={SECTIONS[step]} />
+            <ProfileForm value={profile} onChange={setProfile} sections={SECTIONS[step]} compactDesign />
+            {step === 3 && (
+              <details className="panel disclosure onb-more">
+                <summary>
+                  <CaretRightIcon className="caret" />
+                  <span className="disclosure-title">{t('onboarding.moreOptions')}</span>
+                  <span className="disclosure-hint">{t('onboarding.moreOptionsHint')}</span>
+                </summary>
+                <div className="disclosure-body">
+                  <ProfileForm value={profile} onChange={setProfile} sections={['defaults', 'numbering']} />
+                </div>
+              </details>
+            )}
             {showErrors && problems.length > 0 && (
               <div className="notice notice-error" role="alert">
                 <ul>

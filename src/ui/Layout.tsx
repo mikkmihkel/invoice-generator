@@ -3,7 +3,7 @@ import { useEffect, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import type { CompanyProfile } from '../domain'
 import { useApp } from './AppContext'
-import { Kbd, Skeleton } from './components/ui'
+import { Skeleton } from './components/ui'
 import { logoImageSrc } from './util'
 
 const LEGAL_FORMS = /^(oü|as|mtü|fie|tü|uü|sa|ou|llc|ltd|gmbh|oy|ab)$/i
@@ -65,17 +65,19 @@ function useShortcuts() {
 }
 
 export function Layout({ children }: { children: ReactNode }) {
-  const { t, lang, saveSettings, profile } = useApp()
+  const { t, profile } = useApp()
   const location = useLocation()
   useShortcuts()
 
+  // Arved is a full-bleed two-pane screen; its list pane carries the "data stays in this browser" note itself.
+  const home = location.pathname === '/'
+  const onInvoices = home || location.pathname.startsWith('/invoices')
   const nav = [
-    { to: '/', label: t('nav.invoices'), icon: <FileTextIcon size={18} />, end: true },
-    { to: '/clients', label: t('nav.clients'), icon: <UsersIcon size={18} /> },
-    { to: '/company', label: t('nav.company'), icon: <BuildingsIcon size={18} /> },
-    { to: '/settings', label: t('nav.settings'), icon: <GearSixIcon size={18} /> },
+    { to: '/', label: t('nav.invoices'), icon: <FileTextIcon size={20} />, active: onInvoices },
+    { to: '/clients', label: t('nav.clients'), icon: <UsersIcon size={20} /> },
+    { to: '/company', label: t('nav.company'), icon: <BuildingsIcon size={20} /> },
+    { to: '/settings', label: t('nav.settings'), icon: <GearSixIcon size={20} />, settings: true },
   ]
-  const onEditor = location.pathname.startsWith('/invoices')
 
   return (
     <div className="shell">
@@ -91,78 +93,71 @@ export function Layout({ children }: { children: ReactNode }) {
       </a>
       <header className="topbar">
         <div className="topbar-inner">
-          <Link to="/" className="brand" aria-label={t('app.name')}>
-            <BrandMark profile={profile} />
-            <span className="brand-text">
-              <span className="brand-name">{t('app.name')}</span>
-              {profile?.name && <span className="brand-company">{profile.name}</span>}
-            </span>
+          <Link to="/" className="brand" aria-label={profile?.name ? `${profile.name}, ${t('app.name')}` : t('app.name')}>
+            <span className="brand-name">{profile?.name || t('app.name')}</span>
           </Link>
           <nav id="main-nav" className="main-nav" aria-label={t('nav.main')}>
             {nav.map((n) => (
-              <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-link${isActive || (n.to === '/' && onEditor) ? ' active' : ''}`}>
+              <NavLink
+                key={n.to}
+                to={n.to}
+                end={n.to === '/'}
+                title={n.settings ? n.label : undefined}
+                className={({ isActive }) => `nav-link${n.settings ? ' nav-settings' : ''}${isActive || n.active ? ' active' : ''}`}
+              >
                 {n.icon}
-                <span>{n.label}</span>
+                <span className="nav-label">{n.label}</span>
               </NavLink>
             ))}
           </nav>
-          <div className="topbar-actions">
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm lang-toggle"
-              onClick={() => void saveSettings({ uiLanguage: lang === 'et' ? 'en' : 'et' })}
-              aria-label={t('nav.switchLanguage')}
-              title={t('nav.switchLanguage')}
-              lang={lang === 'et' ? 'en' : 'et'}
-            >
-              {lang === 'et' ? 'EN' : 'ET'}
-            </button>
-            <Link to="/invoices/new" className="btn btn-primary new-invoice" aria-keyshortcuts="N" title={t('nav.newInvoiceShortcut')}>
-              <PlusIcon />
-              <span>{t('nav.newInvoice')}</span>
-              <Kbd>N</Kbd>
-            </Link>
-          </div>
+          <Link to="/invoices/new" className="btn btn-primary new-invoice" aria-keyshortcuts="N" title={t('nav.newInvoiceShortcut')}>
+            <PlusIcon />
+            <span>{t('nav.newInvoice')}</span>
+          </Link>
         </div>
       </header>
-      <main id="main" tabIndex={-1}>
+      <main id="main" tabIndex={-1} className={home ? 'main-flush' : undefined}>
         {children}
       </main>
-      <footer className="footer">
-        <span>{t('footer.local')}</span>
-        <Link to="/settings">{t('footer.backup')}</Link>
-      </footer>
+      {!home && (
+        <footer className="footer">
+          <span>{t('footer.local')}</span>
+          <Link to="/settings">{t('footer.backup')}</Link>
+        </footer>
+      )}
     </div>
   )
 }
 
-/** First paint while IndexedDB opens: the shell and a ledger-shaped placeholder instead of a spinner. */
+/** First paint while IndexedDB opens: the shell and a list-shaped placeholder instead of a spinner. */
 export function BootSkeleton({ label }: { label: string }) {
   return (
     <div className="shell" role="status" aria-label={label}>
       <div className="topbar">
         <div className="topbar-inner">
-          <Skeleton w={28} h={28} />
-          <Skeleton w={120} h={14} />
+          <Skeleton w={140} h={14} />
         </div>
       </div>
-      <main>
-        <div className="page">
-          <Skeleton w={140} h={24} className="sk-title" />
-          <div className="sk-figures">
-            <Skeleton w="70%" h={36} />
-            <Skeleton w="70%" h={36} />
-            <Skeleton w="70%" h={36} />
-          </div>
-          <div className="panel sk-table">
+      <main className="main-flush">
+        <div className="arved">
+          <div className="arved-list sk-list">
+            <Skeleton w="80%" h={14} />
+            <Skeleton w={220} h={28} />
+            <Skeleton w="100%" h={32} />
             {Array.from({ length: 6 }, (_, i) => (
               <div className="sk-row" key={i}>
-                <Skeleton w={80} />
-                <Skeleton w="40%" />
-                <Skeleton w={70} />
-                <Skeleton w={90} />
+                <Skeleton w="55%" />
+                <Skeleton w="30%" />
               </div>
             ))}
+          </div>
+          <div className="arved-detail sk-detail">
+            <Skeleton w={200} h={24} />
+            <Skeleton w={160} />
+            <Skeleton w={180} h={32} />
+            <Skeleton w="100%" h={1} />
+            <Skeleton w="70%" />
+            <Skeleton w="60%" />
           </div>
         </div>
       </main>

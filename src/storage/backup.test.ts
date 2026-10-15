@@ -197,6 +197,28 @@ describe('validateBackup – values that reach URLs or CSS', () => {
     expect(errorOf(withInvoice((i) => ((i.seller as Record<string, unknown>).logoDataUrl = 'https://attacker.invalid/a.png'))).messages.en).toMatch(/seller logo/)
   })
 
+  it('validates brand colours and colour mode on invoices and profile defaults', () => {
+    const ok = withInvoice((i) => {
+      i.secondaryColor = '#E0A100'
+      i.colorMode = 'duo'
+    })
+    const defaults = (ok.profile as { defaults: Record<string, unknown> }).defaults
+    defaults.secondaryColor = '#0f766e'
+    defaults.colorMode = 'mono'
+    expect(validateBackup(ok).invoices[2]).toMatchObject({ secondaryColor: '#E0A100', colorMode: 'duo' })
+
+    expect(errorOf(withInvoice((i) => (i.secondaryColor = 'url(https://attacker.invalid/x.png)'))).messages.en).toMatch(/secondary colour/)
+    expect(errorOf(withInvoice((i) => (i.secondaryColor = '#fff'))).messages.en).toMatch(/secondary colour/)
+    expect(errorOf(withInvoice((i) => (i.colorMode = 'rainbow'))).messages.en).toMatch(/colour mode/)
+
+    const badProfile = base()
+    ;(badProfile.profile as { defaults: Record<string, unknown> }).defaults.secondaryColor = 'red;background:url(x)'
+    expect(errorOf(badProfile).messages.en).toMatch(/invoice secondary colour/)
+    const badMode = base()
+    ;(badMode.profile as { defaults: Record<string, unknown> }).defaults.colorMode = 3
+    expect(errorOf(badMode).messages.en).toMatch(/invoice colour mode/)
+  })
+
   it('validates invoice defaults deeply and the Google client ID format', () => {
     const badDefaults = base()
     ;(badDefaults.profile as Record<string, unknown>).defaults = {}

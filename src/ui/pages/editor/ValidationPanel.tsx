@@ -1,4 +1,5 @@
-import { ArrowRightIcon, CheckCircleIcon, InfoIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, CaretDownIcon, CheckCircleIcon, InfoIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { useId, useState } from 'react'
 import type { ValidationIssue } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { fieldId } from '../../components/fields'
@@ -26,35 +27,60 @@ function companyFixHref(field: string): string | null {
   return '#/company?focus=' + encodeURIComponent(field.slice('seller.'.length))
 }
 
-export function ValidationPanel({ issues, readOnly }: { issues: ValidationIssue[]; readOnly?: boolean }) {
+/** Wide layouts have room to list blocking problems right away; the phone bar starts as one line. */
+function roomToExpand(): boolean {
+  return typeof window.matchMedia !== 'function' || window.matchMedia('(min-width: 1024px)').matches
+}
+
+/**
+ * The requirements check as one quiet line ("All required details are present. 1 suggestion") that expands
+ * into the list of problems. Each problem focuses its field; seller problems link to the company page.
+ */
+export function ValidationPanel({ issues, readOnly, summaryId }: { issues: ValidationIssue[]; readOnly?: boolean; summaryId?: string }) {
   const { t, lang } = useApp()
+  const listId = useId()
   const errors = issues.filter((i) => i.severity === 'error')
   const warnings = issues.filter((i) => i.severity === 'warning')
+  const [open, setOpen] = useState(() => errors.length > 0 && roomToExpand())
+
+  const suggestions = warnings.length === 1 ? t('editor.checkOneSuggestion') : t('editor.checkSuggestions', { count: warnings.length })
+  const summary = errors.length > 0 ? t('issue.errorsSummary', { count: errors.length }) : t('validation.allGood')
 
   return (
-    <section className="panel validation" id="validation-panel" aria-labelledby="validation-title" tabIndex={-1}>
-      <div className="validation-head">
-        <h2 id="validation-title">{t('validation.title')}</h2>
-        {issues.length > 0 && (
-          <p className="validation-count">
-            {errors.length > 0 && t('validation.errorCount', { count: errors.length })}
-            {errors.length > 0 && warnings.length > 0 && ' · '}
-            {warnings.length > 0 && t('validation.warningCount', { count: warnings.length })}
-          </p>
-        )}
-      </div>
+    <section className={`check${open ? ' check-open' : ''}`} id="validation-panel" aria-labelledby="validation-title" tabIndex={-1}>
+      <h2 id="validation-title" className="visually-hidden">
+        {t('validation.title')}
+      </h2>
       {issues.length === 0 ? (
-        <p className="validation-ok">
-          <CheckCircleIcon size={18} />
-          {t('validation.allGood')}
+        <p className="check-line check-ok">
+          <CheckCircleIcon size={16} className="check-icon" />
+          <span>{summary}</span>
         </p>
       ) : (
-        <ul className="issues">
+        <button
+          type="button"
+          id={summaryId}
+          className={`check-line check-toggle${errors.length ? ' check-has-errors' : ''}`}
+          aria-expanded={open}
+          aria-controls={listId}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {errors.length ? <WarningCircleIcon size={16} className="check-icon" /> : <CheckCircleIcon size={16} className="check-icon" />}
+          <span className="check-text">
+            {summary}
+            {errors.length === 0 && ' '}
+            {errors.length === 0 && <span className="check-more">{suggestions}</span>}
+          </span>
+          <CaretDownIcon size={14} className="check-caret" aria-hidden="true" />
+        </button>
+      )}
+      {issues.length > 0 && (
+        <ul id={listId} className="issues" hidden={!open}>
           {[...errors, ...warnings].map((issue, i) => {
             const fix = companyFixHref(issue.field)
             return (
               <li key={issue.field + i} className={`issue issue-${issue.severity}`}>
-                <span className="issue-icon">{issue.severity === 'error' ? <WarningCircleIcon /> : <InfoIcon />}</span>
+                <span className="issue-icon">{issue.severity === 'error' ? <WarningCircleIcon size={14} /> : <InfoIcon size={14} />}</span>
                 <div className="issue-body">
                   <span className="visually-hidden">{issue.severity === 'error' ? t('validation.error') : t('validation.warning')}: </span>
                   {readOnly ? (
@@ -68,7 +94,15 @@ export function ValidationPanel({ issues, readOnly }: { issues: ValidationIssue[
                       </a>
                     </>
                   ) : (
-                    <button type="button" className="link-btn issue-link" onClick={() => focusField(issue.field)}>
+                    <button
+                      type="button"
+                      className="link-btn issue-link"
+                      onClick={() => {
+                        focusField(issue.field)
+                        // On phones the list sits in the pinned bar over the form: get it out of the way.
+                        if (!roomToExpand()) setOpen(false)
+                      }}
+                    >
                       {pick(issue.message, lang)}
                     </button>
                   )}

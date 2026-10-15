@@ -1,4 +1,4 @@
-import { MagnifyingGlassIcon, DotsThreeIcon } from '@phosphor-icons/react'
+import { CaretDownIcon, DotsThreeIcon, MagnifyingGlassIcon } from '@phosphor-icons/react'
 import { Fragment, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 /** Icon-only button: the label is both the accessible name and the hover tooltip. */
@@ -85,8 +85,11 @@ export interface MenuItem {
   separatorBefore?: boolean
 }
 
-/** Overflow menu (menu button pattern): arrow keys move, Escape closes and returns focus to the button. */
-export function Menu({ label, items, disabled }: { label: string; items: MenuItem[]; disabled?: boolean }) {
+/**
+ * Overflow menu (menu button pattern): arrow keys move, Escape closes and returns focus to the button.
+ * With `text` the trigger is a quiet text button ("Rohkem ▾") instead of the icon-only "…" button.
+ */
+export function Menu({ label, items, disabled, text, align = 'end' }: { label: string; items: MenuItem[]; disabled?: boolean; text?: string; align?: 'start' | 'end' }) {
   const [open, setOpen] = useState(false)
   const btn = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -127,20 +130,27 @@ export function Menu({ label, items, disabled }: { label: string; items: MenuIte
   }
 
   return (
-    <div className="menu-wrap">
+    <div className={`menu-wrap${align === 'start' ? ' menu-start' : ''}`}>
       <button
         ref={btn}
         type="button"
-        className="btn btn-icon"
+        className={text ? 'btn btn-text' : 'btn btn-icon'}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
-        aria-label={label}
-        title={label}
+        aria-label={text ? undefined : label}
+        title={text ? undefined : label}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        <DotsThreeIcon size={18} />
+        {text ? (
+          <>
+            {text}
+            <CaretDownIcon size={12} className="menu-caret" />
+          </>
+        ) : (
+          <DotsThreeIcon size={18} />
+        )}
       </button>
       {open && (
         <div ref={menu} id={id} role="menu" aria-label={label} className="menu" onKeyDown={onKeyDown}>
@@ -189,7 +199,7 @@ export function Skeleton({ w, h = 12, className }: { w?: number | string; h?: nu
   return <span className={`skeleton${className ? ' ' + className : ''}`} style={{ width: w, height: h }} aria-hidden="true" />
 }
 
-/** Live amount display: tabular mono figures, never wrapped. */
+/** Live amount display: tabular figures, never wrapped. */
 export function Amount({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={`amount${className ? ' ' + className : ''}`}>{children}</span>
 }
