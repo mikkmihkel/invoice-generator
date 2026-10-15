@@ -67,6 +67,17 @@ export function formatMoney(value: number, currency: string, lang: InvoiceLangua
   return `${amount}${NBSP}${sym}`
 }
 
+/** Unit price with currency, same placement as `formatMoney` but with up to 4 decimals: "0,1235 €" / "€0.1235". */
+export function formatUnitMoney(value: number, currency: string, lang: InvoiceLanguage): string {
+  const amount = formatUnitPrice(value, lang)
+  const sym = currencySymbol(currency)
+  if (usesEnglishFormat(lang)) {
+    const neg = amount.startsWith('-')
+    return `${neg ? '-' : ''}${sym}${sym.length === 1 ? '' : NBSP}${neg ? amount.slice(1) : amount}`
+  }
+  return `${amount}${NBSP}${sym}`
+}
+
 /** Quantity: up to 3 decimals, no trailing zeros. */
 export function formatQuantity(value: number, lang: InvoiceLanguage): string {
   return formatDecimal(value, lang, 0, 3)

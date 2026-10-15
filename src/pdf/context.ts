@@ -1,16 +1,20 @@
 // Everything a template needs to lay out an invoice: resolved totals, labels, formatters and colours.
 import { computeTotals, selectedBankAccounts, vatSchemeNote } from '../domain'
 import type { Address, BankAccount, Invoice, InvoiceLanguage, InvoiceTotals, Party } from '../domain/types'
-import { formatAmount, formatDate, formatMoney, formatPercent } from './format'
-import { translator, type Translator } from './labels'
+import { formatAmount, formatDate, formatMoney, formatPercent, formatUnitMoney } from './format'
+import { translator, type LabelKey, type Translator } from './labels'
 
 export const DEFAULT_ACCENT = '#1f6feb'
 
+/** Neutral palette shared by all templates (contrast of `muted` on white ≥ 5.9:1, `faint` ≥ 3.3:1). */
 export const COLORS = {
+  ink: '#111418',
   text: '#1f2328',
-  muted: '#6b7280',
-  rule: '#d0d7de',
-  hairline: '#e5e7eb',
+  muted: '#575e69',
+  faint: '#7f8690',
+  rule: '#c4c9cf',
+  hairline: '#e2e5e9',
+  fill: '#f4f5f7',
   white: '#ffffff',
 }
 
@@ -31,6 +35,9 @@ export interface DocContext {
   title: string
   /** Title parts for bilingual layouts: [et, en?]. */
   titleParts: [string, string?]
+  isCreditNote: boolean
+  /** Label of the document number: "Arve nr" / "Kreeditarve nr". */
+  numberKey: LabelKey
   /** Mandatory VAT scheme note from the domain layer (or null). */
   vatNote: string | null
   /** "Seller is not VAT registered" note when applicable and not already covered by `vatNote`. */
@@ -40,6 +47,8 @@ export interface DocContext {
   /** Print country lines in addresses (cross-border invoices). */
   showCountry: boolean
   money(value: number): string
+  /** Unit price with currency (up to 4 decimals). */
+  unitMoney(value: number): string
   amount(value: number): string
   percent(value: number): string
   date(value: string | undefined): string
@@ -152,12 +161,15 @@ export function createContext(invoice: Invoice): DocContext {
     onAccent: contrastText(accent),
     title,
     titleParts: parts,
+    isCreditNote: invoice.type === 'credit-note',
+    numberKey: invoice.type === 'credit-note' ? 'creditNoteNo' : 'invoiceNo',
     vatNote,
     notRegisteredNote: invoice.vatScheme === 'not-registered' && !vatNote ? t('notVatRegistered') : null,
     bankAccounts: selectedBankAccounts(invoice),
     showDiscount: invoice.lines.some((l) => (l.discountPercent ?? 0) !== 0),
     showCountry: isForeign(invoice.seller) || isForeign(invoice.buyer),
     money: (v) => formatMoney(v, currency, lang),
+    unitMoney: (v) => formatUnitMoney(v, currency, lang),
     amount: (v) => formatAmount(v, lang),
     percent: (v) => formatPercent(v, lang),
     date: (v) => formatDate(v, lang),
