@@ -23,6 +23,8 @@ export interface PageImage {
   /** CSS pixel size the image was rendered for. */
   width: number
   height: number
+  /** Number of pages in the whole document, as reported by pdf.js. */
+  pageCount?: number
 }
 
 /** Render `page` (1-based) of `pdf` at `width` CSS pixels (times the device pixel ratio, capped at 2). */
@@ -44,7 +46,7 @@ export async function renderPdfPageImage(pdf: Blob | ArrayBuffer, width: number,
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     await p.render({ canvas, canvasContext: ctx, viewport }).promise
-    return { src: canvas.toDataURL('image/png'), width, height: Math.round((base.height / base.width) * width) }
+    return { src: canvas.toDataURL('image/png'), width, height: Math.round((base.height / base.width) * width), pageCount: doc.numPages }
   } finally {
     void task.destroy()
   }
