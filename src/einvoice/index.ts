@@ -1,4 +1,4 @@
-// OWNER: documents agent. Machine-readable e-invoice export (EN 16931 / Peppol BIS Billing 3.0 UBL 2.1).
+// Machine-readable e-invoice export (EN 16931 / Peppol BIS Billing 3.0 UBL 2.1).
 export {
   buildUblXml,
   eInvoiceIssues,

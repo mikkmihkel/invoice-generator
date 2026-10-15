@@ -1,5 +1,4 @@
-// OWNER: domain agent. Public API of the domain layer (calculations, law, validation, numbering).
-// Stubs below define the contract; implementations live in sibling files and are re-exported here.
+// Public API of the domain layer (calculations, law, validation, numbering).
 export * from './types'
 export { computeTotals, roundMoney, toCents, fromCents, lineNetCents, formatMoney, vatInEur } from './calc'
 export { validateInvoice, canIssue } from './validation'

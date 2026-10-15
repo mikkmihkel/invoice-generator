@@ -1,4 +1,4 @@
-// OWNER: platform agent. Google Drive / Gmail via Google Identity Services (token model, no backend),
+// Google Drive / Gmail via Google Identity Services (token model, no backend),
 // plus Web Share API and mailto fallbacks.
 export type { EmailDraft, GoogleStatus } from './types'
 export {

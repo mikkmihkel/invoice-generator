@@ -1,6 +1,6 @@
 # Estonian invoice requirements (status: October 2026)
 
-Owner: domain agent. The rules are implemented in `src/domain/` (`law.ts`, `validation.ts`, `calc.ts`, `numbering.ts`).
+The rules are implemented in `src/domain/` (`law.ts`, `validation.ts`, `calc.ts`, `numbering.ts`).
 This is a summary for building the product. It is not legal advice.
 
 > **How this was researched.** The sandbox could not open riigiteataja.ee, emta.ee or rik.ee directly (the proxy
@@ -145,7 +145,7 @@ According to multiple sources (Finbite, Directo, Raamatupidaja.ee), the amendmen
 - An e-invoice is presumed compliant if it follows **EN 16931-1**. Unless the parties agree otherwise, the Estonian EVS 923 standard no longer applies on its own.
 - Public-sector buyers lost their separate e-invoice-only rule. They now have the same right to request e-invoices.
 
-**App:** the documents agent produces EN 16931 / Peppol BIS 3 UBL XML (`src/einvoice`). **Open question:** the law
+**App:** the app produces EN 16931 / Peppol BIS 3 UBL XML (`src/einvoice`). **Open question:** the law
 expects the e-invoice to reach the buyer's registered channel, i.e. their e-invoice operator or Peppol access point. A
 downloaded XML file attached to an email may not meet that if the buyer insists. The UI should say so.
 
@@ -155,7 +155,7 @@ Source documents, including issued invoices, must be kept for **at least 7 years
 which the transaction was booked (RPS § 12; see also MKS § 58, per [EMTA](https://emta.ee/node/125/chapter/10667/pdf)).
 They may be moved to another medium as long as the data is not altered.
 
-**App:** data lives only in the browser's IndexedDB. The UI and the platform agent should prompt for regular
+**App:** data lives only in the browser's IndexedDB. The app should prompt for regular
 JSON/Drive backups and saved PDFs. Issued invoices are frozen snapshots (`SellerSnapshot`, `BuyerSnapshot`), so
 later profile edits do not change them.
 

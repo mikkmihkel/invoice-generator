@@ -80,7 +80,7 @@ npm run registry:build
 | `src/integrations/` | Google Identity Services, Drive, Gmail (MIME builder), Web Share, mailto |
 | `src/ui/` | React screens, Estonian/English UI strings |
 | `scripts/registry/` | Builds the open-data search index |
-| `docs/` | Legal checklist, register index format, Google setup, team brief |
+| `docs/` | Legal checklist, register index format, Google setup, machine-readable invoice layer |
 
 ## Privacy and security
 

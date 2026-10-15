@@ -1,4 +1,4 @@
-// OWNER: platform agent. IndexedDB persistence (via `idb`) + backup import/export + change notifications.
+// IndexedDB persistence (via `idb`) + backup import/export + change notifications.
 export type { Repository, ImportResult, RepositoryOptions } from './repository'
 export {
   getRepository,

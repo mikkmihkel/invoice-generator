@@ -26,3 +26,7 @@ dist-ssr
 # Generated e-Business Register index (built in CI)
 public/registry/*
 !public/registry/.gitkeep
+
+# Private planning notes
+docs/roadmap.md
+docs/TEAM.md

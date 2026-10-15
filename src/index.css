@@ -1,4 +1,4 @@
-/* OWNER: UI agent. Plain CSS design system; light + dark via prefers-color-scheme. */
+/* Plain CSS design system; light and dark themes. */
 @import './ui/styles/tokens.css';
 @import './ui/styles/base.css';
 @import './ui/styles/controls.css';

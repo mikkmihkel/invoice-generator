@@ -1,4 +1,4 @@
-// OWNER: registry agent. Estonian e-Business Register (Äriregister) lookup.
+// Estonian e-Business Register (Äriregister) lookup.
 // Data: static index built from RIK open data (see docs/registry.md) + optional live autocomplete.
 // No function here throws: failures (missing index, network, CORS, abort) give [] / null.
 import type { RegistryCompany } from '../domain/types'

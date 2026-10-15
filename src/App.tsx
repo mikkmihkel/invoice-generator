@@ -1,4 +1,3 @@
-// OWNER: UI agent.
 import { IconContext } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
