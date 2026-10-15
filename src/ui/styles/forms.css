@@ -546,6 +546,13 @@ fieldset:disabled .template-card:not(.selected) {
   .template-compact .template-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  /* Phones: names only (the description is a tooltip), so six templates fit on one screen. */
+  .template-picker .tpl-desc {
+    display: none;
+  }
+  .template-picker .tpl-thumb {
+    height: 56px;
+  }
 }
 
 /* ---------- Onboarding ---------- */
