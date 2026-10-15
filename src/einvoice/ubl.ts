@@ -1,5 +1,5 @@
 // UBL 2.1 Invoice / CreditNote per Peppol BIS Billing 3.0 (EN 16931). Element order follows the UBL 2.1 schemas.
-import { computeTotals, selectedBankAccounts, vatInEur, vatSchemeNote } from '../domain'
+import { computeTotals, selectedBankAccounts, textRows, vatInEur, vatSchemeNote } from '../domain'
 import type { Invoice, Party } from '../domain/types'
 import { endpointFor, legalIdScheme, taxCategoryFor, unitCode, type TaxCategory } from './codes'
 import { el, leaf, serialize, type XmlChild, type XmlElement } from './xml'
@@ -157,7 +157,12 @@ export function buildUblXml(invoice: Invoice, opts: UblOptions = {}): string {
 
   // --- Header ---------------------------------------------------------------------------
   const accounts = selectedBankAccounts(invoice)
-  const notes = invoice.notes?.trim()
+  // Peppol BIS allows one document-level note (PEPPOL-EN16931-R002): the free-text rows and notes share it, in the
+  // PDF's reading order (text before the lines, text after the totals, notes).
+  const notes = [...textRows(invoice.textBefore), ...textRows(invoice.textAfter), invoice.notes?.trim() ?? '']
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .join('\n\n')
   const buyer = invoice.buyer
   const buyerReference = buyer.contactPerson?.trim() || (invoice.orderReference?.trim() ? undefined : invoice.number || 'N/A')
   const needsDeliveryCountry = scheme === 'eu-goods'

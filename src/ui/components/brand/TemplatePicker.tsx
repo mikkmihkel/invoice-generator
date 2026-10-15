@@ -1,53 +1,49 @@
 import { useId } from 'react'
-import { hexOr, type ColorMode, type TemplateId } from '../../../domain'
+import type { ColorMode, TemplateId } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { templates } from '../../options'
-import { accentColor } from '../../util'
-
-const MONO_INK = '#2b3036'
 
 export interface TemplatePickerProps {
   value: TemplateId
   onChange: (v: TemplateId) => void
-  /** Primary colour for the thumbnails. */
-  accent: string
-  /** Secondary colour, used by the thumbnails in 'duo' mode. */
+  /** Kept for compatibility; the list draws no thumbnails, the live PDF preview shows the colours. */
+  accent?: string
+  /** Kept for compatibility (see `accent`). */
   secondary?: string
-  /** Colour scheme for the thumbnails (default 'accent'). */
+  /** Kept for compatibility (see `accent`). */
   mode?: ColorMode
   disabled?: boolean
-  /** Small cards without descriptions (names stay visible; descriptions become tooltips). */
+  /** Tighter rows (onboarding, editor sidebar). */
   compact?: boolean
   /** Visible legend; default "Kujundus". */
   legend?: string
 }
 
-/** Template cards with a tiny schematic thumbnail in the chosen colours. */
-export function TemplatePicker({ value, onChange, accent, secondary, mode = 'accent', disabled, compact, legend }: TemplatePickerProps) {
+/**
+ * Template choice as a compact radio list: name and a one-line description per template. No drawn layout images:
+ * the real PDF preview next to it shows the result. Native radios, so arrow keys move through the list.
+ */
+export function TemplatePicker({ value, onChange, disabled, compact, legend }: TemplatePickerProps) {
   const { t, lang } = useApp()
   const name = useId()
-  const primary = mode === 'mono' ? MONO_INK : accentColor(accent)
-  const second = mode === 'duo' ? hexOr(secondary, undefined) : undefined
-  const vars: Record<string, string> = { '--tpl-accent': primary }
-  if (second) vars['--tpl-second'] = second
   return (
     <fieldset className={`template-picker${compact ? ' template-compact' : ''}`} disabled={disabled}>
       <legend className="label">{legend ?? t('appearance.template')}</legend>
-      <div className="template-grid">
-        {templates().map((tpl) => (
-          <label key={tpl.id} className={`template-card${value === tpl.id ? ' selected' : ''}`} title={compact ? tpl.description[lang] : undefined}>
-            <input type="radio" name={name} value={tpl.id} checked={value === tpl.id} onChange={() => onChange(tpl.id)} className="visually-hidden" />
-            <span className={`tpl-thumb tpl-${tpl.id}${second ? ' tpl-duo' : ''}`} style={vars} aria-hidden="true">
-              <span className="tpl-head" />
-              <span className="tpl-line" />
-              <span className="tpl-line short" />
-              <span className="tpl-table" />
-              <span className="tpl-total" />
-            </span>
-            <span className="tpl-name">{tpl.name[lang]}</span>
-            {!compact && <span className="tpl-desc">{tpl.description[lang]}</span>}
-          </label>
-        ))}
+      <div className="template-list">
+        {templates().map((tpl) => {
+          const descId = `${name}-${tpl.id}-desc`
+          return (
+            <label key={tpl.id} className={`template-option${value === tpl.id ? ' selected' : ''}`}>
+              <input type="radio" name={name} value={tpl.id} checked={value === tpl.id} onChange={() => onChange(tpl.id)} aria-describedby={descId} />
+              <span className="tpl-text">
+                <span className="tpl-name">{tpl.name[lang]}</span>
+                <span className="tpl-desc" id={descId}>
+                  {tpl.description[lang]}
+                </span>
+              </span>
+            </label>
+          )
+        })}
       </div>
     </fieldset>
   )

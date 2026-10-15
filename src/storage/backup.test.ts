@@ -38,6 +38,23 @@ describe('validateBackup', () => {
     expect(validateBackup({ ...data, profile: undefined, settings: { uiLanguage: 'en', driveFolderName: 'x', registryLiveLookup: false, updatedAt: '' } }).profile).toBeNull()
   })
 
+  it('accepts optional text rows before/after the lines as lists of strings, on invoices and profile defaults', () => {
+    const ok = withInvoice((i) => {
+      i.textBefore = ['Vastavalt lepingule nr 12/2026', '']
+      i.textAfter = ['Täname!\nTeine rida']
+    })
+    const profile = makeProfile()
+    ok.profile = { ...profile, defaults: { ...profile.defaults, textBefore: ['a'], textAfter: [] } }
+    expect(validateBackup(ok).invoices[2].textBefore).toEqual(['Vastavalt lepingule nr 12/2026', ''])
+    expect(errorOf(withInvoice((i) => (i.textBefore = 'x'))).messages.en).toMatch(/invalid text before the invoice lines/)
+    expect(errorOf(withInvoice((i) => (i.textAfter = ['ok', 3]))).messages.et).toMatch(/vigane tekst pärast arveridu/)
+    expect(errorOf(withInvoice((i) => (i.textAfter = Array.from({ length: BACKUP_LIMITS.textRows + 1 }, () => 'x')))).messages.en).toMatch(/too many entries/)
+    expect(errorOf(withInvoice((i) => (i.textBefore = ['x'.repeat(BACKUP_LIMITS.stringLength + 1)]))).messages.en).toMatch(/too long \(invoices\.2\.textBefore\.0\)/)
+    const bad = base()
+    bad.profile = { ...profile, defaults: { ...profile.defaults, textAfter: [{}] } }
+    expect(errorOf(bad).messages.en).toMatch(/invalid default text after the invoice lines/)
+  })
+
   it('names the record and the field in natural bilingual messages', () => {
     const err = errorOf(withInvoice((i) => delete i.issueDate))
     expect(err.messages.et).toBe('Varukoopia arve nr 3 (2026-0003) on vigane: puudub arve kuupäev.')

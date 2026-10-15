@@ -152,6 +152,17 @@ export function createEmptyLine(profile: CompanyProfile, vatScheme: VatScheme): 
   }
 }
 
+/**
+ * The printable free-text rows of `Invoice.textBefore` / `textAfter` (or the profile defaults): non-string and
+ * blank items dropped, trailing whitespace trimmed. Always returns a new array.
+ */
+export function textRows(rows: readonly unknown[] | undefined): string[] {
+  if (!Array.isArray(rows)) return []
+  return rows
+    .filter((row): row is string => typeof row === 'string' && row.trim() !== '')
+    .map((row) => row.replace(/\s+$/, ''))
+}
+
 /** New draft invoice pre-filled from the profile defaults (and client overrides, if given). Number is ''. */
 export function createEmptyInvoice(profile: CompanyProfile, client?: Client): Invoice {
   const defaults = profile.defaults
@@ -184,6 +195,10 @@ export function createEmptyInvoice(profile: CompanyProfile, client?: Client): In
   }
   if (defaults.footerNote) invoice.footerNote = defaults.footerNote
   if (defaults.paymentQr) invoice.paymentQr = true
+  const textBefore = textRows(defaults.textBefore)
+  if (textBefore.length) invoice.textBefore = textBefore
+  const textAfter = textRows(defaults.textAfter)
+  if (textAfter.length) invoice.textAfter = textAfter
   if (isHexColor(defaults.secondaryColor)) invoice.secondaryColor = defaults.secondaryColor
   if (isColorMode(defaults.colorMode)) invoice.colorMode = defaults.colorMode
   return invoice

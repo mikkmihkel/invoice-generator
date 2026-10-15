@@ -114,171 +114,126 @@
   color: var(--text);
 }
 
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--s-3);
-}
-.template-card {
+/* Default free-text rows (before the lines / after the totals) in "Arve vaikeseaded". */
+.text-rows-defaults {
   display: flex;
   flex-direction: column;
+  gap: var(--s-2);
+}
+.text-rows-defaults > .field-hint {
+  margin: 0;
+  max-width: 68ch;
+}
+.text-rows-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.text-rows-field > .label {
+  margin-bottom: 0;
+}
+.text-rows-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.text-rows-edit li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 4px;
-  padding: 10px;
+}
+.text-rows-edit textarea {
+  width: 100%;
+  resize: none;
+}
+.text-rows-tools {
+  display: flex;
+  align-items: center;
+  min-height: var(--h-control);
+}
+.text-rows-add {
+  margin-left: -8px;
+}
+
+/* Template choice: a compact radio list (name + one-line description); the live PDF preview shows the look. */
+.template-list {
+  display: flex;
+  flex-direction: column;
+  max-width: 560px;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.template-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  margin: 0;
+  padding: 9px 12px;
   cursor: pointer;
-  transition:
-    border-color var(--dur-fast) var(--ease),
-    background-color var(--dur-fast) var(--ease);
+  transition: background-color var(--dur-fast) var(--ease);
 }
-.template-card:hover {
-  border-color: var(--border-input);
+.template-option + .template-option {
+  border-top: 1px solid var(--border-soft);
 }
-.template-card.selected {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
+.template-option > input {
+  margin-top: 2px;
 }
-.template-card:has(input:focus-visible) {
+.template-option:hover {
+  background: var(--selected);
+}
+.template-option.selected {
+  background: var(--accent-soft);
+}
+.template-option:has(input:focus-visible) {
   outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
-fieldset:disabled .template-card {
+fieldset:disabled .template-option {
   cursor: default;
 }
-fieldset:disabled .template-card:not(.selected) {
+fieldset:disabled .template-option:hover:not(.selected) {
+  background: none;
+}
+fieldset:disabled .template-option:not(.selected) {
   opacity: 0.55;
 }
+.tpl-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+}
 .tpl-name {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: 500;
+  color: var(--text);
+}
+.template-option.selected .tpl-name {
+  font-weight: 600;
 }
 .tpl-desc {
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   line-height: 1.4;
   color: var(--text-3);
 }
-.template-compact .template-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-2);
+.template-compact .template-option {
+  padding: 7px 10px;
 }
-.template-compact .template-card {
-  padding: 8px;
-}
-.template-compact .tpl-thumb {
-  height: 56px;
-}
-
-/* Schematic page thumbnails, drawn in the chosen accent colour (and neutral ink). */
-.tpl-thumb {
-  position: relative;
-  display: flex;
+.template-compact .tpl-text {
   flex-direction: column;
-  gap: 4px;
-  height: 76px;
-  margin-bottom: 4px;
-  padding: 8px;
-  overflow: hidden;
-  background: #fbfbfc;
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
+  gap: 1px;
 }
-.tpl-thumb span {
-  display: block;
-  border-radius: 1px;
-}
-.tpl-head {
-  width: 40%;
-  height: 6px;
-  background: var(--tpl-accent);
-}
-.tpl-line {
-  width: 70%;
-  height: 3px;
-  background: #c9ced5;
-}
-.tpl-line.short {
-  width: 45%;
-}
-.tpl-table {
-  flex: 1;
-  background: repeating-linear-gradient(#e1e4e8 0 2px, transparent 2px 6px);
-}
-.tpl-total {
-  align-self: flex-end;
-  width: 30%;
-  height: 5px;
-  background: #5f6772;
-}
-.tpl-modern .tpl-head {
-  width: calc(100% + 16px);
-  height: 14px;
-  margin: -8px -8px 2px;
-}
-.tpl-modern .tpl-line:first-of-type {
-  margin-top: 2px;
-}
-.tpl-minimal .tpl-head {
-  width: 30%;
-  height: 3px;
-  background: #16191d;
-}
-.tpl-minimal .tpl-table {
-  background: repeating-linear-gradient(#eceef1 0 1px, transparent 1px 6px);
-}
-.tpl-bold .tpl-head {
-  width: 60%;
-  height: 9px;
-}
-.tpl-bold .tpl-total {
-  background: var(--tpl-accent);
-}
-.tpl-standard .tpl-head {
-  width: 32%;
-  background: #16191d;
-}
-.tpl-standard .tpl-head + .tpl-line {
-  width: 46%;
-  height: 4px;
-  background: var(--tpl-accent);
-}
-.tpl-standard .tpl-table {
-  background: repeating-linear-gradient(#eceef1 0 1px, transparent 1px 6px);
-}
-.tpl-compact .tpl-head {
-  width: 26%;
-  height: 4px;
-  background: #16191d;
-}
-.tpl-compact .tpl-table {
-  background: repeating-linear-gradient(#e1e4e8 0 2px, transparent 2px 4px);
-}
-.tpl-classic .tpl-table {
-  border: 1px solid #d5d9de;
-  background: repeating-linear-gradient(#e1e4e8 0 1px, transparent 1px 6px);
-}
-
-/* Two-colour thumbnails ('duo'): the same elements the PDF templates give the secondary colour. */
-.tpl-duo.tpl-standard .tpl-line.short,
-.tpl-duo.tpl-minimal .tpl-line,
-.tpl-duo.tpl-modern .tpl-line.short {
-  background: var(--tpl-second);
-}
-.tpl-duo.tpl-modern .tpl-table {
-  border-top: 2px solid var(--tpl-second);
-}
-.tpl-duo.tpl-classic .tpl-table {
-  border-color: var(--tpl-second);
-}
-.tpl-duo.tpl-classic .tpl-head {
-  background: color-mix(in srgb, var(--tpl-accent) 20%, #ffffff);
-}
-.tpl-duo.tpl-bold {
-  border-left: 4px solid var(--tpl-second);
-}
-.tpl-duo.tpl-compact .tpl-table {
-  border-top: 4px solid var(--tpl-accent);
-  background: repeating-linear-gradient(color-mix(in srgb, var(--tpl-second) 22%, #ffffff) 0 3px, transparent 3px 6px);
+.template-compact .tpl-desc {
+  font-size: var(--fs-xs);
 }
 
 .accent-row {
@@ -543,15 +498,15 @@ fieldset:disabled .template-card:not(.selected) {
   .bank-row .field:first-child {
     grid-column: 1 / -1;
   }
-  .template-compact .template-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .template-option {
+    padding: 8px 10px;
   }
-  /* Phones: names only (the description is a tooltip), so six templates fit on one screen. */
+  .template-picker .tpl-text {
+    flex-direction: column;
+    gap: 1px;
+  }
   .template-picker .tpl-desc {
-    display: none;
-  }
-  .template-picker .tpl-thumb {
-    height: 56px;
+    font-size: var(--fs-xs);
   }
 }
 

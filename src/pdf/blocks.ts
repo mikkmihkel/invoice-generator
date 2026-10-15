@@ -10,6 +10,7 @@ import { creditNoteText, lateInterestText, type LabelKey } from './labels'
 import { paymentQrPayload } from './machine'
 import { vatSchemeAllowsRates } from '../domain/law'
 import { vatInEur } from '../domain/calc'
+import { textRows } from '../domain/factory'
 
 export type Align = 'left' | 'right' | 'center'
 
@@ -482,6 +483,26 @@ export function notesBlock(ctx: DocContext, s: NotesStyle): ContentStack | null 
   const gap = s.gap ?? 3
   // Small enough to keep together: never leave a lone heading or half a VAT note at the bottom of a page.
   return { stack: items.map((c, i) => (i === 0 ? c : { stack: [c], margin: [0, gap, 0, 0] })), unbreakable: true }
+}
+
+export interface TextRowsStyle {
+  fontSize: number
+  color: string
+  /** Space between rows. */
+  gap?: number
+}
+
+/**
+ * The invoice's free-text rows (`textBefore`: above the line table, `textAfter`: after the totals) as body text,
+ * one paragraph per row, line breaks kept. Null when there is nothing to print.
+ */
+export function textRowsBlock(ctx: DocContext, which: 'before' | 'after', s: TextRowsStyle): ContentStack | null {
+  const rows = textRows(which === 'before' ? ctx.invoice.textBefore : ctx.invoice.textAfter)
+  if (!rows.length) return null
+  const gap = s.gap ?? 4
+  return {
+    stack: rows.map((text, i): Content => ({ text, fontSize: s.fontSize, color: s.color, margin: [0, i ? gap : 0, 0, 0] })),
+  }
 }
 
 // ---------- page furniture ----------

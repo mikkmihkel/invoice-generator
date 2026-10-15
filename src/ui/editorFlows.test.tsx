@@ -228,33 +228,6 @@ describe('draft seller snapshot', () => {
   })
 })
 
-describe('preview drawer', () => {
-  it('renders the PDF only when opened, closes on Escape and revokes the document on unmount', async () => {
-    const { renderInvoicePdf } = await import('../pdf')
-    const render = vi.mocked(renderInvoicePdf)
-    render.mockClear()
-    vi.mocked(URL.revokeObjectURL).mockClear()
-    const draft = validDraft()
-    const repo = createMemoryRepo({ profile, clients: [client], invoices: [draft] })
-    const { unmount } = renderAt(`#/invoices/${draft.id}`, repo)
-    const open = await screen.findByRole('button', { name: 'Eelvaade' })
-    expect(render).not.toHaveBeenCalled()
-    fireEvent.click(open)
-    const drawer = await screen.findByRole('dialog', { name: 'Eelvaade' })
-    expect(await within(drawer).findByTitle('Arve PDF-eelvaade')).toHaveAttribute('src', expect.stringContaining('blob:preview'))
-    expect(render).toHaveBeenCalledTimes(1)
-    fireEvent.keyDown(document.body, { key: 'Escape' })
-    expect(screen.queryByRole('dialog', { name: 'Eelvaade' })).not.toBeInTheDocument()
-    await waitFor(() => expect(open).toHaveFocus())
-    // Same invoice version: reopening reuses the rendered document.
-    fireEvent.click(open)
-    await screen.findByRole('dialog', { name: 'Eelvaade' })
-    expect(render).toHaveBeenCalledTimes(1)
-    unmount()
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview')
-  })
-})
-
 describe('issued invoice actions', () => {
   it('offers a payment reminder as the one primary action once overdue', async () => {
     const overdue = { ...validDraft(), number: '2026-0005', status: 'issued' as const, issueDate: '2026-01-05', dueDate: '2026-01-19', issuedAt: '2026-01-05T10:00:00Z' }

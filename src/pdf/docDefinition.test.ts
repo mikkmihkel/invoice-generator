@@ -332,14 +332,38 @@ describe('templates — design system', () => {
     }
   })
 
-  it('standard: headline with amount and due date, accent only on the amount', () => {
+  it('standard: no amount/due-date headline; the accent colour marks only the amount due in the totals', () => {
     const def = buildDocDefinition(sampleInvoice({ templateId: 'standard', accentColor: '#aa3300' }))
     const amount = formatMoney(2516.92, 'EUR', 'et')
-    const headline = nodes(def).find((n) => Array.isArray(n.text) && (n.text as { text: string }[])[0]?.text === amount)!
-    expect(headline.text).toEqual([{ text: amount, color: '#aa3300' }, { text: ' tasuda 26.10.2026' }])
+    expect(joined(def)).not.toMatch(/tasuda/)
+    expect(joined(buildDocDefinition(sampleInvoice({ templateId: 'standard', language: 'et-en' })))).not.toMatch(/tasuda|\bdue \d/)
+    const accented = nodes(def).filter((n) => n.color === '#aa3300')
+    expect(accented.map((n) => n.text)).toEqual([amount])
     expect(JSON.stringify(def.content).match(/#aa3300/g)).toHaveLength(1)
-    const en = joined(buildDocDefinition(sampleInvoice({ templateId: 'standard', language: 'et-en' })))
-    expect(en).toContain(' tasuda / due 26.10.2026')
+    // The due date stays in the facts list.
+    expect(joined(def)).toContain('26.10.2026')
+  })
+
+  it('prints the text rows before the line table and after the totals, in every template', () => {
+    const before = ['Vastavalt lepingule nr 12/2026', 'Teine rida\nreavahetusega']
+    const after = ['Täname koostöö eest!']
+    for (const templateId of templates) {
+      const def = buildDocDefinition(sampleInvoice({ templateId, textBefore: [...before, '  '], textAfter: after }))
+      const all = joined(def)
+      const at = (s: string) => all.indexOf(s)
+      for (const row of [...before, ...after]) expect(at(row), `${templateId}: ${row}`).toBeGreaterThan(-1)
+      expect(at(before[0]), templateId).toBeGreaterThan(at('Klient Žürii OÜ'))
+      expect(at(before[1]), templateId).toBeGreaterThan(at(before[0]))
+      expect(at(before[1]), templateId).toBeLessThan(at('Veebilehe arendus'))
+      expect(at(after[0]), templateId).toBeGreaterThan(all.toUpperCase().lastIndexOf('TASUMISELE KUULUB'))
+      expect(at(after[0]), templateId).toBeLessThan(at('EE71 7700 7710 0123 4567'))
+      // Blank rows are not printed (no empty paragraph nodes).
+      expect(nodes(def).filter((n) => typeof n.text === 'string' && !n.text.trim() && n.margin), templateId).toEqual([])
+      // Without rows the layout is unchanged.
+      expect(JSON.stringify(buildDocDefinition(sampleInvoice({ templateId, textBefore: [' '], textAfter: [] })).content)).toEqual(
+        JSON.stringify(buildDocDefinition(sampleInvoice({ templateId })).content),
+      )
+    }
   })
 
   it('classic prints the seller letterhead in the footer; others keep the footer light', () => {

@@ -40,6 +40,8 @@ export const BACKUP_LIMITS = {
   linesPerInvoice: 10_000,
   stringLength: 1024 * 1024,
   logoDataUrlLength: 2 * 1024 * 1024,
+  /** Free-text rows before/after the invoice lines (`textBefore` / `textAfter`). */
+  textRows: 100,
 }
 
 const ADDRESS_FIELDS = [
@@ -163,6 +165,13 @@ class RecordCheck {
   optBool(key: string, field: Text, from: Record<string, unknown> = this.r) {
     return this.check(from[key], field, (x) => typeof x === 'boolean', false)
   }
+  /** Optional list of strings (each within `BACKUP_LIMITS.stringLength`, checked by `checkTree`). */
+  optStrList(key: string, field: Text, from: Record<string, unknown> = this.r, max = BACKUP_LIMITS.textRows) {
+    const v = from[key]
+    if (this.problem || absent(v)) return !this.problem
+    if (Array.isArray(v) && v.length > max) return this.fail({ et: `liiga palju kirjeid: ${field.et}`, en: `too many entries: ${field.en}` })
+    return this.check(v, field, (x) => Array.isArray(x) && x.every((item) => typeof item === 'string'), false)
+  }
   obj(key: string, field: Text, from: Record<string, unknown> = this.r): Record<string, unknown> | null {
     return this.check(from[key], field, isObject, true) ? (from[key] as Record<string, unknown>) : null
   }
@@ -247,6 +256,8 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
   if (ids && !ids.every((x) => typeof x === 'string')) c.problem ??= invalid({ et: 'valitud pangakontod', en: 'selected bank accounts' })
   c.optStr('createdAt', { et: 'loomise aeg', en: 'creation time' })
   c.optBool('paymentQr', { et: 'makse QR-kood', en: 'payment QR code' })
+  c.optStrList('textBefore', { et: 'tekst enne arveridu', en: 'text before the invoice lines' })
+  c.optStrList('textAfter', { et: 'tekst pärast arveridu', en: 'text after the invoice lines' })
   for (const [k, et, en] of [
     ['supplyDate', 'käibe kuupäev', 'supply date'],
     ['periodStart', 'perioodi algus', 'period start'],
@@ -298,6 +309,8 @@ function checkProfile(r: Record<string, unknown>): Text | null {
     c.str('defaultUnit', { et: 'vaikimisi ühik', en: 'default unit' }, true, d)
     c.optNum('lateInterestPercentPerDay', { et: 'viivis', en: 'late interest' }, d)
     c.optBool('paymentQr', { et: 'makse QR-kood', en: 'payment QR code' }, d)
+    c.optStrList('textBefore', { et: 'vaikimisi tekst enne arveridu', en: 'default text before the invoice lines' }, d)
+    c.optStrList('textAfter', { et: 'vaikimisi tekst pärast arveridu', en: 'default text after the invoice lines' }, d)
     c.str('emailSubject', { et: 'e-kirja teema', en: 'email subject' }, true, d)
     c.str('emailBody', { et: 'e-kirja sisu', en: 'email body' }, true, d)
     for (const [k, et, en] of [

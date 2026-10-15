@@ -216,7 +216,7 @@ describe('logo and accent sinks', () => {
       </AppProvider>,
     )
     expect(document.querySelector('img')).toBeNull()
-    for (const el of document.querySelectorAll<HTMLElement>('.tpl-thumb')) expect(el.style.getPropertyValue('--tpl-accent')).toBe('#1f6feb')
+    expect(document.body.innerHTML).not.toContain('evil.example')
   })
 })
 

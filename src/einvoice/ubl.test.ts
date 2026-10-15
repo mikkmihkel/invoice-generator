@@ -139,6 +139,22 @@ describe('buildUblXml — invoice', () => {
   })
 })
 
+describe('buildUblXml — text rows', () => {
+  it('puts the text rows and notes into the one document-level cbc:Note, escaped, in reading order', () => {
+    const inv = sampleInvoice({ textBefore: ['Leping <12/2026> & lisa', ' '], textAfter: ['Täname!\nTeine rida'], notes: 'Märkus' })
+    const xml = buildUblXml(inv)
+    expect(xml).toContain('Leping &lt;12/2026&gt; &amp; lisa')
+    const root = parse(xml).documentElement
+    const notes = all(root, 'cbc:Note').filter((n) => n.parentElement === root)
+    expect(notes).toHaveLength(1)
+    expect(notes[0].textContent).toBe('Leping <12/2026> & lisa\n\nTäname!\nTeine rida\n\nMärkus')
+    const only = parse(buildUblXml(sampleInvoice({ notes: undefined, textAfter: ['Ainult see'] }))).documentElement
+    expect(all(only, 'cbc:Note').filter((n) => n.parentElement === only).map((n) => n.textContent)).toEqual(['Ainult see'])
+    const none = parse(buildUblXml(sampleInvoice({ notes: undefined, textBefore: [''] }))).documentElement
+    expect(all(none, 'cbc:Note').filter((n) => n.parentElement === none)).toHaveLength(0)
+  })
+})
+
 describe('buildUblXml — credit note', () => {
   const inv = creditNoteInvoice()
   const doc = parse(buildUblXml(inv))

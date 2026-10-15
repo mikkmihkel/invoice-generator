@@ -18,7 +18,7 @@ import {
 } from '@phosphor-icons/react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { computeTotals, selectedBankAccounts, type Invoice } from '../../../domain'
+import { computeTotals, selectedBankAccounts, textRows, type Invoice } from '../../../domain'
 import { TEMPLATES } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { Menu, type MenuItem } from '../../components/ui'
@@ -265,6 +265,11 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
 
           <section className="doc-lines" aria-labelledby="doc-lines">
             <h3 id="doc-lines">{t('detail.lines')}</h3>
+            {textRows(invoice.textBefore).map((r, i) => (
+              <p key={i} className="doc-text-row doc-text-before">
+                {r}
+              </p>
+            ))}
             <div className="doc-table-wrap">
               <table className="doc-table">
                 <thead>
@@ -325,6 +330,11 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
                 <dd>{formatMoney(totals.gross, cur)}</dd>
               </div>
             </dl>
+            {textRows(invoice.textAfter).map((r, i) => (
+              <p key={i} className="doc-text-row doc-text-after">
+                {r}
+              </p>
+            ))}
             {invoice.notes && <p className="doc-notes">{invoice.notes}</p>}
           </section>
         </>

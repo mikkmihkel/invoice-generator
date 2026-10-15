@@ -1,8 +1,11 @@
-import { DEFAULT_EMAIL_BODY_EN, DEFAULT_EMAIL_SUBJECT_EN, formatInvoiceNumber, type CompanyProfile, type InvoiceDefaults, type NumberingSettings } from '../../domain'
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
+import { useId } from 'react'
+import { DEFAULT_EMAIL_BODY_EN, DEFAULT_EMAIL_SUBJECT_EN, formatInvoiceNumber, textRows, type CompanyProfile, type InvoiceDefaults, type NumberingSettings } from '../../domain'
 import { useApp } from '../AppContext'
 import { InvoiceDesign } from '../components/Appearance'
-import { CheckboxField, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
+import { CheckboxField, fieldId, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
 import { BankAccountsEditor, LogoInput, Section } from '../components/misc'
+import { IconButton } from '../components/ui'
 import { PartyFields, registryCodeError, vatNumberError } from '../components/PartyFields'
 import { CURRENCIES, languageOptions, vatRates, vatSchemeOptions, UNIT_SUGGESTIONS } from '../options'
 import { localTodayISO } from '../util'
@@ -28,6 +31,80 @@ export function profileProblems(p: CompanyProfile, t: (k: ProblemKey) => string)
   else if (p.vatRegistered && !p.vatNumber?.trim()) out.push(t('profile.vatNumberRequired'))
   if (!p.bankAccounts.some((a) => a.iban.trim())) out.push(t('profile.needIban'))
   return out
+}
+
+/** The profile as saved: bank accounts without an IBAN and blank default text rows dropped. */
+export function profileForSave(p: CompanyProfile): CompanyProfile {
+  const defaults = { ...p.defaults }
+  for (const key of ['textBefore', 'textAfter'] as const) {
+    const rows = textRows(defaults[key])
+    if (rows.length) defaults[key] = rows
+    else delete defaults[key]
+  }
+  return { ...p, bankAccounts: p.bankAccounts.filter((a) => a.iban.trim()), defaults }
+}
+
+const focusLater = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.focus())
+
+/** Default free-text rows for new invoices (before the lines / after the totals): add, edit, reorder, remove. */
+function DefaultTextRows({ kind, rows, onChange }: { kind: 'before' | 'after'; rows: string[] | undefined; onChange: (rows: string[] | undefined) => void }) {
+  const { t } = useApp()
+  const labelId = useId()
+  const label = t(kind === 'before' ? 'editor.textBefore' : 'editor.textAfter')
+  const path = kind === 'before' ? 'defaults.textBefore' : 'defaults.textAfter'
+  const list = rows ?? []
+  const commit = (next: string[]) => onChange(next.length ? next : undefined)
+  const move = (i: number, dir: -1 | 1) => {
+    const next = [...list]
+    ;[next[i], next[i + dir]] = [next[i + dir], next[i]]
+    commit(next)
+    focusLater(fieldId(`${path}.${i + dir}`))
+  }
+  return (
+    <div className="text-rows-field" role="group" aria-labelledby={labelId}>
+      <span className="label" id={labelId}>
+        {label}
+      </span>
+      {list.length > 0 && (
+        <ol className="text-rows-edit">
+          {list.map((row, i) => (
+            <li key={i}>
+              <textarea
+                id={fieldId(`${path}.${i}`)}
+                rows={1}
+                value={row}
+                aria-label={t('editor.textRowN', { label, n: i + 1 })}
+                placeholder={t(kind === 'before' ? 'editor.textBeforeHint' : 'editor.textAfterHint')}
+                onChange={(e) => commit(list.map((x, j) => (j === i ? e.target.value : x)))}
+              />
+              <span className="text-rows-tools">
+                {list.length > 1 && (
+                  <>
+                    <IconButton className="icon-btn-sm" label={t('editor.textRowUp', { label, n: i + 1 })} icon={<ArrowUpIcon size={14} />} disabled={i === 0} onClick={() => move(i, -1)} />
+                    <IconButton className="icon-btn-sm" label={t('editor.textRowDown', { label, n: i + 1 })} icon={<ArrowDownIcon size={14} />} disabled={i === list.length - 1} onClick={() => move(i, 1)} />
+                  </>
+                )}
+                <IconButton className="icon-btn-sm icon-btn-danger" label={t('editor.textRowRemove', { label, n: i + 1 })} icon={<XIcon size={14} />} onClick={() => commit(list.filter((_, j) => j !== i))} />
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <div>
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost text-rows-add"
+          onClick={() => {
+            commit([...list, ''])
+            focusLater(fieldId(`${path}.${list.length}`))
+          }}
+        >
+          <PlusIcon />
+          {t(kind === 'before' ? 'editor.addTextBefore' : 'editor.addTextAfter')}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function ProfileForm({
@@ -144,6 +221,13 @@ export function ProfileForm({
               <option key={u} value={u} />
             ))}
           </datalist>
+          <div className="text-rows-defaults">
+            <div className="grid">
+              <DefaultTextRows kind="before" rows={d.textBefore} onChange={(textBefore) => setDefaults({ textBefore })} />
+              <DefaultTextRows kind="after" rows={d.textAfter} onChange={(textAfter) => setDefaults({ textAfter })} />
+            </div>
+            <p className="field-hint">{t('profile.textRowsHint')}</p>
+          </div>
           <TextAreaField label={t('field.footerNote')} value={d.footerNote} onChange={(v) => setDefaults({ footerNote: v || undefined })} hint={t('field.footerNoteHint')} rows={2} />
           <CheckboxField label={t('field.paymentQr')} hint={t('field.paymentQrHint')} checked={!!d.paymentQr} onChange={(paymentQr) => setDefaults({ paymentQr })} />
         </Section>

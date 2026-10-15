@@ -9,7 +9,7 @@ import { useNavGuard } from '../navGuard'
 import { useToast } from '../Toasts'
 import { errorMessage, partyFromRegistry } from '../util'
 import { focusField } from './editor/ValidationPanel'
-import { ProfileForm, profileProblems } from './ProfileForm'
+import { ProfileForm, profileForSave, profileProblems } from './ProfileForm'
 
 export default function CompanyPage() {
   const { t, profile, saveProfile } = useApp()
@@ -72,7 +72,7 @@ export default function CompanyPage() {
     }
     setSaving(true)
     try {
-      await saveProfile({ ...draft, bankAccounts: draft.bankAccounts.filter((a) => a.iban.trim()) })
+      await saveProfile(profileForSave(draft))
       setDirty(false)
       toast.success(t('common.saved'))
     } catch (err) {

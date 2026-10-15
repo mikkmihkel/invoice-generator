@@ -7,7 +7,7 @@ import { Segmented } from '../components/ui'
 import { BrandMark } from '../Layout'
 import { useToast } from '../Toasts'
 import { errorMessage, partyFromRegistry } from '../util'
-import { ProfileForm, profileProblems, type ProfileSection } from './ProfileForm'
+import { ProfileForm, profileForSave, profileProblems, type ProfileSection } from './ProfileForm'
 import { BackupImport } from './SettingsPage'
 
 function initialProfile(): CompanyProfile {
@@ -69,7 +69,7 @@ export default function Onboarding() {
   const save = async () => {
     setSaving(true)
     try {
-      await saveProfile({ ...profile, bankAccounts: profile.bankAccounts.filter((a) => a.iban.trim()) })
+      await saveProfile(profileForSave(profile))
       toast.success(t('onboarding.saved'))
     } catch (err) {
       toast.error(t('common.saveFailed') + ' ' + errorMessage(err))

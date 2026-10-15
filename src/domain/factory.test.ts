@@ -6,6 +6,7 @@ import {
   createEmptyInvoice,
   isValidISODate,
   newId,
+  textRows,
   todayISO,
 } from './factory'
 import type { Client, CompanyProfile } from './types'
@@ -190,6 +191,18 @@ describe('createEmptyInvoice', () => {
     expect(inv).not.toHaveProperty('footerNote')
   })
 
+  it('copies the default text rows (non-blank, as a copy)', () => {
+    const p = registeredProfile()
+    p.defaults.textBefore = ['Vastavalt lepingule nr 12/2026', '  ']
+    p.defaults.textAfter = ['Täname koostöö eest!\nTeine rida  ']
+    const inv = createEmptyInvoice(p)
+    expect(inv.textBefore).toEqual(['Vastavalt lepingule nr 12/2026'])
+    expect(inv.textAfter).toEqual(['Täname koostöö eest!\nTeine rida'])
+    inv.textBefore!.push('x')
+    expect(p.defaults.textBefore).toHaveLength(2)
+    expect(createEmptyInvoice(registeredProfile())).not.toHaveProperty('textBefore')
+  })
+
   it('uses domestic for a registered seller whose default is still not-registered', () => {
     const p = registeredProfile()
     p.defaults.vatScheme = 'not-registered'
@@ -223,5 +236,12 @@ describe('createEmptyInvoice', () => {
     const p = registeredProfile()
     p.defaults.paymentTermDays = 30
     expect(createEmptyInvoice(p).dueDate).toBe('2027-01-19')
+  })
+})
+
+describe('textRows', () => {
+  it('drops blank and non-string rows and trims trailing whitespace', () => {
+    expect(textRows(undefined)).toEqual([])
+    expect(textRows(['a ', '', ' \n ', 3, 'b\nc'])).toEqual(['a', 'b\nc'])
   })
 })

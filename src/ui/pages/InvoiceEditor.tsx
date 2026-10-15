@@ -55,13 +55,28 @@ import { DueAmount, EdSection, MoreOptions, NextStep, SaveIndicator, StatusWord 
 import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
 import { LinesEditor } from './editor/LinesEditor'
-import { PreviewDrawer } from './editor/PdfPreview'
+import { PreviewPanel } from './editor/PdfPreview'
+import { useMediaQuery } from './editor/useMediaQuery'
 import { IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
+import { TextRows } from './editor/TextRows'
 import { useAutosave } from './editor/useAutosave'
 import { ValidationPanel } from './editor/ValidationPanel'
 import { numberingPreview } from './ProfileForm'
 
 const TERM_PRESETS = [7, 14, 30]
+
+/** Below this the preview is a full-screen sheet; above it, a panel docked beside the form. */
+const SHEET_QUERY = '(max-width: 1023px)'
+const PREVIEW_KEY = 'invoice-generator:editorPreview'
+
+function rememberedPreview(): boolean {
+  try {
+    if (typeof window.matchMedia === 'function' && window.matchMedia(SHEET_QUERY).matches) return false
+    return localStorage.getItem(PREVIEW_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 /** Keeps one editor instance alive across the /invoices/new → /invoices/:id URL swap after the first autosave. */
 export default function InvoiceEditorRoute() {
@@ -125,10 +140,30 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const [dialog, setDialog] = useState<null | 'issue' | 'paid' | 'email' | 'reminder'>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [justIssued, setJustIssued] = useState(false)
-  const [previewOpen, setPreviewOpen] = useState(false)
+  // Docked preview: its open state is remembered between visits. On phones it is a sheet and starts closed.
+  const sheet = useMediaQuery(SHEET_QUERY)
+  const [previewOpen, setPreviewOpenState] = useState(rememberedPreview)
+  const [prevSheet, setPrevSheet] = useState(sheet)
+  if (prevSheet !== sheet) {
+    setPrevSheet(sheet)
+    setPreviewOpenState(sheet ? false : rememberedPreview())
+  }
+  const setPreviewOpen = useCallback(
+    (open: boolean) => {
+      setPreviewOpenState(open)
+      if (sheet) return
+      try {
+        localStorage.setItem(PREVIEW_KEY, open ? '1' : '0')
+      } catch {
+        /* storage unavailable */
+      }
+    },
+    [sheet],
+  )
 
   const persistedRef = useRef(false)
   const previewBtn = useRef<HTMLButtonElement>(null)
+  const previewOpener = useRef<HTMLElement | null>(null)
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
@@ -152,6 +187,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   })
 
   useEffect(() => preloadPdfMake(), [])
+  // Opened by the remembered state or a template pick: Escape in the panel returns focus to the header toggle.
+  useEffect(() => {
+    if (previewOpen && !previewOpener.current) previewOpener.current = previewBtn.current
+  })
 
   // Load (or create in memory) once per editor instance.
   useEffect(() => {
@@ -447,6 +486,11 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     ...(invoice.status === 'issued' ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
   ]
 
+  const togglePreview = (opener: HTMLElement) => {
+    previewOpener.current = opener
+    setPreviewOpen(!previewOpen)
+  }
+
   const pdfButton = (
     <button type="button" className="btn btn-sm" onClick={() => void downloadPdf()} disabled={busyAny}>
       <DownloadSimpleIcon />
@@ -455,7 +499,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   )
 
   return (
-    <div className={`page ed${ro ? ' ed-ro' : ' ed-draft'}`}>
+    <div className={`page ed${ro ? ' ed-ro' : ' ed-draft'}${previewOpen && !sheet ? ' ed-pv' : ''}`}>
       <div className="ed-layout">
         <div className="ed-main">
           {!ro && (
@@ -487,7 +531,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 <p className="ed-meta">{ro ? meta : <SaveIndicator state={autosave.state} onRetry={() => void autosave.flush()} />}</p>
               </div>
               <div className="ed-head-actions" role="group" aria-label={t('editor.actions')}>
-                <button ref={previewBtn} type="button" className={`btn${ro ? ' btn-text' : ''}`} onClick={() => setPreviewOpen(true)}>
+                <button
+                  ref={previewBtn}
+                  type="button"
+                  className={`btn${ro ? ' btn-text' : ''}`}
+                  aria-expanded={previewOpen}
+                  aria-controls={previewOpen ? 'ed-preview' : undefined}
+                  onClick={(e) => togglePreview(e.currentTarget)}
+                >
                   <EyeIcon />
                   {t('preview.title')}
                 </button>
@@ -551,6 +602,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               aside={totals.showVat ? t('editor.pricesExclVat') : undefined}
               hint={invoice.type === 'credit-note' ? t('editor.creditLinesHint') : undefined}
             >
+              <TextRows kind="before" rows={invoice.textBefore} onChange={(textBefore) => set({ textBefore })} disabled={ro} />
               <LinesEditor
                 lines={invoice.lines}
                 onChange={(lines) => set({ lines })}
@@ -562,6 +614,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 disabled={ro}
                 grossLabel={credit ? t('totals.credited') : undefined}
               />
+              <TextRows kind="after" rows={invoice.textAfter} onChange={(textAfter) => set({ textAfter })} disabled={ro} />
             </EdSection>
 
             <EdSection id="sec-terms" title={t('editor.sectionPayment')}>
@@ -675,7 +728,11 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 </div>
                 <TemplatePicker
                   value={invoice.templateId}
-                  onChange={(templateId) => set({ templateId })}
+                  onChange={(templateId) => {
+                    set({ templateId })
+                    // Choosing a design is easiest while seeing it: open the docked preview.
+                    if (!previewOpen && !sheet) setPreviewOpen(true)
+                  }}
                   accent={invoice.accentColor}
                   secondary={invoice.secondaryColor}
                   mode={invoice.colorMode}
@@ -764,10 +821,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
           </fieldset>
         </div>
 
+        <div className="ed-dock">
         {!ro ? (
           <aside id="ed-side" className="ed-side" aria-label={t('editor.sideLabel')} tabIndex={-1}>
             <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : undefined} />
             <ValidationPanel issues={checklist} summaryId="issue-summary" />
+            {sheet && (
+              <IconButton className="ed-bar-preview" label={t('preview.title')} icon={<EyeIcon size={20} />} aria-expanded={previewOpen} onClick={(e) => togglePreview(e.currentTarget)} />
+            )}
             <div className="ed-issue">
               <button
                 type="button"
@@ -846,9 +907,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             )}
           </aside>
         )}
+        <PreviewPanel invoice={effective} open={previewOpen} sheet={sheet} onClose={() => setPreviewOpen(false)} actions={pdfButton} returnFocus={previewOpener} />
+        </div>
       </div>
-
-      <PreviewDrawer invoice={effective} open={previewOpen} onClose={() => setPreviewOpen(false)} actions={pdfButton} returnFocus={previewBtn} />
 
       {dialog === 'issue' && <IssueDialog credit={credit} predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
       {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus((id) => app.markInvoicePaid(id, paidAt)).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}

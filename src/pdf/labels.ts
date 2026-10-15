@@ -33,7 +33,6 @@ export const LABELS = {
   iban: { et: 'IBAN', en: 'IBAN' },
   bic: { et: 'BIC', en: 'BIC' },
   scanToPay: { et: 'Skanni ja maksa', en: 'Scan to pay' },
-  dueWord: { et: 'tasuda', en: 'due' },
   lineNo: { et: 'Nr', en: 'No.' },
   description: { et: 'Kirjeldus', en: 'Description' },
   quantity: { et: 'Kogus', en: 'Qty' },

@@ -109,6 +109,10 @@ export interface InvoiceDefaults {
   emailBodyEn?: string
   /** Default for `Invoice.paymentQr` on new invoices. Optional; absent = off. */
   paymentQr?: boolean
+  /** Default free-text rows copied into `Invoice.textBefore` on new invoices. */
+  textBefore?: string[]
+  /** Default free-text rows copied into `Invoice.textAfter` on new invoices. */
+  textAfter?: string[]
 }
 
 export interface NumberingSettings {
@@ -211,6 +215,13 @@ export interface Invoice {
   /** Buyer's order / PO number. */
   orderReference?: string
   notes?: string
+  /**
+   * Free-text rows printed directly above the line table (after seller/buyer). Each item is one row and may
+   * contain line breaks; blank items are ignored when rendering.
+   */
+  textBefore?: string[]
+  /** Free-text rows printed directly after the totals block (before payment details). */
+  textAfter?: string[]
   lateInterestPercentPerDay?: number
   /** Footer text printed on every page (copied from profile defaults.footerNote when the invoice is created). */
   footerNote?: string

@@ -112,18 +112,31 @@ describe('BrandColors', () => {
   })
 })
 
-describe('TemplatePicker colours', () => {
-  const vars = () => [...document.querySelectorAll<HTMLElement>('.tpl-thumb')].map((el) => [el.style.getPropertyValue('--tpl-accent'), el.style.getPropertyValue('--tpl-second')])
+describe('TemplatePicker', () => {
+  it('is a radio list of the six templates with one-line descriptions and no drawn thumbnails', () => {
+    const onChange = vi.fn()
+    wrap(<TemplatePicker value="modern" onChange={onChange} accent="#0b5d7a" secondary="url(https://evil.example/x)" mode="duo" />)
+    const radios = screen.getAllByRole('radio')
+    expect(radios.map((r) => r.getAttribute('value'))).toEqual(['standard', 'classic', 'modern', 'minimal', 'bold', 'compact'])
+    expect(screen.getByRole('radio', { name: /Moodne/ })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /Moodne/ })).toHaveAccessibleDescription('Värviline päiseriba, kus summa on suurelt näha.')
+    expect(screen.getByRole('group', { name: 'Kujundus' })).toBeInTheDocument()
+    expect(document.querySelector('.tpl-thumb, [style]')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: /Julge/ }))
+    expect(onChange).toHaveBeenCalledWith('bold')
+  })
 
-  it('passes the secondary colour only in duo mode and only as hex', () => {
-    wrap(<TemplatePicker value="modern" onChange={() => undefined} accent="#0b5d7a" secondary="#e07a10" mode="duo" />)
-    expect(vars()[0]).toEqual(['#0b5d7a', '#e07a10'])
-    cleanup()
-    wrap(<TemplatePicker value="modern" onChange={() => undefined} accent="#0b5d7a" secondary="url(https://evil.example/x)" mode="duo" />)
-    expect(vars()[0]).toEqual(['#0b5d7a', ''])
-    cleanup()
-    wrap(<TemplatePicker value="modern" onChange={() => undefined} accent="#0b5d7a" secondary="#e07a10" mode="mono" />)
-    expect(vars()[0]).toEqual(['#2b3036', ''])
+  it('shares one radio name per picker (arrow keys move within it) and can be disabled', () => {
+    wrap(
+      <>
+        <TemplatePicker value="standard" onChange={() => undefined} accent="#0b5d7a" />
+        <TemplatePicker value="classic" onChange={() => undefined} accent="#0b5d7a" disabled compact legend="Arve kujundus" />
+      </>,
+    )
+    const [a, b] = [...document.querySelectorAll('fieldset')].map((f) => [...f.querySelectorAll<HTMLInputElement>('input[type=radio]')])
+    expect(new Set(a.map((r) => r.name)).size).toBe(1)
+    expect(a[0].name).not.toBe(b[0].name)
+    expect(screen.getByRole('group', { name: 'Arve kujundus' })).toBeDisabled()
   })
 })
 

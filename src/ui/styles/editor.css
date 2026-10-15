@@ -1,7 +1,7 @@
 /*
  * Invoice editor: one calm centred column (Ostja, Read, Maksmine, Kujundus, Lisavalikud) and a narrow sticky
  * column with the amount due, the requirements check and the one primary action. Below 1024 px that column
- * becomes a bar pinned to the bottom of the screen. The PDF preview opens in a side drawer.
+ * becomes a bar pinned to the bottom of the screen. The live PDF preview docks beside the form (see "Live preview").
  */
 
 .ed {
@@ -491,6 +491,70 @@
   color: var(--text);
 }
 
+/* ---------- Text rows before / after the lines ---------- */
+
+.text-rows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.text-rows-before {
+  margin-bottom: var(--s-4);
+}
+.text-rows-after {
+  margin-top: var(--s-4);
+}
+.text-rows > [role='group'] {
+  align-self: stretch;
+}
+.text-rows-label {
+  margin-bottom: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.text-rows-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.text-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.text-row textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+}
+.text-row-tools {
+  display: flex;
+  align-items: center;
+  min-height: var(--h-control);
+  opacity: 0.35;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.text-row:hover .text-row-tools,
+.text-row:focus-within .text-row-tools {
+  opacity: 1;
+}
+@media (hover: none) {
+  .text-row-tools {
+    opacity: 1;
+  }
+}
+.text-rows-ro .text-rows-label {
+  margin-bottom: 0;
+}
+.text-row-ro {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Payment ---------- */
 
 .term-row {
@@ -892,89 +956,241 @@
   text-overflow: ellipsis;
 }
 
-/* ---------- Preview drawer ---------- */
+/* ---------- Live preview ---------- */
 
-.drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: flex-end;
-  background: var(--backdrop);
-  animation: fade-in var(--dur) var(--ease);
+/*
+ * The preview lives in .ed-dock next to the summary. Closed, the dock is transparent to layout. Open on wide
+ * screens (.ed-pv) it is a sticky column beside the form: from 1280 px the summary sits at its top; 1024-1279 px
+ * drafts move the summary to the pinned bottom bar. Below 1024 px the preview is a full-screen sheet.
+ */
+.ed-dock {
+  display: contents;
 }
-.drawer {
+.ed-head-actions .btn[aria-expanded='true'] {
+  background: var(--surface-3);
+  border-color: var(--border);
+}
+.pv {
   display: flex;
   flex-direction: column;
-  width: min(760px, 100%);
-  height: 100%;
+  min-width: 0;
+  min-height: 0;
   background: var(--surface-2);
-  border-left: 1px solid var(--border);
-  box-shadow: var(--shadow-overlay);
-  animation: ed-drawer-in var(--dur) var(--ease);
 }
-@keyframes ed-drawer-in {
-  from {
-    transform: translateX(24px);
-    opacity: 0;
-  }
+.pv-docked {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
 }
-.drawer-head {
+.pv-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  animation: fade-in var(--dur) var(--ease);
+}
+html.ed-sheet-open {
+  overflow: hidden;
+}
+.pv-head {
   display: flex;
   align-items: center;
-  gap: var(--s-3);
-  padding: 12px 12px 12px var(--s-5);
+  gap: var(--s-2);
+  padding: 8px 8px 8px var(--s-4);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.drawer-title {
+.pv-title {
   flex: 1;
   min-width: 0;
 }
-.drawer-title h2 {
-  font-size: var(--fs-lg);
+.pv-title h2 {
+  font-size: var(--fs-md);
   font-weight: 600;
 }
-.drawer-sub {
-  font-size: var(--fs-sm);
+.pv-sub {
+  overflow: hidden;
+  font-size: var(--fs-xs);
   color: var(--text-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.drawer-body {
+.pv-body {
   display: flex;
   flex-direction: column;
-  gap: var(--s-3);
+  align-items: center;
+  gap: var(--s-4);
   flex: 1;
   min-height: 0;
-  padding: var(--s-5);
+  padding: var(--s-4);
   overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
-.preview-frame,
-.preview-placeholder {
+.pv-body > .notice {
+  align-self: stretch;
+}
+.pv-page {
   display: block;
   width: 100%;
-  flex: 1;
-  min-height: 480px;
+  max-width: 640px;
+  height: auto;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.08),
+    0 2px 8px rgb(20 24 30 / 0.08);
+}
+.pv-frame,
+.pv-placeholder {
+  display: block;
+  width: 100%;
+  max-width: 640px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
 }
-.preview-placeholder {
+.pv-frame {
+  flex: 1;
+  min-height: 480px;
+}
+.pv-placeholder {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   flex: none;
+  gap: 12px;
   aspect-ratio: 1 / 1.414;
-  min-height: 0;
   padding: 28px 24px;
 }
-.preview-placeholder .sk-right {
+.pv-placeholder .sk-right {
   margin-top: auto;
   margin-left: auto;
 }
 
-/* ---------- Narrow editor column: lines become cards ---------- */
+@media (min-width: 1024px) {
+  .ed.ed-pv {
+    max-width: none;
+  }
+  .ed-pv .ed-layout {
+    gap: var(--s-8);
+  }
+  .ed-pv .ed-main {
+    flex: 1 1 var(--ed-col);
+    max-width: var(--ed-col);
+  }
+  .ed-pv .ed-dock {
+    position: sticky;
+    top: calc(var(--topbar-h) + var(--s-6));
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-4);
+    flex: 0 0 clamp(400px, 38vw, 520px);
+    min-width: 0;
+    height: calc(100svh - var(--topbar-h) - var(--s-12));
+  }
+  /* The summary at the top of the dock: amount and the one action on a row, the check above them. */
+  .ed-pv .ed-side {
+    position: static;
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'check check'
+      'total issue';
+    align-items: center;
+    gap: var(--s-3) var(--s-4);
+    max-height: 45%;
+    padding: 0;
+  }
+  .ed-pv .ed-side .check {
+    grid-area: check;
+  }
+  .ed-pv .ed-total {
+    grid-area: total;
+  }
+  .ed-pv .ed-total-amount {
+    font-size: 22px;
+  }
+  .ed-pv .ed-issue {
+    grid-area: issue;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .ed-pv .ed-issue-btn {
+    width: auto;
+    padding: 0 18px;
+  }
+  .ed-pv .ed-issue-note {
+    max-width: 240px;
+    font-size: var(--fs-xs);
+    text-align: right;
+  }
+  /* Issued: amount and dates side by side, the actions under them. */
+  .ed-pv .ed-side-ro {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: none;
+    align-items: start;
+  }
+  .ed-pv .ed-side-ro > * {
+    grid-area: auto;
+  }
+  .ed-pv .ed-side-ro .ed-issue {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: flex-start;
+  }
+  .ed-pv .ed-side-ro .ed-einvoice {
+    grid-column: 1 / -1;
+  }
+}
 
-@container ed-main (max-width: 599px) {
+/* 1024-1279 px: the preview takes the summary's place; a draft's summary is the pinned bottom bar. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .ed-draft.ed-pv {
+    padding-bottom: var(--ed-bar-h);
+  }
+  .shell:has(.ed-draft.ed-pv) .footer {
+    padding-bottom: calc(var(--ed-bar-h) + var(--s-4));
+  }
+  .ed-draft.ed-pv .ed-dock {
+    height: calc(100svh - var(--topbar-h) - var(--ed-bar-h) - var(--s-12));
+  }
+  .ed-draft.ed-pv .ed-side {
+    position: fixed;
+    z-index: 40;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 70svh;
+    overflow: auto;
+    padding: var(--s-3) var(--s-6) calc(var(--s-3) + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -6px 16px rgb(20 24 30 / 0.05);
+  }
+  .ed-draft.ed-pv .ed-side .check {
+    max-height: 40svh;
+    overflow: auto;
+    padding-bottom: var(--s-3);
+    border-bottom: 1px solid var(--ed-rule);
+  }
+  .ed-draft.ed-pv .ed-side .check-toggle {
+    margin: 0;
+    width: 100%;
+    padding: 4px 0;
+  }
+  .ed-draft.ed-pv .ed-total-sub {
+    display: none;
+  }
+  .ed-draft.ed-pv .ed-issue-note {
+    max-width: none;
+  }
+}
+
+/* ---------- Narrow editor column (under the 680 px the line table needs): lines become cards ---------- */
+
+@container ed-main (max-width: 679px) {
   .line-header {
     display: none;
   }
@@ -1092,6 +1308,16 @@
     border-top: 1px solid var(--border);
     box-shadow: 0 -6px 16px rgb(20 24 30 / 0.05);
   }
+  /* With the preview toggle (phones and tablets): amount | preview | issue. */
+  .ed-draft .ed-side:has(.ed-bar-preview) {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'check check check'
+      'total preview issue';
+  }
+  .ed-bar-preview {
+    grid-area: preview;
+  }
   .ed-draft .ed-side .check {
     grid-area: check;
     max-height: 40svh;
@@ -1205,7 +1431,7 @@
     width: 100%;
     margin: 0;
   }
-  .drawer-body {
+  .pv-body {
     padding: var(--s-3);
   }
 }
@@ -1245,4 +1471,15 @@
 .ed-title h1:focus,
 .ed-side:focus {
   outline: none;
+}
+
+/* Invoice detail (list page): the free-text rows around the lines, as printed. */
+.doc-text-row {
+  max-width: 62ch;
+  margin-bottom: var(--s-2);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.doc-text-after {
+  margin: var(--s-4) 0 0;
 }

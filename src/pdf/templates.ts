@@ -1,7 +1,7 @@
 // The six visual templates. Each composes the shared blocks (blocks.ts) with its own layout and styling.
-// Every template keeps the same reading order: title → number/dates → seller → buyer → lines → totals →
-// payment → notes, and prints every legally required element (docs/legal-requirements.md).
-import type { Content, ContextPageSize, TDocumentDefinitions } from 'pdfmake/interfaces'
+// Every template keeps the same reading order: title → number/dates → seller → buyer → text before → lines →
+// totals → text after → payment → notes, and prints every legally required element (docs/legal-requirements.md).
+import type { Content, ContentStack, ContextPageSize, TDocumentDefinitions } from 'pdfmake/interfaces'
 import type { TemplateId } from '../domain/types'
 import {
   continuationHeader,
@@ -19,10 +19,12 @@ import {
   paymentRows,
   rule,
   tableLayout,
+  textRowsBlock,
   totalsTable,
   vatBreakdownTable,
   withProps,
   type DefRow,
+  type TextRowsStyle,
   type LabelStyle,
   type Margins,
   type PartyStyle,
@@ -38,54 +40,54 @@ export interface TemplateInfo {
   description: { et: string; en: string }
 }
 
-/** Picker order; `standard` is the default for new profiles. */
+/** Picker order; `standard` is the default for new profiles. Descriptions are one short line (picker list). */
 export const TEMPLATES: TemplateInfo[] = [
   {
     id: 'standard',
     name: { et: 'Standard', en: 'Standard' },
     description: {
-      et: 'Selge ja rahulik: pealkiri, summa ja tähtaeg ühel real, õhuke tabel, makseandmed jaluses. Sobib igale arvele.',
-      en: 'Clear and calm: title, amount and due date in one line, light table, payment details at the bottom. Fits any invoice.',
+      et: 'Rahulik ja selge, õhukeste joontega tabel. Sobib igale arvele.',
+      en: 'Clear and calm with a light table. Fits any invoice.',
     },
   },
   {
     id: 'classic',
     name: { et: 'Klassikaline', en: 'Classic' },
     description: {
-      et: 'Traditsiooniline Eesti arve: raamitud päiseandmed, müüja ja ostja andmed kastides, ruudustikuga tabel.',
-      en: 'Traditional Estonian invoice: boxed header details, seller and buyer boxes, fully gridded table.',
+      et: 'Traditsiooniline: raamitud andmed ja ruudustikuga tabel.',
+      en: 'Traditional: boxed details and a fully gridded table.',
     },
   },
   {
     id: 'modern',
     name: { et: 'Moodne', en: 'Modern' },
     description: {
-      et: 'Värviline päiseriba, kus tasumisele kuuluv summa on suurelt näha; palju õhku.',
-      en: 'Accent colour header band with the amount due set large; generous whitespace.',
+      et: 'Värviline päiseriba, kus summa on suurelt näha.',
+      en: 'Colour header band with the amount due set large.',
     },
   },
   {
     id: 'minimal',
     name: { et: 'Minimalistlik', en: 'Minimal' },
     description: {
-      et: 'Šveitsi stiilis tüpograafiline ruudustik, mustvalge kujundus ja peened aktsendijooned.',
-      en: 'Swiss-style typographic grid, monochrome with thin accent rules.',
+      et: 'Mustvalge tüpograafia ja peened aktsendijooned.',
+      en: 'Monochrome typography with thin accent rules.',
     },
   },
   {
     id: 'bold',
     name: { et: 'Julge', en: 'Bold' },
     description: {
-      et: 'Suur kiri ja värviline summaplokk. Sobib, kui tahad silma paista.',
-      en: 'Big type and a strong accent block for the total — for brands that want presence.',
+      et: 'Suur kiri ja värviline summaplokk.',
+      en: 'Big type and a colour block for the total.',
     },
   },
   {
     id: 'compact',
     name: { et: 'Kompaktne', en: 'Compact' },
     description: {
-      et: 'Tihe paigutus pikkade arvete jaoks: esimesele lehele mahub umbes 35 rida.',
-      en: 'Dense layout for long invoices: about 35 lines fit on the first page.',
+      et: 'Tihe paigutus pikkade arvete jaoks.',
+      en: 'Dense layout for long invoices.',
     },
   },
 ]
@@ -115,11 +117,14 @@ function heading(color: string, fontSize = 7.5, secondaryColor?: string): LabelS
   return { fontSize, color, secondaryColor: secondaryColor ?? color, bold: true, uppercase: true, characterSpacing: 0.6 }
 }
 
-/** "2 083,20 € tasuda 28.10.2026" — one run for the amount, one for the due date. */
-function amountDueLine(ctx: DocContext, amountColor: string): Content[] {
-  const grand = grandTotal(ctx)
-  if (ctx.isCreditNote || !ctx.invoice.dueDate) return [{ text: `${ctx.t(grand.key)} ` }, { text: grand.value, color: amountColor }]
-  return [{ text: grand.value, color: amountColor }, { text: ` ${ctx.t('dueWord')} ${ctx.date(ctx.invoice.dueDate)}` }]
+/** The free-text rows before the line table and after the totals (each null when empty). */
+function textBlocks(ctx: DocContext, style: TextRowsStyle): { before: ContentStack | null; after: ContentStack | null } {
+  return { before: textRowsBlock(ctx, 'before', style), after: textRowsBlock(ctx, 'after', style) }
+}
+
+/** `block` with a margin, as a list to spread into the content (empty without a block). */
+function placed(block: Content | null, margin: Margins): Content[] {
+  return block ? [{ ...(block as object), margin } as Content] : []
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -149,7 +154,7 @@ function standard(ctx: DocContext): TemplateDefinition {
   const W = PAGE_WIDTH - 2 * mx
   const bi = bilingual(ctx)
   const accentText = readableOnWhite(ctx.accent)
-  // Duo: headline amount in the primary colour, section labels and the table's header rule in the secondary.
+  // Duo: the amount due in the primary colour, section labels and the table's header rule in the secondary.
   const head = heading(second(ctx, COLORS.muted, labelInk), 7.5, second(ctx, COLORS.faint, () => COLORS.muted))
   const party: PartyStyle = { heading: head, headingGap: 6, nameSize: 10, fontSize: 9, color: COLORS.text, labelColor: COLORS.muted }
   const brand = logo(ctx, [170, 52], 'right') ?? { text: ctx.invoice.seller.name, font: FONT.strong, fontSize: 12, color: COLORS.ink, alignment: 'right' }
@@ -168,8 +173,9 @@ function standard(ctx: DocContext): TemplateDefinition {
     labelSecondaryColor: COLORS.faint,
     valueColor: COLORS.text,
     grandLabelSize: 9.5,
-    grandFontSize: 10.5,
-    grandColor: COLORS.ink,
+    grandFontSize: 12,
+    grandColor: accentText,
+    grandLabelColor: COLORS.ink,
     grandRule: [0.8, COLORS.text],
     rowRule: [0.5, COLORS.hairline],
     paddingY: 3.6,
@@ -178,6 +184,7 @@ function standard(ctx: DocContext): TemplateDefinition {
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 80, { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
   const notes = notesBlock(ctx, { fontSize: 8, color: COLORS.text, mutedColor: COLORS.muted, heading: { ...head, fontSize: 7 }, gap: 4 })
+  const text = textBlocks(ctx, { fontSize: 9, color: COLORS.text, gap: 5 })
 
   const content: Content[] = [
     {
@@ -193,17 +200,18 @@ function standard(ctx: DocContext): TemplateDefinition {
       ],
       columnGap: 24,
     },
-    { text: amountDueLine(ctx, accentText), bold: true, fontSize: 15, color: COLORS.ink, margin: [0, 20, 0, 0] },
     {
       columns: [
         { width: '*', ...partyBlock(ctx, 'seller', party) },
         { width: '*', ...partyBlock(ctx, 'buyer', party) },
       ],
       columnGap: 32,
-      margin: [0, 20, 0, 0],
+      margin: [0, 30, 0, 0],
     },
-    { ...linesTable(ctx, table), margin: [0, 22, 0, 0] },
+    ...placed(text.before, [0, 24, 0, 0]),
+    { ...linesTable(ctx, table), margin: [0, text.before ? 16 : 22, 0, 0] },
     totalsRow(breakdown ? { ...breakdown, margin: [0, 10, 0, 0] } : null, totals, bi ? 290 : 250, 40, [0, 4, 0, 0]),
+    ...placed(text.after, [0, 18, 0, 0]),
   ]
   if (pay.length || qr) {
     content.push({
@@ -276,6 +284,7 @@ function classic(ctx: DocContext): TemplateDefinition {
   const pay = paymentRows(ctx, { reference: false })
   const qr = paymentQr(ctx, 74, { fontSize: 6.5, color: COLORS.muted, alignment: 'center' })
   const notes = notesBlock(ctx, { fontSize: 8, color: COLORS.text, mutedColor: COLORS.muted, heading: { ...headStyle, color: accentText } })
+  const text = textBlocks(ctx, { fontSize: 8.5, color: COLORS.text, gap: 4 })
 
   const content: Content[] = [
     {
@@ -308,8 +317,10 @@ function classic(ctx: DocContext): TemplateDefinition {
       layout: grid(7, 5),
       margin: [0, 12, 0, 0],
     },
-    { ...linesTable(ctx, table), margin: [0, 16, 0, 0] },
+    ...placed(text.before, [0, 16, 0, 0]),
+    { ...linesTable(ctx, table), margin: [0, text.before ? 12 : 16, 0, 0] },
     totalsRow(breakdown, totals, bi ? 290 : 240, 24, [0, 10, 0, 0]),
+    ...placed(text.after, [0, 14, 0, 0]),
   ]
   if (pay.length) {
     content.push({
@@ -385,6 +396,7 @@ function modern(ctx: DocContext): TemplateDefinition {
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 80, { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
   const notes = notesBlock(ctx, { fontSize: 8, color: COLORS.text, mutedColor: COLORS.muted, heading: heading(secondText, 7, COLORS.muted), gap: 4 })
+  const text = textBlocks(ctx, { fontSize: 9, color: COLORS.text, gap: 5 })
   const boxFill = second(ctx, ctx.accentTint, () => ctx.secondaryTint)
 
   const band: Content = {
@@ -434,8 +446,10 @@ function modern(ctx: DocContext): TemplateDefinition {
       columnGap: 28,
       margin: [0, 26, 0, 0],
     },
-    { ...linesTable(ctx, table), margin: [0, 24, 0, 0] },
+    ...placed(text.before, [0, 24, 0, 0]),
+    { ...linesTable(ctx, table), margin: [0, text.before ? 16 : 24, 0, 0] },
     totalsRow(breakdown ? { ...breakdown, margin: [0, 10, 0, 0] } : null, totals, bi ? 290 : 250, 40, [0, 4, 0, 0]),
+    ...placed(text.after, [0, 18, 0, 0]),
   ]
   if (pay.length || qr) {
     content.push({
@@ -510,6 +524,9 @@ function minimal(ctx: DocContext): TemplateDefinition {
   const qr = paymentQr(ctx, 76, { ...lbl, fontSize: 6.5 })
   const notes = notesBlock(ctx, { fontSize: 7.5, color: COLORS.ink, mutedColor: COLORS.muted, heading: lbl, gap: 4 })
   const hair = (m: Margins) => rule(W, COLORS.hairline, 0.5, m)
+  // Free text keeps to the grid: three columns wide, like the notes.
+  const text = textBlocks(ctx, { fontSize: 8.5, color: COLORS.ink, gap: 4 })
+  const onGrid = (block: ContentStack | null): Content | null => (block ? { columns: [{ width: span(3) + GAP / 2, ...block }, { width: '*', text: '' }] } : null)
 
   const content: Content[] = [
     rule(W, ctx.accent, 1.2, [0, 0, 0, 16]),
@@ -530,8 +547,10 @@ function minimal(ctx: DocContext): TemplateDefinition {
       ],
       columnGap: GAP,
     },
-    { ...linesTable(ctx, table), margin: [0, 22, 0, 0] },
+    ...placed(onGrid(text.before), [0, 22, 0, 0]),
+    { ...linesTable(ctx, table), margin: [0, text.before ? 16 : 22, 0, 0] },
     totalsRow(breakdown ? { ...breakdown, margin: [0, 8, 0, 0] } : null, totals, span(2), GAP, [0, 6, 0, 0]),
+    ...placed(onGrid(text.after), [0, 16, 0, 0]),
   ]
   if (pay.length || qr) {
     content.push({
@@ -608,6 +627,7 @@ function bold(ctx: DocContext): TemplateDefinition {
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 80, { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
   const notes = notesBlock(ctx, { fontSize: 8, color: COLORS.text, mutedColor: COLORS.muted, heading: heading(COLORS.muted, 7, COLORS.faint), gap: 4 })
+  const text = textBlocks(ctx, { fontSize: 9.5, color: COLORS.text, gap: 5 })
 
   const content: Content[] = [
     {
@@ -640,7 +660,8 @@ function bold(ctx: DocContext): TemplateDefinition {
       ],
       columnGap: 32,
     },
-    { ...linesTable(ctx, table), margin: [0, 22, 0, 0] },
+    ...placed(text.before, [0, 22, 0, 0]),
+    { ...linesTable(ctx, table), margin: [0, text.before ? 16 : 22, 0, 0] },
     {
       stack: [
         ...(subtotals || breakdown ? [totalsRow(breakdown ? { ...breakdown, margin: [0, 8, 0, 0] } : null, subtotals, bi ? 290 : 260, 40)] : []),
@@ -649,6 +670,7 @@ function bold(ctx: DocContext): TemplateDefinition {
       margin: [0, 2, 0, 0],
       unbreakable: true,
     },
+    ...placed(text.after, [0, 18, 0, 0]),
   ]
   // Payment details, notes and QR side by side keep the big-type layout on one page.
   if (pay.length || qr || notes) {
@@ -717,6 +739,7 @@ function compact(ctx: DocContext): TemplateDefinition {
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 62, { fontSize: 6, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
   const notes = notesBlock(ctx, { fontSize: 7.2, color: COLORS.text, mutedColor: COLORS.muted, heading: head, gap: 2.5 })
+  const text = textBlocks(ctx, { fontSize: 7.6, color: COLORS.text, gap: 2.5 })
 
   const content: Content[] = [
     {
@@ -735,8 +758,10 @@ function compact(ctx: DocContext): TemplateDefinition {
       columnGap: 18,
       margin: [0, 10, 0, 0],
     },
-    { ...linesTable(ctx, table), margin: [0, 12, 0, 0] },
+    ...placed(text.before, [0, 12, 0, 0]),
+    { ...linesTable(ctx, table), margin: [0, text.before ? 8 : 12, 0, 0] },
     totalsRow(breakdown ? { ...breakdown, margin: [0, 4, 0, 0] } : null, totals, bi ? 270 : 220, 28, [0, 4, 0, 0]),
+    ...placed(text.after, [0, 10, 0, 0]),
   ]
   if (pay.length || qr || notes) {
     content.push({

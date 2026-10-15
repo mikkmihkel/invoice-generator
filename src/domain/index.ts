@@ -51,6 +51,7 @@ export {
   sellerSnapshot,
   draftSellerSnapshot,
   buyerSnapshot,
+  textRows,
 } from './factory'
 export { withVatScheme } from './scheme'
 export { selectedBankAccounts } from './accounts'

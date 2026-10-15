@@ -262,6 +262,9 @@ const DATE = '\\d{1,2}(?:\\.\\d{2}\\.| [A-Z][a-z]{2} )\\d{4}'
 const AMOUNT = '-?\\d{1,3}(?:[ ,]\\d{3})*[.,]\\d{2}'
 
 const languages: InvoiceLanguage[] = ['et', 'en', 'et-en']
+/** Free-text rows printed before the line table and after the totals (one with a line break). */
+const TEXT_BEFORE = ['Vastavalt lepingule nr 12/2026 (sõlmitud 01.09.2026)', 'Projekt: veebipood Õunake\nEtapp: teine']
+const TEXT_AFTER = ['Järgmine arve esitatakse novembri alguses.']
 const matrix = TEMPLATES.flatMap((t) => languages.map((language) => [t.id, language] as const))
 
 describe('PDF text extraction (pdf.js)', () => {
@@ -270,7 +273,7 @@ describe('PDF text extraction (pdf.js)', () => {
 
   beforeAll(async () => {
     for (const [templateId, language] of matrix) {
-      const inv = payable({ templateId, language, paymentQr: true })
+      const inv = payable({ templateId, language, paymentQr: true, textBefore: TEXT_BEFORE, textAfter: TEXT_AFTER })
       results.set(`${templateId}/${language}`, { inv, pdf: await render(inv) })
     }
   }, 180_000)
@@ -338,6 +341,42 @@ describe('PDF text extraction (pdf.js)', () => {
     const dueLabel = [...visual.matchAll(new RegExp(labelSource(language, 'amountDue'), 'gi'))].at(-1)
     expect(dueLabel?.index).toBeGreaterThan(lastLine)
     expect(visual.lastIndexOf(normalizeSpaces(formatAmount(totals.gross, language)))).toBeGreaterThan(lastLine)
+  })
+
+  it.each(matrix)('%s / %s: reading order incl. text rows (number, seller, buyer, text before, lines, totals, text after, payment, notes)', (templateId, language) => {
+    const { inv, pdf } = results.get(`${templateId}/${language}`)!
+    const totals = computeTotals(inv)
+    const due = labelRe(language, 'amountDue', loose(normalizeSpaces(formatAmount(totals.gross, language))))
+    const iban = new RegExp(Array.from(IBAN).join('\\s?'))
+    const order = (text: string) => {
+      const first = (s: string | RegExp) => text.search(typeof s === 'string' ? new RegExp(loose(s.replace(/\n/g, ' '))) : s)
+      const lastDue = [...text.matchAll(due)].at(-1)?.index ?? -1
+      const steps: [string, number][] = [
+        ['number', first(inv.number)],
+        ['seller', first(inv.seller.name)],
+        ['buyer', first(inv.buyer.name)],
+        ['text before 1', first(TEXT_BEFORE[0])],
+        ['text before 2', first(TEXT_BEFORE[1])],
+        ['first line', first(inv.lines[0].description)],
+        ['last line', first(inv.lines.at(-1)!.description)],
+        ['amount due', lastDue],
+        ['text after', first(TEXT_AFTER[0])],
+        ['IBAN', first(iban)],
+        ['notes', first(inv.notes!)],
+      ]
+      for (const [name, index] of steps) expect(index, `${name} found`).toBeGreaterThan(-1)
+      for (let i = 1; i < steps.length; i++) expect(steps[i][1], `${steps[i][0]} after ${steps[i - 1][0]}`).toBeGreaterThan(steps[i - 1][1])
+    }
+    // Content-stream order (pdf.js, most extractors and LLM pipelines).
+    order(normalizeSpaces(pdf.streamText.replace(/\n/g, ' ')))
+    // Visual order: the text rows sit below the parties and above the table, and below the totals and above the
+    // payment details.
+    const visual = normalizeSpaces(pdf.lines.join(' '))
+    const at = (s: string) => visual.search(new RegExp(loose(s.replace(/\n/g, ' '))))
+    expect(at(TEXT_BEFORE[0])).toBeGreaterThan(at(inv.buyer.name))
+    expect(at(TEXT_BEFORE[1])).toBeLessThan(at(inv.lines[0].description))
+    expect(at(TEXT_AFTER[0])).toBeGreaterThan(visual.lastIndexOf(normalizeSpaces(formatAmount(totals.gross, language))))
+    expect(at(TEXT_AFTER[0])).toBeLessThan(visual.search(iban))
   })
 
   it.each(matrix)('%s / %s: metadata and embedded e-invoice', (templateId, language) => {
