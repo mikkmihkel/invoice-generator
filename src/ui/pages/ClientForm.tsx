@@ -10,8 +10,23 @@ import { languageOptions, vatSchemeOptions } from '../options'
 import { useToast } from '../Toasts'
 import { clientFromRegistry, errorMessage, newClient } from '../util'
 
-/** Create/edit a client in a dialog. Saves through the repository and returns the saved client. */
-export function ClientDialog({ initial, onClose, onSaved, withSearch }: { initial?: Client; onClose: () => void; onSaved?: (c: Client) => void; withSearch?: boolean }) {
+/**
+ * Create/edit a client in a dialog. Saves through the repository and returns the saved client. With
+ * `offerInvoice` the confirmation of a new client links to a new invoice for them.
+ */
+export function ClientDialog({
+  initial,
+  onClose,
+  onSaved,
+  withSearch,
+  offerInvoice,
+}: {
+  initial?: Client
+  onClose: () => void
+  onSaved?: (c: Client) => void
+  withSearch?: boolean
+  offerInvoice?: boolean
+}) {
   const { t, saveClient, clients } = useApp()
   const toast = useToast()
   const [client, setClient] = useState<Client>(() => initial ?? newClient())
@@ -29,7 +44,8 @@ export function ClientDialog({ initial, onClose, onSaved, withSearch }: { initia
     try {
       const c = { ...client, name: client.name.trim() }
       await saveClient(c)
-      toast.success(isNew ? t('clients.added') : t('common.saved'))
+      const newInvoice = { label: t('clients.newInvoice'), onClick: () => void (window.location.hash = `#/invoices/new?client=${encodeURIComponent(c.id)}`) }
+      toast.success(isNew ? t('clients.added') : t('common.saved'), isNew && offerInvoice ? newInvoice : undefined)
       onSaved?.(c)
       onClose()
     } catch (err) {

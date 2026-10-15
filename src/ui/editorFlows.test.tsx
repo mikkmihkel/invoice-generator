@@ -264,3 +264,51 @@ describe('buyer e-mail suggestion', () => {
     expect(screen.getByLabelText('E-post')).toHaveValue('arved@ostja.ee')
   })
 })
+
+describe('reopening and deleting in the editor', () => {
+  it('reopens an issued, unsent invoice in place and issues it again under the same number', async () => {
+    const year = localTodayISO().slice(0, 4)
+    const old = addDaysISO(localTodayISO(), -3)
+    const issued = validDraft({ number: `${year}-0007`, status: 'issued', issueDate: old, dueDate: addDaysISO(old, 14), issuedAt: `${old}T10:00:00.000Z` })
+    const repo = createMemoryRepo({ profile, clients: [client], invoices: [issued] })
+    renderAt(`#/invoices/${issued.id}`, repo)
+    expect(await screen.findByRole('heading', { level: 1, name: `Arve ${year}-0007` })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Kirjeldus 1')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Ava muutmiseks' }))
+    const dialog = await screen.findByRole('dialog', { name: `Kas avada arve ${year}-0007 muutmiseks?` })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Ava muutmiseks' }))
+    })
+    expect(repo.reopenInvoice).toHaveBeenCalledWith(issued.id)
+    expect(await screen.findByLabelText('Kirjeldus 1')).not.toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Kirjeldus 1'), { target: { value: 'Arendus, parandatud' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Väljasta arve' }))
+    const issue = await screen.findByRole('dialog', { name: 'Väljasta arve' })
+    // No offer to move the date: the number belongs to it.
+    expect(within(issue).queryByText(/Arve kuupäev on/)).not.toBeInTheDocument()
+    expect(within(issue).getByText(`Dokument väljastatakse uuesti sama numbriga ${year}-0007.`)).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(issue).getByRole('button', { name: 'Väljasta' }))
+    })
+    await waitFor(() => expect(repo.issueInvoice).toHaveBeenCalledWith(issued.id))
+    const stored = await repo.getInvoice(issued.id)
+    expect(stored).toMatchObject({ status: 'issued', number: `${year}-0007`, lines: [expect.objectContaining({ description: 'Arendus, parandatud' })] })
+    expect(stored?.reopenedAt).toBeUndefined()
+  })
+
+  it('deletes an issued invoice from the menu after explaining the consequences', async () => {
+    const issued = validDraft({ number: '2026-0003', status: 'issued', issuedAt: '2026-10-01T10:00:00.000Z' })
+    const repo = createMemoryRepo({ profile, clients: [client], invoices: [issued] })
+    renderAt(`#/invoices/${issued.id}`, repo)
+    await screen.findByRole('heading', { level: 1, name: 'Arve 2026-0003' })
+    fireEvent.click(screen.getByRole('button', { name: 'Rohkem' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta arve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0003?' })
+    expect(within(dialog).getByText(/raamatupidamise algdokumendid/)).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Kustuta' }))
+    })
+    await waitFor(() => expect(window.location.hash).toBe('#/'))
+    expect(await repo.listInvoices()).toEqual([])
+  })
+})

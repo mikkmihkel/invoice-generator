@@ -1,6 +1,6 @@
-# Arvegeneraator · Estonian invoice generator
+# Arveldaja · invoicing for Estonian micro-companies
 
-A simple, private invoicing tool for Estonian micro-companies. It runs entirely in the browser and is hosted for free on GitHub Pages, with no server and no account.
+Arveldaja is a simple, private invoicing tool for Estonian micro-companies. It runs entirely in the browser and is hosted for free on GitHub Pages, with no server and no account.
 
 - **Find companies in the e-Business Register (Äriregister).** Search by name or registry code to fill in your own company and your clients: name, registry code, VAT number (KMKR) and address.
 - **Legally complete invoices.** Every invoice is checked against the Estonian VAT Act (KMS § 37), the Accounting Act (RPS § 7) and the Commercial Code (ÄS § 15) before it can be issued. Each problem is shown with its legal reference. See [docs/legal-requirements.md](docs/legal-requirements.md).
@@ -17,6 +17,7 @@ A simple, private invoicing tool for Estonian micro-companies. It runs entirely 
 - **Numbering:** sequential numbers with date placeholders (`{YYYY}`, `{YY}`, `{MM}`, `{DD}`, `{YYYYMMDD}`) that restart yearly, monthly or daily, e.g. `2026-0001` or `20261015001`. Quotes have their own series. Reference numbers (viitenumber, 7-3-1 check digit) are generated automatically.
 - **Recurring invoices:** monthly, quarterly or yearly. The next draft is prepared when you open the app; nothing is issued without you.
 - **Products and services catalogue:** saved items and each client's last prices are suggested while you type an invoice line.
+- **Corrections:** an issued invoice that has not been sent yet can be reopened for editing and keeps its number. Any document can be deleted: the app first explains what that means for your records, gives the number back when it was the last one issued, and offers a credit note instead for an invoice that was already sent.
 - **Payments:** mark an invoice paid in one click (with undo), cancel it with a credit note in one step, and send reminders that show the late interest (viivis) to date. Each invoice keeps a log of when it was sent and reminded.
 - **Exchange rates and VAT numbers:** fetch the ECB reference rate for foreign-currency invoices and check EU VAT numbers in VIES.
 - **6 PDF styles:** Standard, Classic, Modern, Minimal, Bold and Compact, with your logo and brand colours, in Estonian, English or both (bilingual). Issued PDFs carry the e-invoice XML inside and can show a payment QR code.
@@ -26,7 +27,7 @@ A simple, private invoicing tool for Estonian micro-companies. It runs entirely 
   - save to Google Drive
   - e-invoice XML (EN 16931 / Peppol BIS Billing 3.0) to upload to your e-invoice operator
 - **Export for the accountant:** a period's invoices as CSV, or a ZIP with the CSV, every PDF and every e-invoice XML.
-- **Your data stays in your browser** (IndexedDB). Back it up to a JSON file, or turn on automatic versioned backups to Google Drive, optionally encrypted with a passphrase, and restore them on another computer.
+- **Your data stays in your browser** (IndexedDB). Back it up to a JSON file, or turn on automatic versioned backups to Google Drive, optionally encrypted with a passphrase, and restore them on another computer. Backups made under the tool's earlier name (`arvegeneraator-backup-…`, `invoice-generator-backup….json`) are still recognised.
 - Estonian and English interface, light and dark mode, works on mobile.
 
 > This tool helps you produce correct invoices but is not legal or tax advice. Invoices must be kept for 7 years (RPS § 12), so back up regularly.
@@ -37,7 +38,7 @@ Open the published site, e.g. `https://<github-user>.github.io/invoice-generator
 
 1. **First run:** search for your company in the register (or enter it manually), then add your IBAN, logo and invoice defaults.
 2. **Invoices → New invoice:** pick or search a client, add lines and choose a VAT scheme and style. The live preview and the legal checklist update as you type.
-3. **Issue:** this assigns the next number and locks the invoice. Corrections are made with a credit note.
+3. **Issue:** this assigns the next number and locks the invoice. Until it is sent you can still reopen it for editing; after that, corrections are made with a credit note.
 4. **Send:** download the PDF, email it, save it to Drive, or download the e-invoice XML.
 
 Google Drive and Gmail need a free Google OAuth client ID that you create once. See [docs/google-setup.md](docs/google-setup.md). Everything else works without it.
@@ -102,7 +103,7 @@ npm run registry:build
 ## Third-party notices
 
 - Register data: Estonian e-Business Register, RIK, open data under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- PDF fonts: [IBM Plex Sans and IBM Plex Mono](https://github.com/IBM/plex), SIL Open Font License 1.1 (Reserved Font Name "Plex"). They are embedded in the generated PDFs. Licence: [`public/licenses/IBM-Plex-OFL-1.1.txt`](public/licenses/IBM-Plex-OFL-1.1.txt), also served at `licenses/IBM-Plex-OFL-1.1.txt` on the site.
+- PDF font: [IBM Plex Sans](https://github.com/IBM/plex), SIL Open Font License 1.1 (Reserved Font Name "Plex"). It is the only font embedded in the generated PDFs. Licence: [`public/licenses/IBM-Plex-OFL-1.1.txt`](public/licenses/IBM-Plex-OFL-1.1.txt), also served at `licenses/IBM-Plex-OFL-1.1.txt` on the site.
 - PDF generation: [pdfmake](https://github.com/bpampuch/pdfmake) (MIT).
 - PDF page previews: [PDF.js](https://github.com/mozilla/pdf.js) (`pdfjs-dist`), Apache License 2.0. Licence: [`public/licenses/pdf.js-Apache-2.0.txt`](public/licenses/pdf.js-Apache-2.0.txt).
 - Icons: [Phosphor Icons](https://github.com/phosphor-icons/react) (MIT).

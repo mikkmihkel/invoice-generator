@@ -1,10 +1,11 @@
 // Shared, template-agnostic building blocks. Templates decide placement and styling.
 // Machine-readability rules applied here: every value is real text preceded by its label (same wording on every
-// template), each number/amount is one text run ("2 083,20 €"), tables have a real header row, identifiers use
-// Plex Mono.
+// template), each number/amount is one text run ("2 083,20 €"), tables have a real header row, identifiers never
+// break across lines.
+// Typography: one family (IBM Plex Sans, tabular figures). A value is set exactly like the other values of its block,
+// identifiers and amounts included; templates choose a small scale of sizes and use Regular and SemiBold.
 import type { Content, ContentStack, ContentTable, ContentText, CustomTableLayout, DynamicContent, TableCell } from 'pdfmake/interfaces'
 import { addressLines, COLORS, type DocContext } from './context'
-import { FONT } from './fonts'
 import { formatIban, formatMoney, formatQuantity } from './format'
 import { creditNoteText, lateInterestText, type LabelKey } from './labels'
 import { paymentQrPayload } from './machine'
@@ -59,8 +60,8 @@ export function label(ctx: DocContext, key: LabelKey, o: LabelStyle): ContentTex
   return {
     stack: [
       { text: caseOf(o, primary), fontSize: o.fontSize, ...base },
-      // No letter-spacing on the smaller line: extractors would read "D AT E" instead of "DATE".
-      { text: caseOf(o, secondary), fontSize: Math.max(5.5, o.fontSize - 1), ...base, characterSpacing: undefined, bold: false, color: o.secondaryColor ?? COLORS.muted },
+      // Same size, regular weight. No letter-spacing: extractors would read "D AT E" instead of "DATE".
+      { text: caseOf(o, secondary), fontSize: o.fontSize, ...base, characterSpacing: undefined, bold: false, color: o.secondaryColor ?? COLORS.muted },
     ],
   }
 }
@@ -75,8 +76,9 @@ export function withProps(c: Content, props: Record<string, unknown>): TableCell
 export interface DefRow {
   key: LabelKey
   value: string
-  /** Identifier (number, code, IBAN): set in Plex Mono. */
-  mono?: boolean
+  /** Identifier (number, code, IBAN): never breaks across lines. */
+  identifier?: boolean
+  /** The one emphasised value of a block (the date to act by, the amount due): SemiBold. */
   strong?: boolean
 }
 
@@ -91,15 +93,15 @@ export function deadlineRow(ctx: DocContext): DefRow | null {
 /** Document metadata in legal order. Optional rows are omitted when empty. */
 export function metaRows(ctx: DocContext, o: { exclude?: LabelKey[]; reference?: boolean } = {}): DefRow[] {
   const inv = ctx.invoice
-  const rows: DefRow[] = [{ key: ctx.numberKey, value: inv.number || '—', mono: true, strong: true }]
+  const rows: DefRow[] = [{ key: ctx.numberKey, value: inv.number || '—', identifier: true }]
   rows.push({ key: ctx.isQuote ? 'quoteDate' : 'issueDate', value: ctx.date(inv.issueDate) })
   if (inv.supplyDate) rows.push({ key: 'supplyDate', value: ctx.date(inv.supplyDate) })
   if (inv.periodStart || inv.periodEnd) rows.push({ key: 'period', value: `${ctx.date(inv.periodStart)} – ${ctx.date(inv.periodEnd)}`.trim() })
   const deadline = deadlineRow(ctx)
   if (deadline) rows.push(deadline)
-  if (o.reference && inv.referenceNumber && !ctx.isQuote && !ctx.isCreditNote) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, mono: true })
+  if (o.reference && inv.referenceNumber && !ctx.isQuote && !ctx.isCreditNote) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, identifier: true })
   if (inv.orderReference) rows.push({ key: 'orderReference', value: inv.orderReference })
-  if (ctx.isCreditNote && inv.creditedInvoiceNumber) rows.push({ key: 'creditedInvoice', value: inv.creditedInvoiceNumber, mono: true, strong: true })
+  if (ctx.isCreditNote && inv.creditedInvoiceNumber) rows.push({ key: 'creditedInvoice', value: inv.creditedInvoiceNumber, identifier: true })
   const exclude = new Set(o.exclude ?? [])
   return rows.filter((r) => !exclude.has(r.key))
 }
@@ -115,40 +117,33 @@ export function paymentRows(ctx: DocContext, o: { reference?: boolean } = {}): D
   if (ctx.bankAccounts.length) rows.push({ key: 'recipient', value: inv.seller.name })
   for (const a of ctx.bankAccounts) {
     if (a.bankName?.trim()) rows.push({ key: 'bank', value: a.bankName.trim() })
-    rows.push({ key: 'iban', value: formatIban(a.iban), mono: true, strong: true })
-    if (a.bic?.trim()) rows.push({ key: 'bic', value: a.bic.trim(), mono: true })
+    rows.push({ key: 'iban', value: formatIban(a.iban), identifier: true })
+    if (a.bic?.trim()) rows.push({ key: 'bic', value: a.bic.trim(), identifier: true })
   }
-  if ((o.reference ?? true) && inv.referenceNumber) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, mono: true, strong: true })
+  if ((o.reference ?? true) && inv.referenceNumber) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, identifier: true })
   return rows
 }
 
 export interface ValueStyle {
   fontSize: number
   color: string
-  /** Font for strong values (default: Plex Sans bold = SemiBold). */
-  strongFont?: string
-  /** Mono size relative to the text size (Plex Mono runs wider). */
-  monoScale?: number
 }
 
-/** A value as one text run; identifiers in Plex Mono. */
-export function valueText(value: string, row: Pick<DefRow, 'mono' | 'strong'>, s: ValueStyle): ContentText {
+/** A value as one text run, in the block's size and colour; only a `strong` row is SemiBold. */
+export function valueText(value: string, row: Pick<DefRow, 'identifier' | 'strong'>, s: ValueStyle): ContentText {
   // Identifiers never break across lines (an IBAN split in two is unreadable for people and parsers).
-  if (row.mono) return { text: value, font: FONT.mono, fontSize: round(s.fontSize * (s.monoScale ?? 0.94)), color: s.color, noWrap: true }
-  return { text: value, fontSize: s.fontSize, color: s.color, bold: !!row.strong && !s.strongFont, font: row.strong ? s.strongFont : undefined }
+  return { text: value, fontSize: s.fontSize, color: s.color, bold: !!row.strong, ...(row.identifier ? { noWrap: true } : {}) }
 }
 
 export interface DefListStyle {
   fontSize: number
   labelColor: string
   labelSecondaryColor?: string
-  labelSize?: number
   labelBold?: boolean
   labelUppercase?: boolean
   /** Keep labels on one line ("Käibe tekkimise kuupäev"). Default true. */
   labelNoWrap?: boolean
   valueColor: string
-  strongFont?: string
   labelWidth?: number | 'auto' | '*'
   valueWidth?: number | 'auto' | '*'
   valueAlign?: Align
@@ -160,13 +155,14 @@ export interface DefListStyle {
 
 /** Two-column label → value table (label first in reading order). */
 export function defList(ctx: DocContext, rows: DefRow[], s: DefListStyle): ContentTable {
-  const labelStyle: LabelStyle = { fontSize: s.labelSize ?? s.fontSize - 0.5, color: s.labelColor, secondaryColor: s.labelSecondaryColor, bold: s.labelBold, uppercase: s.labelUppercase, noWrap: s.labelNoWrap ?? true }
+  // Labels and values share one size; the label is told apart by colour only.
+  const labelStyle: LabelStyle = { fontSize: s.fontSize, color: s.labelColor, secondaryColor: s.labelSecondaryColor, bold: s.labelBold, uppercase: s.labelUppercase, noWrap: s.labelNoWrap ?? true }
   return {
     table: {
       widths: [s.labelWidth ?? 'auto', s.valueWidth ?? '*'],
       body: rows.map((r): TableCell[] => [
-        withProps(inlineLabel(ctx, r.key, labelStyle), { margin: [0, r.mono ? 0.4 : 0, 0, 0] }),
-        { ...valueText(r.value, r, { fontSize: s.fontSize, color: s.valueColor, strongFont: s.strongFont }), alignment: s.valueAlign ?? 'left' },
+        inlineLabel(ctx, r.key, labelStyle),
+        { ...valueText(r.value, r, { fontSize: s.fontSize, color: s.valueColor }), alignment: s.valueAlign ?? 'left' },
       ]),
     },
     layout: s.layout ?? plainLayout(s.gap ?? 12, s.paddingY ?? 1.5),
@@ -194,7 +190,6 @@ export interface PartyStyle {
   heading: LabelStyle | null
   headingGap?: number
   nameSize: number
-  nameFont?: string
   fontSize: number
   color: string
   labelColor: string
@@ -202,25 +197,28 @@ export interface PartyStyle {
   lineGap?: number
 }
 
-/** Party details: name, address, codes, contacts. Labels are inline ("Registrikood 16234571"). */
+/**
+ * Party details: name (SemiBold), address, codes, contacts. Labels are inline ("Registrikood 16234571"); every row
+ * after the name, codes included, has the same size and colours.
+ */
 export function partyBlock(ctx: DocContext, role: 'seller' | 'buyer', s: PartyStyle): ContentStack {
   const inv = ctx.invoice
   const p = role === 'seller' ? inv.seller : inv.buyer
   const gap = s.lineGap ?? 0
   const line = (c: ContentText): Content => ({ ...c, margin: [0, gap, 0, 0] })
-  const kv = (key: LabelKey, value: string | undefined, mono = false): Content | null => {
+  const kv = (key: LabelKey, value: string | undefined): Content | null => {
     const v = value?.trim()
     if (!v) return null
     const lbl = inlineLabel(ctx, key, { fontSize: s.fontSize, color: s.labelColor })
     const runs = Array.isArray(lbl.text) ? lbl.text : [{ text: lbl.text as string, color: s.labelColor }]
     // NBSP between label and value: a line never ends with a label whose value went to the next line.
-    return line({ text: [...(runs as ContentText[]), { text: NBSP }, mono ? { text: v, font: FONT.mono, fontSize: round(s.fontSize * 0.94), color: s.color } : { text: v, color: s.color }], fontSize: s.fontSize })
+    return line({ text: [...(runs as ContentText[]), { text: NBSP }, { text: v, color: s.color }], fontSize: s.fontSize })
   }
   const out: (Content | null)[] = []
   if (s.heading) out.push({ ...inlineLabel(ctx, role, s.heading), margin: [0, 0, 0, s.headingGap ?? 5] })
-  out.push({ text: p.name || '—', font: s.nameFont, bold: !s.nameFont, fontSize: s.nameSize, color: s.color, margin: [0, 0, 0, 1.5] })
+  out.push({ text: p.name || '—', bold: true, fontSize: s.nameSize, color: s.color, margin: [0, 0, 0, 1.5] })
   for (const l of addressLines(p.address, ctx)) out.push(line({ text: l, fontSize: s.fontSize, color: s.color }))
-  out.push(kv('registryCode', p.registryCode, true), kv('personalCode', p.registryCode ? undefined : p.personalCode, true), kv('vatNumber', p.vatNumber, true))
+  out.push(kv('registryCode', p.registryCode), kv('personalCode', p.registryCode ? undefined : p.personalCode), kv('vatNumber', p.vatNumber))
   if (role === 'buyer') out.push(kv('contactPerson', inv.buyer.contactPerson))
   out.push(kv('email', p.email), kv('phone', p.phone))
   if (role === 'seller') out.push(kv('website', inv.seller.website))
@@ -336,7 +334,8 @@ export function vatBreakdownTable(ctx: DocContext, s: TableStyle): ContentTable 
   return {
     table: {
       headerRows: 1,
-      widths: ['auto', '*', '*'],
+      // The taxable-amount column takes the free width: its header is the longest.
+      widths: ['auto', '*', 'auto'],
       body: [
         [headerCell(ctx, 'vatRate', 'left', s), headerCell(ctx, 'taxableAmount', 'right', s), headerCell(ctx, 'vatAmount', 'right', s)],
         ...ctx.totals.vatBreakdown.map((r): TableCell[] => [cell(ctx.percent(r.rate), 'left'), cell(ctx.money(r.taxable), 'right'), cell(ctx.money(r.vat), 'right')]),
@@ -462,7 +461,8 @@ export function paymentQr(ctx: DocContext, size: number, caption: LabelStyle, co
   return {
     stack: [
       { qr: payload, fit: size, eccLevel: 'M', foreground: color, alignment: caption.alignment ?? 'left' } as Content,
-      { ...inlineLabel(ctx, 'scanToPay', caption), margin: [0, 4, 0, 0] },
+      // One line per language, never broken inside ("Skanni ja / maksa").
+      { ...label(ctx, 'scanToPay', { ...caption, noWrap: true }), margin: [0, 4, 0, 0] },
     ],
     unbreakable: true,
   } as Content
@@ -472,8 +472,6 @@ export interface NotesStyle {
   fontSize: number
   color: string
   mutedColor: string
-  /** The mandatory VAT note is set in this font weight (default bold = SemiBold). */
-  strongFont?: string
   heading: LabelStyle
   gap?: number
 }
@@ -482,7 +480,8 @@ export interface NotesStyle {
 export function notesBlock(ctx: DocContext, s: NotesStyle): ContentStack | null {
   const inv = ctx.invoice
   const items: Content[] = []
-  const strong = (text: string): Content => ({ text, fontSize: s.fontSize, color: s.color, bold: !s.strongFont, font: s.strongFont })
+  // The mandatory VAT notes in SemiBold.
+  const strong = (text: string): Content => ({ text, fontSize: s.fontSize, color: s.color, bold: true })
   if (ctx.vatNote) items.push(strong(ctx.vatNote))
   if (ctx.notRegisteredNote) items.push(strong(ctx.notRegisteredNote))
   if (ctx.isCreditNote && inv.creditedInvoiceNumber) items.push({ text: creditNoteText(inv.creditedInvoiceNumber, ctx.lang), fontSize: s.fontSize, color: s.color })
@@ -564,7 +563,7 @@ export function footer(ctx: DocContext, o: FooterStyle): DynamicContent {
             width: '*',
             stack: [
               ...(note ? [{ text: note, fontSize: o.fontSize, color: o.color }] : []),
-              ...summary.map((text, i) => ({ text, fontSize: o.fontSize - 0.5, color: o.color, margin: [0, i === 0 && note ? 1.5 : 0, 0, 0] as Margins })),
+              ...summary.map((text, i) => ({ text, fontSize: o.fontSize, color: o.color, margin: [0, i === 0 && note ? 1.5 : 0, 0, 0] as Margins })),
             ],
           },
           {
@@ -648,8 +647,4 @@ export function tableLayout(o: LayoutSpec): CustomTableLayout {
 /** No lines, custom padding. */
 export function plainLayout(paddingX = 0, paddingY = 2): CustomTableLayout {
   return tableLayout({ paddingX: paddingX / 2, paddingY })
-}
-
-function round(n: number): number {
-  return Math.round(n * 100) / 100
 }

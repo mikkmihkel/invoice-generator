@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createElement, Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { computeTotals, newId, outstandingAmount, stopRulesFor, type Invoice, type InvoiceLanguage } from '../../../domain'
+import { computeTotals, holdsNumber, newId, outstandingAmount, reopenBlocker, stopRulesFor, type Invoice, type InvoiceLanguage } from '../../../domain'
 import { remainingCreditLines } from '../../../domain/settlement'
 import { buildUblXml } from '../../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../../integrations'
+import { noteDeletedDocuments } from '../../../integrations/autoBackup'
 import { invoiceFileName, renderInvoicePdf, renderInvoicePdfBase64 } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { useConfirm } from '../../components/Dialog'
@@ -12,7 +13,57 @@ import { useToast } from '../../Toasts'
 import { errorMessage, isCreditSettled, localTodayISO, nowISO } from '../../util'
 import { creditNoteFor, duplicateInvoice } from '../editor/builders'
 
-export type ActionKey = 'pdf' | 'print' | 'xml' | 'drive' | 'copy' | 'cancel' | 'paid' | 'unpaid' | 'delete'
+export type ActionKey = 'pdf' | 'print' | 'xml' | 'drive' | 'copy' | 'cancel' | 'paid' | 'unpaid' | 'delete' | 'reopen'
+
+/**
+ * Delete a document (and what goes with it, see planDeletion) with an undo button in the confirmation toast.
+ * Errors are shown as a toast and rethrown.
+ */
+export function useDeleteDocument() {
+  const { t, deleteInvoice, restoreDeletedInvoice } = useApp()
+  const toast = useToast()
+  return useCallback(
+    async (invoice: Invoice): Promise<void> => {
+      let deleted
+      try {
+        deleted = await deleteInvoice(invoice.id)
+      } catch (e) {
+        toast.error(e)
+        throw e
+      }
+      const numbered = holdsNumber(invoice)
+      const doc = t(`invoice.type.${invoice.type}`)
+      const params = { doc, number: invoice.number }
+      if (!deleted) {
+        toast.success(t('actions.draftDeleted'))
+        return
+      }
+      // Issued documents deleted on purpose: the next automatic backup may have fewer of them.
+      const issued = deleted.invoices.filter((d) => d.status !== 'draft' || d.reopenedAt).length
+      if (issued) noteDeletedDocuments(issued)
+      const restore = deleted
+      toast.success(numbered ? t(deleted.invoices.length > 1 ? 'delete.doneWithCredit' : 'delete.done', params) : t('actions.draftDeleted'), {
+        label: t('payment.undo'),
+        onClick: () => {
+          restoreDeletedInvoice(restore).then(
+            () => {
+              if (issued) noteDeletedDocuments(-issued)
+              toast.info(numbered ? t('delete.undone', params) : t('delete.draftUndone'))
+            },
+            (e: unknown) => toast.error(e),
+          )
+        },
+      })
+    },
+    [t, toast, deleteInvoice, restoreDeletedInvoice],
+  )
+}
+
+/** Whether the document can be reopened for editing now (issued, not sent, paid, cancelled or credited). */
+export function useCanReopen(invoice: Invoice): boolean {
+  const { invoices, invoiceEvents } = useApp()
+  return reopenBlocker(invoice, invoices, invoiceEvents) === null
+}
 
 /**
  * "Mark paid" in one click: paid today, with an undo button in the confirmation toast. Usable from any list of
@@ -231,13 +282,39 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
       navigate(`/?id=${invoice.id}`)
     })
 
+  const deleteDocument = useDeleteDocument()
   const deleteDraft = async () => {
     const ok = await confirm({ title: t('actions.deleteDraftTitle'), message: t('actions.deleteDraftConfirm'), confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true })
     if (!ok) return
-    await act('delete', async () => {
-      await app.deleteInvoice(invoice.id)
-      toast.success(t('actions.draftDeleted'))
+    setBusy('delete')
+    try {
+      await deleteDocument(invoice)
       navigate('/')
+    } catch {
+      // shown by deleteDocument
+    } finally {
+      if (mounted.current) setBusy(null)
+    }
+  }
+
+  const reopen = async () => {
+    const doc = t(`invoice.type.${invoice.type}`)
+    const ok = await confirm({
+      title: t('reopen.title', { doc: doc.toLocaleLowerCase(), number: invoice.number }),
+      message: createElement(
+        Fragment,
+        null,
+        createElement('p', null, t('reopen.text', { doc, number: invoice.number })),
+        createElement('p', { className: 'muted small' }, t('reopen.sentRule')),
+      ),
+      confirmLabel: t('reopen.action'),
+      cancelLabel: t('common.cancel'),
+    })
+    if (!ok) return
+    await act('reopen', async () => {
+      await app.reopenInvoice(invoice.id)
+      toast.success(t('reopen.done', { doc, number: invoice.number }))
+      navigate(`/invoices/${invoice.id}`)
     })
   }
 
@@ -258,5 +335,6 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
     changePaidDate,
     markUnpaid,
     deleteDraft,
+    reopen,
   }
 }

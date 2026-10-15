@@ -34,6 +34,7 @@ export {
   sameSeries,
   upcomingNumbers,
   restartBelowUsed,
+  holdsNumber,
 } from './numbering'
 export type { NumberingPreset, NumberingPresetId } from './numbering'
 export {
@@ -83,6 +84,8 @@ export { withVatScheme } from './scheme'
 export { selectedBankAccounts } from './accounts'
 export { COLOR_MODES, HEX_COLOR_PATTERN, MIN_TEXT_CONTRAST, colorModeOf, contrastRatio, hexOr, isColorMode, isHexColor, relativeLuminance } from './brand'
 export { creditNotesFor, creditedAmount, outstandingAmount, isVoided } from './settlement'
+export { linkedCreditNotes, creditedInvoiceOf, releaseNumbers, planDeletion, reopenBlocker } from './deletion'
+export type { DeletionPlan, ReopenBlock } from './deletion'
 export {
   DEFAULT_QUOTE_VALIDITY_DAYS,
   isQuote,

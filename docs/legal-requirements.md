@@ -159,6 +159,21 @@ They may be moved to another medium as long as the data is not altered.
 JSON/Drive backups and saved PDFs. Issued invoices are frozen snapshots (`SellerSnapshot`, `BuyerSnapshot`), so
 later profile edits do not change them.
 
+**Correcting and deleting (`src/domain/deletion.ts`, `Repository.reopenInvoice` / `deleteInvoice`):**
+
+- An issued document that has not been sent (no 'sent' or reminder event), is not paid or cancelled and has no
+  issued credit note can be reopened for editing. It becomes a draft that keeps its number; issuing it again keeps
+  the number and takes a fresh seller snapshot. Nobody outside the company has seen it, so no source document
+  changes. Once a document has been sent, corrections are made with a credit note.
+- Any document can be deleted. Before deleting an issued one, the app explains that it is a source document to be
+  kept for 7 years (RPS § 12), that a sent invoice should be cancelled with a credit note instead (and offers one),
+  and what happens to the number. If the document has the last number handed out in its series and period, the
+  counter goes back by one and the next document reuses the number; otherwise the number stays as a gap.
+- An invoice is deleted together with its credit notes, which would otherwise refer to a missing invoice or, once
+  the number is reused, to a different one. A credit note can be deleted on its own; the invoice stays and is no
+  longer credited. The deleted documents' events and the recurring rules repeating them are deleted, and quote ↔
+  invoice links to them are cleared. The deletion can be undone for a few seconds from the confirmation.
+
 ## 4. Calculation rules (`calc.ts`)
 
 - All arithmetic uses integer cents. Rounding is half-up (half away from zero for negatives, so credit notes mirror invoices).

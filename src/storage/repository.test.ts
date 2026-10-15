@@ -49,16 +49,12 @@ describe('invoices', () => {
     expect((await repo.listInvoices()).map((i) => i.id)).toEqual(['new2', 'new1', 'old'])
   })
 
-  it('deletes drafts only', async () => {
-    await repo.saveProfile(makeProfile())
+  it('deletes drafts and reports what was removed', async () => {
     await repo.saveInvoice(makeInvoice('d'))
-    await repo.saveInvoice(makeInvoice('x'))
-    await repo.deleteInvoice('d')
+    const deleted = await repo.deleteInvoice('d')
+    expect(deleted).toMatchObject({ invoices: [{ id: 'd' }], events: [], recurringRules: [], unlinked: [], released: [] })
     expect(await repo.getInvoice('d')).toBeNull()
-    await repo.issueInvoice('x')
-    await expect(repo.deleteInvoice('x')).rejects.toBeInstanceOf(RepositoryError)
-    expect(await repo.getInvoice('x')).not.toBeNull()
-    await expect(repo.deleteInvoice('missing')).resolves.toBeUndefined()
+    expect(await repo.deleteInvoice('missing')).toBeNull()
   })
 
   it('keeps number and status of issued invoices immutable via saveInvoice', async () => {
@@ -67,6 +63,7 @@ describe('invoices', () => {
     const issued = await repo.issueInvoice('x')
     await expect(repo.saveInvoice({ ...issued, number: '9999' })).rejects.toMatchObject({ code: 'immutable' })
     await expect(repo.saveInvoice({ ...issued, status: 'draft' })).rejects.toMatchObject({ code: 'immutable' })
+    await expect(repo.saveInvoice({ ...issued, status: 'draft', reopenedAt: '2026-03-20T00:00:00.000Z' })).rejects.toMatchObject({ code: 'immutable' })
     await repo.saveInvoice({ ...issued, status: 'paid', paidAt: '2026-03-20' })
     expect((await repo.getInvoice('x'))?.status).toBe('paid')
   })

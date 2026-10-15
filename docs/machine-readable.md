@@ -47,7 +47,7 @@ Code: `src/pdf/machine.ts` (metadata, embedded e-invoice, EPC QR payload), appli
 | Author | seller name |
 | Subject | `Arve 2026-0007, Kalda Puutöö OÜ, 2 083,20 EUR, tasuda 28.10.2026` |
 | Keywords | `invoice:2026-0007; issued:2026-10-12; due:2026-10-28; seller:12345678; sellerVat:EE123456789; buyer:87654321; buyerVat:EE987654321; total:2083.20; currency:EUR; reference:20260007` |
-| Creator | `Arvegeneraator` (Producer stays `pdfmake`) |
+| Creator | `Arveldaja` (Producer stays `pdfmake`) |
 | Custom entries | `InvoiceNumber`, `InvoiceType`, `IssueDate`, `DueDate`, `SellerName`, `SellerRegistryCode`, `SellerVatNumber`, `BuyerName`, `BuyerRegistryCode`, `BuyerVatNumber`, `NetAmount`, `VatAmount`, `TotalAmount`, `Currency`, `ReferenceNumber`, `Iban` (ISO dates, amounts with a dot) |
 | `/Lang` | `et-EE` (Estonian and bilingual) or `en-GB` |
 

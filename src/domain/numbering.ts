@@ -201,7 +201,12 @@ function seriesPattern(prefix: string): RegExp {
   return new RegExp(`^${out}(\\d+)$`)
 }
 
-type NumberedDoc = Pick<Invoice, 'number' | 'status' | 'issueDate'> & { type?: InvoiceType }
+type NumberedDoc = Pick<Invoice, 'number' | 'status' | 'issueDate'> & Partial<Pick<Invoice, 'type' | 'reopenedAt'>>
+
+/** Whether the document holds its number: issued, paid or cancelled, or reopened for editing (a draft that keeps it). */
+export function holdsNumber(doc: Pick<Invoice, 'number' | 'status'> & Partial<Pick<Invoice, 'reopenedAt'>>): boolean {
+  return !!doc.number && (doc.status !== 'draft' || !!doc.reopenedAt)
+}
 
 /**
  * Sequence number of `number` in this series when issued on `issueDate` (the date tokens must match that date),
@@ -217,14 +222,14 @@ export function sequenceOf(settings: NumberingSettings, number: string, issueDat
 }
 
 /**
- * Highest sequence number among numbered (non-draft) documents whose number matches the prefix pattern
+ * Highest sequence number among numbered documents (see holdsNumber) whose number matches the prefix pattern
  * (date tokens match any date), e.g. prefix "{YYYY}-" and "2025-0042" → 42. 0 if none match.
  */
 export function highestUsedNumber(documents: NumberedDoc[], numbering: NumberingSettings): number {
   const re = seriesPattern(numbering.prefix ?? '')
   let max = 0
   for (const doc of documents) {
-    if (doc.status === 'draft' || !doc.number) continue
+    if (!holdsNumber(doc)) continue
     const m = re.exec(doc.number)
     const n = m ? Number(m[1]) : NaN
     if (Number.isSafeInteger(n) && n > max) max = n
@@ -242,7 +247,7 @@ export function numberingFloor(settings: NumberingSettings, documents: NumberedD
   const reset = resetOf(settings)
   if (reset !== 'never') {
     for (const doc of documents) {
-      if (doc.status === 'draft' || !doc.number) continue
+      if (!holdsNumber(doc)) continue
       const key = periodKey(reset, doc.issueDate)
       const n = key === null ? null : sequenceOf(settings, doc.number, doc.issueDate)
       if (key !== null && n !== null && n + 1 > (counterValue(counters, key) ?? 0)) counters[key] = n + 1

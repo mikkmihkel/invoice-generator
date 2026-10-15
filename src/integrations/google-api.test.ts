@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { backupToDrive, downloadDriveFile, DRIVE_BACKUP_FILE_NAME, findOrCreateFolder, listDriveBackups, restoreFromDrive, trashDriveFile, uploadBackupVersion, uploadToDrive } from './drive'
+import { backupToDrive, downloadDriveFile, DRIVE_BACKUP_FILE_NAME, LEGACY_DRIVE_BACKUP_FILE_NAME, findOrCreateFolder, listDriveBackups, restoreFromDrive, trashDriveFile, uploadBackupVersion, uploadToDrive } from './drive'
 import { GoogleApiError } from './errors'
 import { buildGmailRaw, sendViaGmail } from './gmail'
 import { getAccessToken, invalidateToken } from './googleAuth'
@@ -103,7 +103,8 @@ describe('Drive', () => {
   it('backupToDrive creates the backup file the first time and PATCHes it afterwards', async () => {
     stubFetch(json({ files: [{ id: 'f1' }] }), json({ files: [] }), json({ id: 'b1', modifiedTime: '2026-03-10T10:00:00Z' }))
     expect(await backupToDrive(CLIENT, '{"app":"invoice-generator"}', 'Arved')).toEqual({ id: 'b1', modifiedTime: '2026-03-10T10:00:00Z' })
-    expect(query(calls[1].url).get('q')).toBe(`name='${DRIVE_BACKUP_FILE_NAME}' and 'f1' in parents and trashed=false`)
+    expect(DRIVE_BACKUP_FILE_NAME).toBe('arveldaja-backup.json')
+    expect(query(calls[1].url).get('q')).toBe(`(name='arveldaja-backup.json' or name='invoice-generator-backup.json') and 'f1' in parents and trashed=false`)
     expect(await bodyText(calls[2].init.body)).toContain(`"name":"${DRIVE_BACKUP_FILE_NAME}"`)
 
     calls = []
@@ -113,6 +114,13 @@ describe('Drive', () => {
     expect(calls[2].init.method).toBe('PATCH')
     expect(calls[2].url).toBe('https://www.googleapis.com/upload/drive/v3/files/b1?uploadType=media&fields=id,modifiedTime')
     expect(calls[2].init.body).toBe('{"v":2}')
+  })
+
+  it('backupToDrive overwrites a manual backup saved under the earlier file name in place', async () => {
+    stubFetch(json({ files: [{ id: 'f1' }] }), json({ files: [{ id: 'old' }] }), json({ id: 'old', modifiedTime: '2026-10-15T10:00:00Z' }))
+    await backupToDrive(CLIENT, '{"v":2}', 'Arved')
+    expect(query(calls[1].url).get('q')).toContain(`name='${LEGACY_DRIVE_BACKUP_FILE_NAME}'`)
+    expect(calls[2].url).toBe('https://www.googleapis.com/upload/drive/v3/files/old?uploadType=media&fields=id,modifiedTime')
   })
 
   it('restoreFromDrive downloads the backup with alt=media', async () => {
@@ -176,7 +184,9 @@ describe('Drive backup versions', () => {
     expect(files[0]).toMatchObject({ encrypted: true, automatic: true })
     expect(files[2]).toMatchObject({ encrypted: false, automatic: false, size: 100 })
     const q = query(calls[1].url).get('q')
-    expect(q).toBe(`'f1' in parents and trashed=false and (appProperties has { key='invoiceGeneratorBackup' and value='auto' } or name='${DRIVE_BACKUP_FILE_NAME}')`)
+    expect(q).toBe(
+      `'f1' in parents and trashed=false and (appProperties has { key='invoiceGeneratorBackup' and value='auto' } or name='arveldaja-backup.json' or name='invoice-generator-backup.json')`,
+    )
     expect(query(calls[2].url).get('pageToken')).toBe('p2')
   })
 

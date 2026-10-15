@@ -1,31 +1,70 @@
 /* Products catalogue, line suggestions and the accountant export. */
 
-/* ---------- Line description: suggestions and "save to catalogue" ---------- */
+/* ---------- Lines: suggestions, catalogue marker and "Salvesta tooteks" ---------- */
 
 .line-desc {
   position: relative;
 }
 .lines:not(.lines-readonly) .line-desc textarea.cell {
-  padding-right: 32px;
+  padding-right: 30px;
 }
-.line-save {
+.line-cat-mark {
   position: absolute;
-  top: calc((var(--h-control) - 26px) / 2);
-  right: 4px;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease);
+  top: calc((var(--h-control) - 16px) / 2);
+  right: 9px;
+  display: inline-flex;
+  color: var(--accent-text);
+  pointer-events: auto;
 }
-.line:hover .line-save,
-.line:focus-within .line-save {
-  opacity: 1;
+.line-cat-mark.differs {
+  color: var(--text-3);
 }
-.line-save:disabled {
-  visibility: hidden;
+.line-cat-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  margin-top: 4px;
+  padding: 0 7px;
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
 }
-@media (hover: none) {
-  .line-save {
-    opacity: 1;
-  }
+.line-cat-save:hover {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-soft-border);
+}
+.line-cat-save svg {
+  color: inherit;
+}
+.lines-foot-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  flex: 1 1 260px;
+  min-width: 0;
+  max-width: 440px;
+}
+.lines-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.lines-hint a {
+  color: var(--accent-text);
+  font-weight: 500;
+  white-space: nowrap;
 }
 .line-suggestions {
   min-width: min(340px, calc(100vw - 32px));
@@ -43,7 +82,198 @@
   color: var(--text-2);
 }
 
+/* ---------- "Lisa kataloogist" picker ---------- */
+
+.pick {
+  display: flex;
+  flex-direction: column;
+}
+/* The search stays at the top while the list scrolls (the dialog body is the scroller). */
+.pick-search {
+  position: sticky;
+  top: calc(-1 * var(--s-5));
+  z-index: 1;
+  margin: calc(-1 * var(--s-5)) calc(-1 * var(--s-5)) var(--s-2);
+  padding: var(--s-4) var(--s-5) var(--s-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.pick-search .search-field {
+  width: 100%;
+}
+.pick-note {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pick-item {
+  border-radius: var(--r-sm);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.pick-item:hover {
+  background: var(--surface-2);
+}
+.pick-item.selected {
+  background: var(--selected);
+}
+.pick-main {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+.pick-main input {
+  margin: 2px 0 0;
+}
+.pick-name {
+  display: block;
+  font-weight: 500;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.pick-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.pick-used {
+  color: var(--accent-text);
+}
+.pick-price {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text);
+}
+.pick-qty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 10px 38px;
+}
+.pick-qty input {
+  width: 84px;
+  height: var(--h-control-sm);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pick-unit {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.pick-empty {
+  margin: 0;
+  padding: var(--s-4) 0;
+  color: var(--text-2);
+}
+.pick-count {
+  align-self: center;
+  margin-right: auto;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.pick-keys {
+  color: var(--text-3);
+}
+@media (max-width: 599px), (hover: none) {
+  .pick-keys {
+    display: none;
+  }
+}
+@media (max-width: 599px) {
+  /* The add button carries the count on phones; keep the live region for screen readers. */
+  .pick-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+
 /* ---------- Products page ---------- */
+
+/* Name cell that opens editing (products and clients tables): reads as text, underlines on hover. */
+.name-btn {
+  display: inline;
+  padding: 0;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.name-btn:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--border-input);
+  text-underline-offset: 3px;
+}
+
+.product-quick {
+  margin-bottom: var(--s-6);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+}
+.product-quick .panel-title {
+  margin-bottom: var(--s-3);
+}
+.product-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 150px auto;
+  align-items: start;
+  gap: var(--s-3);
+}
+.product-form.with-vat {
+  grid-template-columns: minmax(0, 1fr) 96px 150px 150px auto;
+}
+.product-form .pf-actions .btn-row {
+  flex-wrap: nowrap;
+}
+.product-table tr.product-editing td {
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  background: var(--surface-2);
+}
+@media (max-width: 767px) {
+  .product-form,
+  .product-form.with-vat {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .product-form .pf-desc {
+    grid-column: 1 / -1;
+  }
+  .product-form:not(.with-vat) .pf-actions,
+  .product-form-edit .pf-actions {
+    grid-column: 1 / -1;
+  }
+  .product-form:not(.with-vat) .pf-actions > .label,
+  .product-form-edit .pf-actions > .label {
+    display: none;
+  }
+  .product-form .pf-actions .btn-row > .btn {
+    flex: 1 1 auto;
+  }
+  .product-table tbody tr.product-editing {
+    display: block;
+  }
+  .product-table tr.product-editing td {
+    display: block;
+  }
+}
 
 .product-table .product-name {
   font-weight: 500;

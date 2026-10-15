@@ -182,7 +182,7 @@ describe('pdfMetadata', () => {
     const info = pdfMetadata(inv)
     expect(info.title).toBe('Arve 2026-0007')
     expect(info.author).toBe('Õunapuu & Šokolaad OÜ')
-    expect(info.creator).toBe('Arvegeneraator')
+    expect(info.creator).toBe('Arveldaja')
     expect(info.subject).toBe(`Arve 2026-0007, Õunapuu & Šokolaad OÜ, ${formatAmount(gross, 'et').replace(/ /g, ' ')} EUR, tasuda 26.10.2026`)
     expect(info.keywords).toBe(
       `invoice:2026-0007; issued:2026-10-12; due:2026-10-26; seller:12345678; sellerVat:EE123456789; buyer:87654321; buyerVat:EE987654321; total:${gross.toFixed(2)}; currency:EUR; reference:20260007`,
@@ -390,7 +390,7 @@ describe('PDF text extraction (pdf.js)', () => {
     expect(pdf.info.Subject).toBe(pdfMetadata(inv).subject)
     expect(pdf.info.Keywords).toContain('invoice:2026-0007')
     expect(pdf.info.Author).toBe(inv.seller.name)
-    expect(pdf.info.Creator).toBe('Arvegeneraator')
+    expect(pdf.info.Creator).toBe('Arveldaja')
     expect(pdf.custom.TotalAmount).toBe(totals.gross.toFixed(2))
     expect(pdf.language).toBe(language === 'en' ? 'en-GB' : 'et-EE')
     expect(pdf.attachments).toHaveLength(1)

@@ -14,7 +14,6 @@
     "registry:build": "node scripts/registry/build-index.mjs"
   },
   "dependencies": {
-    "@ibm/plex-mono": "^2.5.0",
     "@ibm/plex-sans": "^1.1.0",
     "@phosphor-icons/react": "^2.1.10",
     "idb": "^8.0.4",

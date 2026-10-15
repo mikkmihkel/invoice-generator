@@ -293,12 +293,42 @@ describe('templates — design system', () => {
     }
   })
 
-  it('sets identifiers (number, codes, IBAN, reference) in Plex Mono as single runs', () => {
+  it('sets identifiers (number, codes, IBAN, reference) as single runs styled like the other values of their block', () => {
+    const style = (n: Record<string, unknown>) => JSON.stringify([n.font ?? null, n.fontSize ?? null, n.color ?? null, !!n.bold])
     for (const templateId of templates) {
-      const all = nodes(buildDocDefinition(sampleInvoice({ templateId })))
-      const mono = new Set(all.filter((n) => n.font === FONT.mono).map((n) => n.text))
-      for (const id of ['2026-0007', '12345678', 'EE123456789', '87654321', 'EE987654321', 'EE71 7700 7710 0123 4567', '20260007']) {
-        expect(mono, `${templateId}: ${id}`).toContain(id)
+      for (const language of languages) {
+        const all = nodes(buildDocDefinition(sampleInvoice({ templateId, language })))
+        // Plain values next to the identifiers: dates in the facts, the bank in the payment details, e-mail in the parties.
+        const plain = new Set(all.filter((n) => ['12.10.2026', '12 Oct 2026', 'LHV Pank', 'arved@ounapuu.ee', 'raamatupidamine@klient.ee'].includes(n.text as string)).map(style))
+        expect(plain.size, `${templateId}/${language}: reference values`).toBeGreaterThan(0)
+        for (const id of ['2026-0007', '12345678', 'EE123456789', '87654321', 'EE987654321', 'EE71 7700 7710 0123 4567', 'LHVBEE22', '20260007']) {
+          const runs = all.filter((n) => n.text === id)
+          expect(runs.length, `${templateId}/${language}: ${id} as one run`).toBeGreaterThan(0)
+          for (const run of runs) {
+            expect(run.font, `${templateId}/${language}: ${id} in the body font`).toBeUndefined()
+            expect(plain, `${templateId}/${language}: ${id} styled like its neighbours`).toContain(style(run))
+          }
+        }
+        // An IBAN split over two lines is unreadable for people and parsers.
+        for (const run of all.filter((n) => n.text === 'EE71 7700 7710 0123 4567')) expect(run.noWrap).toBe(true)
+      }
+    }
+  })
+
+  it('keeps every template to one family, a four-step type scale and two weights (plus a display weight for headlines)', () => {
+    const title = { et: 'Arve', en: 'Invoice', 'et-en': 'Arve / Invoice' }
+    for (const templateId of templates) {
+      for (const language of languages) {
+        const d = buildDocDefinition(payable({ templateId, language }))
+        const all = nodes(d)
+        const sizes = new Set(all.map((n) => n.fontSize).filter((v): v is number => typeof v === 'number'))
+        sizes.add((d.defaultStyle as { fontSize: number }).fontSize)
+        // Bold adds one headline size for the amount due.
+        expect(sizes.size, `${templateId}/${language}: ${[...sizes].sort((a, b) => a - b).join(', ')}`).toBeLessThanOrEqual(templateId === 'bold' && language !== 'et-en' ? 5 : 4)
+        // Display weight only for the title and the headline amount.
+        const display = all.filter((n) => n.font === FONT.display).map((n) => n.text)
+        for (const text of display) expect([title[language], formatMoney(computeTotals(payable()).gross, 'EUR', language)], `${templateId}/${language}`).toContain(text)
+        expect(all.filter((n) => n.font !== undefined && n.font !== FONT.display).map((n) => n.font), `${templateId}/${language}`).toEqual([])
       }
     }
   })

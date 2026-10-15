@@ -40,6 +40,15 @@ describe('ecb', () => {
     expect(f).toHaveBeenCalledTimes(2)
   })
 
+  it('sends a CORS simple request (plain GET, no custom headers) so the browser needs no preflight', async () => {
+    const f = respond(CSV)
+    await fetchEcbRate('USD', '2026-10-11', f)
+    const init = ((f.mock.calls[0] as unknown[])[1] ?? {}) as RequestInit
+    expect(init.method ?? 'GET').toBe('GET')
+    expect(init.headers).toBeUndefined()
+    expect(init.body).toBeUndefined()
+  })
+
   it('returns 1 for EUR without a request and rejects malformed input', async () => {
     const f = respond(CSV)
     await expect(fetchEcbRate('EUR', '2026-10-11', f)).resolves.toEqual({ currency: 'EUR', rate: 1, date: '2026-10-11' })

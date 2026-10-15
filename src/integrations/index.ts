@@ -21,6 +21,7 @@ export {
   restoreFromDrive,
   findOrCreateFolder,
   DRIVE_BACKUP_FILE_NAME,
+  LEGACY_DRIVE_BACKUP_FILE_NAME,
   uploadBackupVersion,
   listDriveBackups,
   downloadDriveFile,
@@ -57,5 +58,7 @@ export {
   getAutoBackupStatus,
   setAutoBackupStatus,
   subscribeAutoBackupStatus,
+  noteDeletedDocuments,
+  deletedSinceBackup,
 } from './autoBackup'
 export type { AutoBackupRunOptions, AutoBackupResult, AutoBackupStatus, AutoBackupPhase, ScheduledRunResult, SchedulerOptions } from './autoBackup'

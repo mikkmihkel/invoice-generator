@@ -12,6 +12,7 @@ import {
   EyeIcon,
   FileCodeIcon,
   LockSimpleIcon,
+  PencilSimpleIcon,
   PrinterIcon,
   ProhibitIcon,
   TrashIcon,
@@ -20,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   computeTotals,
+  holdsNumber,
   newId,
   isValidReferenceNumber,
   numberingFor,
@@ -59,7 +61,7 @@ import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './edit
 import { DueAmount, EdSection, MoreOptions, NextStep, QuoteStatusWord, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
-import { localDateOf } from './invoice-detail/status'
+import { docNoun, localDateOf } from './invoice-detail/status'
 import { LinesEditor } from './editor/LinesEditor'
 import { RecurringControl } from './editor/RecurringControl'
 import { QuoteActions } from './quotes/QuoteActions'
@@ -67,7 +69,8 @@ import { QuoteIssueDialog, type StaleQuoteDate } from './quotes/QuoteIssueDialog
 import { PreviewPanel } from './editor/PdfPreview'
 import { useFixedBarHeight } from './editor/useFixedBarHeight'
 import { useMediaQuery } from './editor/useMediaQuery'
-import { IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
+import { DeleteInvoiceDialog, IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
+import { useCanReopen, useDeleteDocument } from './invoice-detail/useInvoiceActions'
 import { TextRows } from './editor/TextRows'
 import { useAutosave } from './editor/useAutosave'
 import { ValidationPanel } from './editor/ValidationPanel'
@@ -126,6 +129,9 @@ function EditorSkeleton() {
   )
 }
 
+/** Stand-in for useCanReopen while the invoice loads (hooks run before the loading state returns). */
+const REOPEN_PLACEHOLDER = { id: '', number: '', type: 'invoice', status: 'draft', issueDate: '' } as unknown as Invoice
+
 /** UI-level suggestion: without an e-mail address the invoice cannot be sent from the app. */
 const EMAIL_SUGGESTION: ValidationIssue = {
   field: 'buyer.email',
@@ -147,7 +153,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
   const [invoice, setInvoiceState] = useState<Invoice | null>(null)
   const [notFound, setNotFound] = useState(false)
-  const [dialog, setDialog] = useState<null | 'issue' | 'paid' | 'email' | 'reminder'>(null)
+  const [dialog, setDialog] = useState<null | 'issue' | 'paid' | 'email' | 'reminder' | 'delete'>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [justIssued, setJustIssued] = useState(false)
   // Docked preview: its open state is remembered between visits. On phones it is a sheet and starts closed.
@@ -243,6 +249,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   }, [loaded])
 
   const { markDirty } = autosave
+  const deleteDocument = useDeleteDocument()
+  const canReopen = useCanReopen(invoice ?? REOPEN_PLACEHOLDER)
   const isDraft = invoice?.status === 'draft'
   const edit = useCallback(
     (fn: (inv: Invoice) => Invoice) => {
@@ -278,6 +286,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   if (!invoice || !effective || !profile || !totals) return <EditorSkeleton />
 
   const ro = invoice.status !== 'draft'
+  const numbered = holdsNumber(invoice)
+  const reopened = !ro && numbered
   const status = displayStatus(invoice, undefined, app.invoices)
   const unpaid = isUnpaid(invoice, app.invoices)
   const credit = invoice.type === 'credit-note'
@@ -291,7 +301,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   // Issuing skips numbers any document already has (e.g. after merging a backup); the preview does the same.
   const usedNumbers = new Set(app.invoices.filter((i) => i.number && i.id !== invoice.id).map((i) => i.number))
   const numberFor = (date: string) => upcomingNumbers(series, date, usedNumbers, 1)[0] ?? predictNumber(series, date)
-  const predicted = numberFor(invoice.issueDate)
+  const predicted = reopened ? invoice.number : numberFor(invoice.issueDate)
   const term = daysBetween(invoice.issueDate, invoice.dueDate)
   const validity = invoice.validUntil ? daysBetween(invoice.issueDate, invoice.validUntil) : 0
   const note = vatSchemeNote(invoice.vatScheme, invoice.language, invoice.vatExemptionNote)
@@ -309,8 +319,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const selectedAccounts = selectedBankAccounts(effective)
   const xmlIssues = ro && supportsEInvoice(invoice) ? eInvoiceIssues(invoice) : []
   const today = localTodayISO()
+  // A reopened document keeps its number (and so the date it was numbered for): no "move to today" offer.
   const stale: StaleIssueDate | null =
-    !ro && /^\d{4}-\d{2}-\d{2}$/.test(invoice.issueDate) && invoice.issueDate < today
+    !ro && !reopened && /^\d{4}-\d{2}-\d{2}$/.test(invoice.issueDate) && invoice.issueDate < today
       ? {
           date: invoice.issueDate,
           today,
@@ -486,14 +497,43 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   }
 
   const deleteDraft = async () => {
+    if (numbered) {
+      setDialog('delete')
+      return
+    }
     const ok = await confirm({ title: t('actions.deleteDraftTitle'), message: t('actions.deleteDraftConfirm'), confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true })
     if (!ok) return
-    await act('delete', async () => {
+    setBusy('delete')
+    try {
       // Wait for an in-flight (e.g. the very first) autosave, so it cannot recreate the record after the delete.
       await autosave.discard()
-      await app.deleteInvoice(invoice.id)
-      toast.success(t('actions.draftDeleted'))
+      await deleteDocument(invoice)
       navigate('/')
+    } catch {
+      // shown by deleteDocument
+    } finally {
+      if (mountedRef.current) setBusy(null)
+    }
+  }
+
+  const reopen = async () => {
+    const doc = t(`invoice.type.${invoice.type}`)
+    const ok = await confirm({
+      title: t('reopen.title', { doc: doc.toLocaleLowerCase(), number: invoice.number }),
+      message: (
+        <>
+          <p>{t('reopen.text', { doc, number: invoice.number })}</p>
+          <p className="muted small">{t('reopen.sentRule')}</p>
+        </>
+      ),
+      confirmLabel: t('reopen.action'),
+      cancelLabel: t('common.cancel'),
+    })
+    if (!ok) return
+    await act('reopen', async () => {
+      setInvoice(await app.reopenInvoice(invoice.id))
+      setJustIssued(false)
+      toast.success(t('reopen.done', { doc, number: invoice.number }))
     })
   }
 
@@ -525,10 +565,19 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     { key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void saveToDrive() },
     ...(supportsEInvoice(invoice) ? [{ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void downloadXml() }] : []),
     { key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void print() },
-    { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: true, onSelect: () => void duplicate() },
+    ...(canReopen ? [{ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void reopen() }] : []),
+    { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void duplicate() },
     ...(invoice.type !== 'credit-note' && !quote && invoice.status !== 'cancelled' ? [{ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void creditNote() }] : []),
     ...(invoice.status === 'paid' ? [{ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void act('unpaid', () => changeStatus(app.markInvoiceUnpaid)) }] : []),
     ...(invoice.status === 'issued' && !quote ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
+    {
+      key: 'delete',
+      label: t('delete.menu', { doc: docNoun(t, invoice) }),
+      icon: <TrashIcon />,
+      danger: true,
+      separatorBefore: !(invoice.status === 'issued' && !quote),
+      onSelect: () => setDialog('delete'),
+    },
   ]
 
   const togglePreview = (opener: HTMLElement) => {
@@ -587,7 +636,15 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   <EyeIcon />
                   {t('preview.title')}
                 </button>
-                {!ro && <IconButton label={t('actions.deleteDraft')} icon={<TrashIcon size={18} />} className="icon-btn-danger" onClick={() => void deleteDraft()} disabled={busyAny} />}
+                {!ro && (
+                  <IconButton
+                    label={numbered ? t('delete.menu', { doc: docNoun(t, invoice) }) : t('actions.deleteDraft')}
+                    icon={<TrashIcon size={18} />}
+                    className="icon-btn-danger"
+                    onClick={() => void deleteDraft()}
+                    disabled={busyAny}
+                  />
+                )}
                 {ro && (
                   <>
                     <button type="button" className="btn btn-text" onClick={() => void downloadPdf()} disabled={busyAny} title={t('actions.downloadPdf')}>
@@ -620,11 +677,25 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             />
           )}
 
+          {reopened && (
+            <div className="ed-locked ed-reopened">
+              <PencilSimpleIcon size={16} className="ed-locked-icon" />
+              <p>{t('reopen.banner', { number: invoice.number })}</p>
+            </div>
+          )}
+
           {ro && (
             <div className={`ed-locked${invoice.status === 'cancelled' ? ' ed-locked-warn' : ''}`}>
               <LockSimpleIcon size={16} className="ed-locked-icon" />
               <div>
                 <p>{invoice.status === 'cancelled' ? t('editor.cancelledBanner') : quote ? t('quote.lockedBanner') : t('editor.lockedBanner')}</p>
+                {canReopen && (
+                  <p>
+                    <button type="button" className="link-btn" onClick={() => void reopen()} disabled={busyAny}>
+                      {t('reopen.action')}
+                    </button>
+                  </p>
+                )}
                 {creditedBy.length > 0 && (
                   <p className="credited-by">
                     {t('editor.creditedBy')}{' '}
@@ -655,6 +726,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             >
               <TextRows kind="before" rows={invoice.textBefore} onChange={(textBefore) => set({ textBefore })} disabled={ro} quote={quote} />
               <LinesEditor
+                catalogue={!credit}
                 lines={invoice.lines}
                 onChange={(lines) => set({ lines })}
                 buyer={invoice.buyer}
@@ -939,7 +1011,11 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 {quote ? t('quote.issue') : t(credit ? 'actions.issueCredit' : 'actions.issue')}
               </button>
               <p id="issue-note" className="ed-issue-note">
-                {quote ? t('quote.willGetNumber', { number: predicted }) : t(credit ? 'editor.willGetNumberCredit' : 'editor.willGetNumber', { number: predicted })}
+                {reopened
+                  ? t('reopen.willKeepNumber', { number: predicted })
+                  : quote
+                    ? t('quote.willGetNumber', { number: predicted })
+                    : t(credit ? 'editor.willGetNumberCredit' : 'editor.willGetNumber', { number: predicted })}
               </p>
             </div>
           </aside>
@@ -1021,7 +1097,16 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       </div>
 
       {dialog === 'issue' && quote && <QuoteIssueDialog predictedNumber={predicted} warnings={warnings.length} stale={staleQuote} onClose={() => setDialog(null)} onConfirm={issue} />}
-      {dialog === 'issue' && !quote && <IssueDialog credit={credit} predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && !quote && <IssueDialog credit={credit} predictedNumber={predicted} keepsNumber={reopened} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'delete' && (
+        <DeleteInvoiceDialog
+          invoice={invoice}
+          onClose={() => setDialog(null)}
+          onDeleted={() => navigate('/')}
+          onCreditNote={credit || quote || invoice.status === 'cancelled' || !ro ? undefined : () => void creditNote()}
+          beforeDelete={ro ? undefined : () => autosave.discard()}
+        />
+      )}
       {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus((id) => app.markInvoicePaid(id, paidAt)).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}
       {(dialog === 'email' || dialog === 'reminder') && <EmailDialog invoice={effective} kind={dialog === 'reminder' ? 'reminder' : 'invoice'} onSent={() => markSent(invoice.id)} onClose={() => setDialog(null)} />}
     </div>

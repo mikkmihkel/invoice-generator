@@ -492,11 +492,13 @@
   }
 }
 @media (max-width: 767px) {
+  /* On phones dialogs open as bottom sheets, so messages appear at the top where they cover nothing. */
   .toasts {
     left: var(--s-4);
     right: var(--s-4);
     width: auto;
-    bottom: calc(var(--s-3) + var(--tabbar-h) + env(safe-area-inset-bottom));
+    top: calc(var(--s-3) + env(safe-area-inset-top));
+    bottom: auto;
   }
 }
 

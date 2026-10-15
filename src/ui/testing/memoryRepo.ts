@@ -7,6 +7,9 @@ import {
   newId,
   nextSequence,
   numberingFor,
+  planDeletion,
+  releaseNumbers,
+  reopenBlocker,
   withNumberingFor,
   type AppSettings,
   type Client,
@@ -16,7 +19,7 @@ import {
   type Product,
   type RecurringRule,
 } from '../../domain'
-import type { Repository } from '../../storage'
+import type { DeletedDocuments, Repository } from '../../storage'
 
 /** In-memory Repository for UI tests (methods are vi.fn spies). */
 export function createMemoryRepo(
@@ -64,17 +67,71 @@ export function createMemoryRepo(
     saveInvoice: vi.fn(async (inv: Invoice) => {
       invoices.set(inv.id, clone(inv))
     }),
-    deleteInvoice: vi.fn(async (id: string) => {
-      invoices.delete(id)
+    deleteInvoice: vi.fn(async (id: string): Promise<DeletedDocuments | null> => {
+      const target = invoices.get(id)
+      if (!target) return null
+      const all = [...invoices.values()]
+      const plan = planDeletion(target, all, profile)
+      const ids = new Set(plan.documents.map((d) => d.id))
+      const removedEvents = [...events.values()].filter((e) => ids.has(e.invoiceId))
+      const removedRules = [...rules.values()].filter((r) => ids.has(r.sourceInvoiceId))
+      for (const e of removedEvents) events.delete(e.id)
+      for (const r of removedRules) rules.delete(r.id)
+      const unlinked: Invoice[] = []
+      for (const other of all) {
+        if (ids.has(other.id)) continue
+        const toInvoice = !!other.convertedToInvoiceId && ids.has(other.convertedToInvoiceId)
+        const fromQuote = !!other.convertedFromQuoteId && ids.has(other.convertedFromQuoteId)
+        if (!toInvoice && !fromQuote) continue
+        const next = { ...other }
+        if (toInvoice) delete next.convertedToInvoiceId
+        if (fromQuote) delete next.convertedFromQuoteId
+        unlinked.push(clone(other))
+        invoices.set(other.id, next)
+      }
+      for (const d of plan.documents) invoices.delete(d.id)
+      let released: string[] = []
+      if (profile) {
+        const result = releaseNumbers(profile, plan.documents, [...invoices.values()])
+        profile = result.profile
+        released = result.released
+      }
+      return clone({ invoices: plan.documents, events: removedEvents, recurringRules: removedRules, unlinked, released, deletedAt: new Date().toISOString() })
+    }),
+    restoreDeleted: vi.fn(async (deleted: DeletedDocuments) => {
+      for (const d of deleted.invoices) invoices.set(d.id, clone(d))
+      for (const d of deleted.unlinked) invoices.set(d.id, clone(d))
+      for (const e of deleted.events) events.set(e.id, clone(e))
+      for (const r of deleted.recurringRules) rules.set(r.id, clone(r))
+      if (profile) {
+        for (const d of deleted.invoices) {
+          if (!d.number || !deleted.released.includes(d.number)) continue
+          const series = numberingFor(profile, d.type)
+          profile = withNumberingFor(profile, d.type, advanceNumbering(series, d.issueDate))
+        }
+      }
+    }),
+    reopenInvoice: vi.fn(async (id: string) => {
+      const inv = invoices.get(id)
+      if (!inv) throw new Error('not found')
+      const block = reopenBlocker(inv, [...invoices.values()], [...events.values()])
+      if (block) throw new Error(`cannot reopen: ${block}`)
+      const reopened: Invoice = { ...inv, status: 'draft', reopenedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      invoices.set(id, reopened)
+      return clone(reopened)
     }),
     issueInvoice: vi.fn(async (id: string) => {
       const inv = invoices.get(id)
       if (!inv || !profile) throw new Error('not found')
-      const series = numberingFor(profile, inv.type)
-      const { n } = nextSequence(series, inv.issueDate)
-      const number = formatInvoiceNumber(series, n, inv.issueDate)
-      profile = withNumberingFor(profile, inv.type, advanceNumbering(series, inv.issueDate, n))
+      let number = inv.number
+      if (!inv.reopenedAt || !number) {
+        const series = numberingFor(profile, inv.type)
+        const { n } = nextSequence(series, inv.issueDate)
+        number = formatInvoiceNumber(series, n, inv.issueDate)
+        profile = withNumberingFor(profile, inv.type, advanceNumbering(series, inv.issueDate, n))
+      }
       const issued: Invoice = { ...inv, number, status: 'issued', issuedAt: new Date().toISOString() }
+      delete issued.reopenedAt
       invoices.set(id, issued)
       return clone(issued)
     }),

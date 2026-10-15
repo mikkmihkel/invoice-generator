@@ -1,8 +1,8 @@
 import { PackageIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { newId, type Product } from '../../domain'
 import { useApp } from '../AppContext'
-import { Dialog, useConfirm } from '../components/Dialog'
+import { useConfirm } from '../components/Dialog'
 import { NumberField, SelectField, TextField } from '../components/fields'
 import { EmptyState, IconButton, SearchField } from '../components/ui'
 import { formatUnitMoney } from '../../pdf/format'
@@ -16,16 +16,25 @@ function emptyProduct(unit: string): Product {
   return { id: newId(), description: '', unit, unitPrice: 0, createdAt: now, updatedAt: now }
 }
 
-/** Add or edit one catalogue item. */
-export function ProductDialog({ initial, onClose }: { initial?: Product; onClose: () => void }) {
+/**
+ * One catalogue item as a single row of fields: the quick-add row above the list (it clears itself after each
+ * save, so several items can be entered in a row) and the inline editor of a list row (Escape cancels).
+ */
+function ProductForm({ initial, onDone, showVat }: { initial?: Product; onDone?: () => void; showVat: boolean }) {
   const { t, profile } = useApp()
   const { products, save } = useProducts()
   const toast = useToast()
+  const editing = !!initial
+  const defaultUnit = profile?.defaults.defaultUnit ?? 'tk'
   const defaultRate = profile?.defaults.defaultVatRate ?? 24
-  const [product, setProduct] = useState<Product>(() => initial ?? emptyProduct(profile?.defaults.defaultUnit ?? 'tk'))
+  const [product, setProduct] = useState<Product>(() => initial ?? emptyProduct(defaultUnit))
   const [saving, setSaving] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const showVat = profile?.vatRegistered !== false || product.vatRate != null
+  // Quick add: the new row shows up in the list; screen readers hear it here (no toast for every item).
+  const [announce, setAnnounce] = useState('')
+  const descId = useId()
+  const focusDescription = () => document.getElementById(descId)?.focus()
+  const withVat = showVat || product.vatRate != null
 
   const duplicate = findProduct(
     products.filter((p) => p.id !== product.id),
@@ -36,70 +45,93 @@ export function ProductDialog({ initial, onClose }: { initial?: Product; onClose
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitted(true)
-    if (!product.description.trim() || duplicate) return
+    if (!product.description.trim() || duplicate) {
+      focusDescription()
+      return
+    }
     setSaving(true)
     try {
-      await save({ ...product, description: product.description.trim(), unit: product.unit.trim() })
-      toast.success(t('common.saved'))
-      onClose()
+      const saved = { ...product, description: product.description.trim(), unit: product.unit.trim(), updatedAt: nowISO() }
+      await save(saved)
+      if (editing) {
+        toast.success(t('common.saved'))
+        onDone?.()
+        return
+      }
+      setAnnounce(t('products.added', { name: saved.description }))
+      setProduct(emptyProduct(defaultUnit))
+      setSubmitted(false)
+      setSaving(false)
+      focusDescription()
     } catch (err) {
       toast.error(t('common.saveFailed') + ' ' + errorMessage(err))
       setSaving(false)
     }
   }
 
-  const formId = 'product-form-' + product.id
   return (
-    <Dialog
-      title={initial ? t('products.editTitle') : t('products.addTitle')}
-      onClose={onClose}
-      closeLabel={t('common.close')}
-      dismissible={!saving}
-      footer={
-        <>
-          <button type="button" className="btn" onClick={onClose} disabled={saving}>
-            {t('common.cancel')}
-          </button>
-          <button type="submit" form={formId} className="btn btn-primary" disabled={saving}>
-            {saving ? t('common.saving') : t('common.save')}
-          </button>
-        </>
-      }
+    <form
+      className={`product-form${editing ? ' product-form-edit' : ''}${withVat ? ' with-vat' : ''}`}
+      onSubmit={submit}
+      noValidate
+      aria-label={editing ? t('products.editNamed', { name: initial.description }) : t('products.addTitle')}
+      onKeyDown={(e) => {
+        if (editing && e.key === 'Escape') {
+          e.preventDefault()
+          onDone?.()
+        }
+      }}
     >
-      <form id={formId} onSubmit={submit} noValidate className="stack-sm">
-        <TextField
-          label={t('products.description')}
-          value={product.description}
-          onChange={(description) => setProduct({ ...product, description })}
-          error={descriptionError}
-          required
-          data-autofocus
-          autoComplete="off"
+      <TextField
+        id={descId}
+        className="pf-desc"
+        label={t('products.description')}
+        value={product.description}
+        onChange={(description) => setProduct({ ...product, description })}
+        error={descriptionError}
+        autoComplete="off"
+        autoFocus={editing}
+      />
+      <TextField className="pf-unit" label={t('products.unit')} value={product.unit} onChange={(unit) => setProduct({ ...product, unit })} list="unit-suggestions-products" autoComplete="off" />
+      <NumberField className="pf-price" label={t('products.unitPrice')} value={product.unitPrice} onChange={(v) => setProduct({ ...product, unitPrice: roundTo(v ?? 0, 4) })} />
+      {withVat && (
+        <SelectField<string>
+          className="pf-vat"
+          label={t('products.vatRate')}
+          value={product.vatRate == null ? '' : String(product.vatRate)}
+          onChange={(v) => setProduct({ ...product, vatRate: v === '' ? undefined : Number(v) })}
+          options={[{ value: '', label: t('products.vatDefault', { rate: defaultRate }) }, ...vatRates(product.vatRate).map((r) => ({ value: String(r), label: `${r}%` }))]}
         />
-        <div className="grid product-grid">
-          <TextField label={t('products.unit')} value={product.unit} onChange={(unit) => setProduct({ ...product, unit })} list="unit-suggestions-products" autoComplete="off" />
-          <NumberField
-            label={t('products.unitPrice')}
-            value={product.unitPrice}
-            onChange={(v) => setProduct({ ...product, unitPrice: roundTo(v ?? 0, 4) })}
-            hint={t('products.unitPriceHint')}
-          />
-          {showVat && (
-            <SelectField<string>
-              label={t('products.vatRate')}
-              value={product.vatRate == null ? '' : String(product.vatRate)}
-              onChange={(v) => setProduct({ ...product, vatRate: v === '' ? undefined : Number(v) })}
-              options={[{ value: '', label: t('products.vatDefault', { rate: defaultRate }) }, ...vatRates(product.vatRate).map((r) => ({ value: String(r), label: `${r}%` }))]}
-            />
+      )}
+      {!editing && (
+        <span className="visually-hidden" aria-live="polite">
+          {announce}
+        </span>
+      )}
+      <div className="pf-actions">
+        {/* Keeps the buttons level with the inputs, under the labels. */}
+        <span className="label" aria-hidden="true">
+          &nbsp;
+        </span>
+        <div className="btn-row">
+          {editing ? (
+            <>
+              <button type="button" className="btn" onClick={onDone} disabled={saving}>
+                {t('common.cancel')}
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? t('common.saving') : t('common.save')}
+              </button>
+            </>
+          ) : (
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              <PlusIcon />
+              {t('products.quickAdd')}
+            </button>
           )}
         </div>
-        <datalist id="unit-suggestions-products">
-          {UNIT_SUGGESTIONS.map((u) => (
-            <option key={u} value={u} />
-          ))}
-        </datalist>
-      </form>
-    </Dialog>
+      </div>
+    </form>
   )
 }
 
@@ -109,9 +141,10 @@ export default function ProductsPage() {
   const toast = useToast()
   const confirm = useConfirm()
   const [query, setQuery] = useState('')
-  const [editing, setEditing] = useState<{ product?: Product } | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
   const defaultRate = profile?.defaults.defaultVatRate ?? 24
   const showVat = profile?.vatRegistered !== false || products.some((p) => p.vatRate != null)
+  const cols = showVat ? 5 : 4
 
   const q = normalizeText(query)
   const list = q ? products.filter((p) => normalizeText(`${p.description} ${p.unit}`).includes(q)) : products
@@ -133,12 +166,10 @@ export default function ProductsPage() {
     }
   }
 
-  const addButton = (
-    <button type="button" className="btn btn-primary" onClick={() => setEditing({})}>
-      <PlusIcon />
-      {t('products.add')}
-    </button>
-  )
+  const stopEditing = (id: string) => {
+    setEditing(null)
+    requestAnimationFrame(() => document.getElementById(`product-edit-${id}`)?.focus())
+  }
 
   return (
     <div className="page">
@@ -147,11 +178,22 @@ export default function ProductsPage() {
           <h1>{t('products.title')}</h1>
           <p className="page-sub">{products.length > 0 ? t('products.count', { count: products.length }) : t('products.intro')}</p>
         </div>
-        {products.length > 0 && <div className="btn-row">{addButton}</div>}
       </div>
 
+      <section className="panel product-quick" aria-labelledby="product-quick-title">
+        <h2 id="product-quick-title" className="panel-title">
+          {t('products.addTitle')}
+        </h2>
+        <ProductForm showVat={showVat} />
+      </section>
+      <datalist id="unit-suggestions-products">
+        {UNIT_SUGGESTIONS.map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
+
       {products.length === 0 ? (
-        <EmptyState icon={<PackageIcon size={28} />} title={t('products.emptyTitle')} actions={addButton}>
+        <EmptyState icon={<PackageIcon size={28} />} title={t('products.emptyTitle')}>
           <p>{t('products.emptyText')}</p>
         </EmptyState>
       ) : (
@@ -190,33 +232,42 @@ export default function ProductsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.map((p) => (
-                    <tr key={p.id}>
-                      <td className="col-name">
-                        <span className="product-name">{p.description}</span>
-                      </td>
-                      <td className="col-unit">{p.unit}</td>
-                      <td className="num col-price">{formatUnitMoney(p.unitPrice, 'EUR', 'et')}</td>
-                      {showVat && (
-                        <td className="num col-vat" title={p.vatRate == null ? t('products.vatDefault', { rate: defaultRate }) : undefined}>
-                          {p.vatRate ?? defaultRate}%
+                  {list.map((p) =>
+                    editing === p.id ? (
+                      <tr key={p.id} className="product-editing">
+                        <td colSpan={cols}>
+                          <ProductForm initial={p} showVat={showVat} onDone={() => stopEditing(p.id)} />
                         </td>
-                      )}
-                      <td className="col-actions">
-                        <div className="row-actions row-actions-visible">
-                          <IconButton label={t('products.editNamed', { name: p.description })} icon={<PencilSimpleIcon />} onClick={() => setEditing({ product: p })} />
-                          <IconButton className="icon-btn-danger" label={t('products.deleteNamed', { name: p.description })} icon={<TrashIcon />} onClick={() => void onDelete(p)} />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                      </tr>
+                    ) : (
+                      <tr key={p.id}>
+                        <td className="col-name">
+                          <button type="button" className="name-btn product-name" onClick={() => setEditing(p.id)} title={t('products.editNamed', { name: p.description })}>
+                            {p.description}
+                          </button>
+                        </td>
+                        <td className="col-unit">{p.unit}</td>
+                        <td className="num col-price">{formatUnitMoney(p.unitPrice, 'EUR', 'et')}</td>
+                        {showVat && (
+                          <td className="num col-vat" title={p.vatRate == null ? t('products.vatDefault', { rate: defaultRate }) : undefined}>
+                            {p.vatRate ?? defaultRate}%
+                          </td>
+                        )}
+                        <td className="col-actions">
+                          <div className="row-actions row-actions-visible">
+                            <IconButton id={`product-edit-${p.id}`} label={t('products.editNamed', { name: p.description })} icon={<PencilSimpleIcon />} onClick={() => setEditing(p.id)} />
+                            <IconButton className="icon-btn-danger" label={t('products.deleteNamed', { name: p.description })} icon={<TrashIcon />} onClick={() => void onDelete(p)} />
+                          </div>
+                        </td>
+                      </tr>
+                    ),
+                  )}
                 </tbody>
               </table>
             </div>
           )}
         </>
       )}
-      {editing && <ProductDialog initial={editing.product} onClose={() => setEditing(null)} />}
     </div>
   )
 }

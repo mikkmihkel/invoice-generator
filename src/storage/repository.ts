@@ -6,10 +6,15 @@ import {
   generateReferenceNumber,
   highestUsedNumber,
   nextSequence,
+  holdsNumber,
   numberingFloor,
   numberingFor,
+  planDeletion,
   raiseNumbering,
+  releaseNumbers,
+  reopenBlocker,
   sameSeries,
+  sequenceOf,
   sellerSnapshot,
   todayISO,
   validateInvoice,
@@ -21,14 +26,17 @@ import type {
   Client,
   CompanyProfile,
   ISODate,
+  ISODateTime,
   Invoice,
   InvoiceEvent,
   InvoiceStatus,
+  NumberingSettings,
   Product,
   RecurringRule,
   SellerSnapshot,
   ValidationIssue,
 } from '../domain/types'
+import type { ReopenBlock } from '../domain'
 import { BACKUP_APP, BACKUP_VERSION, isNewer, validateBackup } from './backup'
 import { DB_NAME, getDb, PROFILE_KEY, SETTINGS_KEY } from './db'
 import { notifyChange } from './events'
@@ -58,6 +66,19 @@ export interface SaveProfileOptions {
   allowLowerNumbering?: boolean | { invoice?: boolean; quote?: boolean }
 }
 
+/** What deleteInvoice removed or changed: everything restoreDeleted needs to undo it. */
+export interface DeletedDocuments {
+  /** The deleted document first, then the credit notes deleted with it. */
+  invoices: Invoice[]
+  events: InvoiceEvent[]
+  recurringRules: RecurringRule[]
+  /** Other documents as they were before their link to a deleted one was cleared. */
+  unlinked: Invoice[]
+  /** Numbers given back to their series. */
+  released: string[]
+  deletedAt: ISODateTime
+}
+
 export interface Repository {
   getProfile(): Promise<CompanyProfile | null>
   /**
@@ -80,15 +101,32 @@ export interface Repository {
    * copy; anything else throws RepositoryError 'immutable'. Prefer the explicit status methods below.
    */
   saveInvoice(invoice: Invoice): Promise<void>
-  /** Only drafts may be deleted; issued invoices must be cancelled/credited instead (RPS requires keeping documents). */
-  deleteInvoice(id: string): Promise<void>
+  /**
+   * Delete a document of any status (the UI explains that issued ones are accounting source documents). An invoice
+   * goes together with the credit notes that credit it (see planDeletion); the events of the deleted documents and
+   * the recurring rules repeating them are deleted, and quote ↔ invoice links to them are cleared. A number that
+   * was the last one handed out in its series and period goes back to the series; any other number leaves a gap.
+   * Returns what was removed (for restoreDeleted), or null when there was no such document.
+   */
+  deleteInvoice(id: string): Promise<DeletedDocuments | null>
+  /**
+   * Undo deleteInvoice: put the records back as they were and move the number series past the restored numbers.
+   * Throws 'numbering' (and changes nothing) when one of the numbers was given to another document meanwhile.
+   */
+  restoreDeleted(deleted: DeletedDocuments): Promise<void>
+  /**
+   * Open an issued document for editing again while it has not been sent, paid, cancelled or credited (see
+   * reopenBlocker): it becomes a draft that keeps its number (`reopenedAt` is set), and issueInvoice issues it
+   * again under the same number with a fresh seller snapshot. Throws 'invalid-transition' otherwise.
+   */
+  reopenInvoice(id: string): Promise<Invoice>
 
   /**
    * Atomically allocate the next number, snapshot the seller, set status 'issued' + issuedAt, and persist.
    * Invoices, credit notes and prepayment invoices are numbered from profile.numbering, quotes from
    * profile.quoteNumbering (their own series, no viitenumber). The period of a resetting series is taken from
-   * the document's issueDate; a number already used by any document is skipped.
-   * Throws if validation has errors or the document was already issued.
+   * the document's issueDate; a number already used by any document is skipped. A reopened document keeps its
+   * number. Throws if validation has errors or the document was already issued.
    */
   issueInvoice(id: string): Promise<Invoice>
 
@@ -243,17 +281,31 @@ function isValidIsoDate(v: unknown): v is ISODate {
 
 /**
  * Merge rule for one invoice from a backup. Returns the record to write, or null to keep the local one.
- * - a non-draft (issued / paid / cancelled) always beats a draft with the same id, whatever the timestamps
- *   (an issued document must never be reverted to an editable draft);
- * - between two drafts or two non-drafts the newer updatedAt wins, but an issued invoice keeps its number.
+ * - a numbered document (issued / paid / cancelled, or reopened for editing) always beats a plain draft with the
+ *   same id, whatever the timestamps (an issued document must never turn into an unnumbered draft);
+ * - between two plain drafts or two numbered documents the newer updatedAt wins, but a numbered document keeps
+ *   its number.
  */
 function mergeInvoice(existing: Invoice | undefined, incoming: Invoice): Invoice | null {
   if (!existing) return incoming
-  const existingDraft = existing.status === 'draft'
-  const incomingDraft = incoming.status === 'draft'
+  const existingDraft = !holdsNumber(existing)
+  const incomingDraft = !holdsNumber(incoming)
   if (existingDraft !== incomingDraft) return incomingDraft ? null : incoming
   if (!isNewer(incoming.updatedAt, existing.updatedAt)) return null
   return existingDraft ? incoming : { ...incoming, number: existing.number }
+}
+
+/** Why reopenInvoice refused, in both languages. */
+const REOPEN_BLOCKED: Record<ReopenBlock, [string, string]> = {
+  'not-issued': ['Muutmiseks saab avada ainult väljastatud dokumendi.', 'Only an issued document can be reopened for editing.'],
+  paid: ['Tasutud arvet ei saa muutmiseks avada. Paranda see kreeditarvega.', 'A paid invoice cannot be reopened. Correct it with a credit note.'],
+  cancelled: ['Tühistatud dokumenti ei saa muutmiseks avada.', 'A cancelled document cannot be reopened.'],
+  sent: [
+    'Arve on kliendile juba saadetud, seega seda enam muuta ei saa. Paranda see kreeditarvega.',
+    'The invoice has already been sent to the client, so it can no longer be changed. Correct it with a credit note.',
+  ],
+  credited: ['Arvele on koostatud kreeditarve, seega seda enam muuta ei saa.', 'A credit note has been issued for the invoice, so it can no longer be changed.'],
+  accepted: ['Aktsepteeritud hinnapakkumist ei saa muutmiseks avada.', 'An accepted quote cannot be reopened for editing.'],
 }
 
 /** Kept here for existing imports; the implementation lives in the domain numbering module. */
@@ -364,6 +416,15 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
           'A draft cannot change status by saving it – issue it instead.',
         )
       }
+      if (existing?.reopenedAt && existing.status === 'draft' && (invoice.number !== existing.number || !invoice.reopenedAt)) {
+        tx.abort()
+        await tx.done.catch(() => {})
+        throw new RepositoryError(
+          'immutable',
+          'Muutmiseks avatud arve number jääb samaks.',
+          'A reopened invoice keeps its number.',
+        )
+      }
       if (existing && existing.status !== 'draft') {
         let error = quoteStatusError(existing, invoice.status)
         if (!isAllowedIssuedTransition(existing.status, invoice.status)) {
@@ -371,8 +432,8 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
             invoice.status === 'draft'
               ? new RepositoryError(
                   'immutable',
-                  'Väljastatud arvet ei saa mustandiks tagasi muuta.',
-                  'An issued invoice cannot go back to draft.',
+                  'Väljastatud arvet ei saa salvestamisega mustandiks muuta – ava see muutmiseks.',
+                  'An issued invoice cannot go back to draft by saving it – reopen it for editing.',
                 )
               : new RepositoryError(
                   'immutable',
@@ -399,24 +460,140 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
     },
 
     async deleteInvoice(id) {
-      const tx = (await db()).transaction('invoices', 'readwrite')
-      const existing = await tx.store.get(id)
-      if (!existing) {
+      const tx = (await db()).transaction(['profile', 'invoices', 'invoiceEvents', 'recurringRules'], 'readwrite')
+      const invoices = tx.objectStore('invoices')
+      const target = await invoices.get(id)
+      if (!target) {
         await tx.done
-        return
+        return null
       }
-      if (existing.status !== 'draft') {
-        tx.abort()
+      const all = await invoices.getAll()
+      const profile = await tx.objectStore('profile').get(PROFILE_KEY)
+      const plan = planDeletion(target, all, profile ?? null)
+      const ids = new Set(plan.documents.map((d) => d.id))
+      const remaining = all.filter((i) => !ids.has(i.id))
+      const ts = clock()
+
+      const events: InvoiceEvent[] = []
+      for (const d of plan.documents) events.push(...(await tx.objectStore('invoiceEvents').index('invoiceId').getAll(d.id)))
+      for (const e of events) await tx.objectStore('invoiceEvents').delete(e.id)
+      const rules: RecurringRule[] = []
+      for (const d of plan.documents) rules.push(...(await tx.objectStore('recurringRules').index('sourceInvoiceId').getAll(d.id)))
+      for (const r of rules) await tx.objectStore('recurringRules').delete(r.id)
+
+      const unlinked: Invoice[] = []
+      for (const other of remaining) {
+        const toInvoice = !!other.convertedToInvoiceId && ids.has(other.convertedToInvoiceId)
+        const fromQuote = !!other.convertedFromQuoteId && ids.has(other.convertedFromQuoteId)
+        if (!toInvoice && !fromQuote) continue
+        const next: Invoice = { ...other, updatedAt: ts }
+        if (toInvoice) delete next.convertedToInvoiceId
+        if (fromQuote) delete next.convertedFromQuoteId
+        unlinked.push(other)
+        await invoices.put(next)
+      }
+      for (const d of plan.documents) await invoices.delete(d.id)
+
+      let released: string[] = []
+      if (profile) {
+        const result = releaseNumbers(profile, plan.documents, remaining)
+        released = result.released
+        if (released.length) await tx.objectStore('profile').put({ ...result.profile, updatedAt: ts }, PROFILE_KEY)
+      }
+      await tx.done
+      for (const d of plan.documents) notifyChange('invoices', d.id)
+      if (events.length) notifyChange('invoiceEvents')
+      if (rules.length) notifyChange('recurringRules')
+      if (released.length) notifyChange('profile')
+      return { invoices: plan.documents, events, recurringRules: rules, unlinked, released, deletedAt: ts }
+    },
+
+    async restoreDeleted(deleted) {
+      const tx = (await db()).transaction(['profile', 'invoices', 'invoiceEvents', 'recurringRules'], 'readwrite')
+      const invoices = tx.objectStore('invoices')
+      const fail = async (err: Error): Promise<never> => {
+        try {
+          tx.abort()
+        } catch {
+          // already finished
+        }
         await tx.done.catch(() => {})
-        throw new RepositoryError(
-          'not-draft',
-          'Kustutada saab ainult mustandeid. Väljastatud arve tühista või koosta kreeditarve.',
-          'Only drafts can be deleted. Cancel the issued invoice or create a credit note instead.',
-        )
+        throw err
       }
-      await tx.store.delete(id)
+      const ids = new Set(deleted.invoices.map((d) => d.id))
+      for (const d of deleted.invoices) {
+        if (!d.number) continue
+        const holders = await invoices.index('number').getAllKeys(d.number)
+        if (holders.some((k) => !ids.has(k))) {
+          return fail(
+            new RepositoryError(
+              'numbering',
+              `Kustutamist ei saa tagasi võtta: number ${d.number} on vahepeal antud teisele dokumendile.`,
+              `The deletion cannot be undone: number ${d.number} has been given to another document meanwhile.`,
+            ),
+          )
+        }
+      }
+      for (const d of deleted.invoices) await invoices.put(d)
+      for (const other of deleted.unlinked) {
+        const current = await invoices.get(other.id)
+        if (!current) continue
+        const next: Invoice = { ...current }
+        if (other.convertedToInvoiceId && !current.convertedToInvoiceId) next.convertedToInvoiceId = other.convertedToInvoiceId
+        if (other.convertedFromQuoteId && !current.convertedFromQuoteId) next.convertedFromQuoteId = other.convertedFromQuoteId
+        await invoices.put(next)
+      }
+      for (const e of deleted.events) await tx.objectStore('invoiceEvents').put(e)
+      for (const r of deleted.recurringRules) await tx.objectStore('recurringRules').put(r)
+
+      const profile = await tx.objectStore('profile').get(PROFILE_KEY)
+      let profileChanged = false
+      if (profile) {
+        const all = await invoices.getAll()
+        let next = profile
+        for (const type of ['invoice', 'quote'] as const) {
+          const series = numberingFor(next, type)
+          const raised = raiseNumbering(series, numberingFloor(series, all.filter(sameSeries(type))))
+          if (!deepEqual(raised, series)) next = withNumberingFor(next, type, raised)
+        }
+        if (next !== profile) {
+          await tx.objectStore('profile').put({ ...next, updatedAt: clock() }, PROFILE_KEY)
+          profileChanged = true
+        }
+      }
+      await tx.done
+      for (const d of deleted.invoices) notifyChange('invoices', d.id)
+      if (deleted.events.length) notifyChange('invoiceEvents')
+      if (deleted.recurringRules.length) notifyChange('recurringRules')
+      if (profileChanged) notifyChange('profile')
+    },
+
+    async reopenInvoice(id) {
+      const tx = (await db()).transaction(['invoices', 'invoiceEvents'], 'readwrite')
+      const invoices = tx.objectStore('invoices')
+      const fail = async (err: Error): Promise<never> => {
+        try {
+          tx.abort()
+        } catch {
+          // already finished
+        }
+        await tx.done.catch(() => {})
+        throw err
+      }
+      const stored = await invoices.get(id)
+      if (!stored) return fail(new RepositoryError('not-found', 'Arvet ei leitud.', 'Invoice not found.'))
+      const events = await tx.objectStore('invoiceEvents').index('invoiceId').getAll(id)
+      const block = reopenBlocker(stored, await invoices.getAll(), events)
+      if (block) {
+        const [et, en] = REOPEN_BLOCKED[block]
+        return fail(new RepositoryError('invalid-transition', et, en))
+      }
+      const ts = clock()
+      const reopened: Invoice = { ...stored, status: 'draft', reopenedAt: ts, updatedAt: ts }
+      await invoices.put(reopened)
       await tx.done
       notifyChange('invoices', id)
+      return reopened
     },
 
     async issueInvoice(id) {
@@ -445,19 +622,32 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         )
       }
 
-      // Allocate the next free number; skip numbers already used (e.g. after merging a backup).
       const isQuote = invoice.type === 'quote'
       const series = numberingFor(profile, invoice.type)
       const date = numberingDate(invoice)
       let n = nextSequence(series, date).n
       let number = ''
-      for (let attempts = 0; ; attempts++) {
-        if (attempts > 10000) {
-          return fail(new RepositoryError('numbering', 'Vaba arvenumbrit ei leitud.', 'Could not find a free invoice number.'))
+      let nextSeries: NumberingSettings
+      if (invoice.reopenedAt && invoice.number) {
+        // Issued again after reopening: the same number (the series already moved past it).
+        number = invoice.number
+        const holders = await invoices.index('number').getAllKeys(number)
+        if (holders.some((k) => k !== id)) {
+          return fail(new RepositoryError('numbering', `Number ${number} on juba teisel dokumendil.`, `Number ${number} is already used by another document.`))
         }
-        number = formatInvoiceNumber(series, n, date)
-        if ((await invoices.index('number').count(number)) === 0) break
-        n++
+        n = sequenceOf(series, number, date) ?? n
+        nextSeries = raiseNumbering(series, numberingFloor(series, [{ number, issueDate: date, status: 'issued' }]))
+      } else {
+        // Allocate the next free number; skip numbers already used (e.g. after merging a backup).
+        for (let attempts = 0; ; attempts++) {
+          if (attempts > 10000) {
+            return fail(new RepositoryError('numbering', 'Vaba arvenumbrit ei leitud.', 'Could not find a free invoice number.'))
+          }
+          number = formatInvoiceNumber(series, n, date)
+          if ((await invoices.index('number').count(number)) === 0) break
+          n++
+        }
+        nextSeries = advanceNumbering(series, date, n)
       }
 
       const ts = clock()
@@ -469,6 +659,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         issuedAt: ts,
         updatedAt: ts,
       }
+      delete issued.reopenedAt
       if (isQuote) delete issued.referenceNumber
       else if (!invoice.referenceNumber?.trim()) issued.referenceNumber = generateReferenceNumber(referenceBase(number, n))
 
@@ -476,7 +667,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       if (!canIssue(issued)) return fail(new InvoiceValidationError(validateInvoice(issued)))
 
       await invoices.put(issued)
-      await profiles.put({ ...withNumberingFor(profile, invoice.type, advanceNumbering(series, date, n)), updatedAt: ts }, PROFILE_KEY)
+      if (!deepEqual(nextSeries, series)) await profiles.put({ ...withNumberingFor(profile, invoice.type, nextSeries), updatedAt: ts }, PROFILE_KEY)
       await tx.done
       notifyChange('invoices', id)
       notifyChange('profile')

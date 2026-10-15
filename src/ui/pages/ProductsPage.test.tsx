@@ -23,33 +23,38 @@ afterEach(() => {
 const ts = '2026-01-01T00:00:00.000Z'
 
 describe('products page', () => {
-  it('is reachable from the navigation and adds a product from the empty state', async () => {
+  it('is reachable from the navigation and adds products from the quick-add row', async () => {
     const repo = createMemoryRepo({ profile: sampleProfile() })
     render(<App repository={repo} />)
     fireEvent.click(await screen.findByRole('link', { name: 'Tooted' }))
     expect(await screen.findByRole('heading', { name: 'Tooted ja teenused', level: 1 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Kataloog on tühi' })).toBeInTheDocument()
+    expect(screen.getByText(/nupuga „Lisa kataloogist“/)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Lisa toode või teenus' }))
-    const dialog = within(await screen.findByRole('dialog', { name: 'Uus toode või teenus' }))
-    fireEvent.click(dialog.getByRole('button', { name: 'Salvesta' }))
-    expect(await dialog.findByText('Sisesta kirjeldus.')).toBeInTheDocument()
+    const form = within(screen.getByRole('form', { name: 'Uus toode või teenus' }))
+    fireEvent.click(form.getByRole('button', { name: 'Lisa kataloogi' }))
+    expect(await form.findByText('Sisesta kirjeldus.')).toBeInTheDocument()
+    expect(form.getByLabelText('Kirjeldus')).toHaveFocus()
     expect(repo.saveProduct).not.toHaveBeenCalled()
 
-    fireEvent.change(dialog.getByLabelText(/Kirjeldus/), { target: { value: 'Veebilehe hooldus' } })
-    fireEvent.change(dialog.getByLabelText('Ühik'), { target: { value: 'kuu' } })
-    fireEvent.change(dialog.getByLabelText('Ühikuhind (km-ta)'), { target: { value: '120,5' } })
-    fireEvent.change(dialog.getByLabelText('Käibemaksumäär'), { target: { value: '13' } })
-    fireEvent.click(dialog.getByRole('button', { name: 'Salvesta' }))
+    fireEvent.change(form.getByLabelText('Kirjeldus'), { target: { value: 'Veebilehe hooldus' } })
+    fireEvent.change(form.getByLabelText('Ühik'), { target: { value: 'kuu' } })
+    fireEvent.change(form.getByLabelText('Ühikuhind (km-ta)'), { target: { value: '120,5' } })
+    fireEvent.change(form.getByLabelText('Käibemaksumäär'), { target: { value: '13' } })
+    fireEvent.submit(form.getByLabelText('Kirjeldus'))
 
     await waitFor(() => expect(repo.saveProduct).toHaveBeenCalledTimes(1))
     expect(repo.saveProduct.mock.calls[0][0]).toMatchObject({ description: 'Veebilehe hooldus', unit: 'kuu', unitPrice: 120.5, vatRate: 13 })
+    expect(await screen.findByText('Lisatud kataloogi: Veebilehe hooldus')).toBeInTheDocument()
     const row = (await screen.findByText('Veebilehe hooldus')).closest('tr')!
     expect(within(row).getByText('13%')).toBeInTheDocument()
     expect(within(row).getByText(/120,50/)).toBeInTheDocument()
+    // The row is ready for the next item.
+    await waitFor(() => expect(form.getByLabelText('Kirjeldus')).toHaveValue(''))
+    expect(form.getByLabelText('Kirjeldus')).toHaveFocus()
   })
 
-  it('edits, rejects a duplicate description, searches and deletes', async () => {
+  it('edits inline, rejects a duplicate description, searches and deletes', async () => {
     const repo = createMemoryRepo({
       profile: sampleProfile(),
       products: [
@@ -64,21 +69,28 @@ describe('products page', () => {
     expect(within(screen.getByText('Konsultatsioon').closest('tr')!).getByText('24%')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Muuda: Konsultatsioon' }))
-    let dialog = within(await screen.findByRole('dialog', { name: 'Muuda toodet või teenust' }))
-    fireEvent.change(dialog.getByLabelText(/Kirjeldus/), { target: { value: 'serveri MAJUTUS' } })
-    fireEvent.click(dialog.getByRole('button', { name: 'Salvesta' }))
-    expect(await dialog.findByText('Sama kirjeldusega toode on kataloogis juba olemas.')).toBeInTheDocument()
-    fireEvent.change(dialog.getByLabelText(/Kirjeldus/), { target: { value: 'Konsultatsioon (kaugtöö)' } })
-    fireEvent.click(dialog.getByRole('button', { name: 'Salvesta' }))
+    let form = within(await screen.findByRole('form', { name: 'Muuda: Konsultatsioon' }))
+    expect(form.getByLabelText('Kirjeldus')).toHaveFocus()
+    fireEvent.keyDown(form.getByLabelText('Kirjeldus'), { key: 'Escape' })
+    expect(screen.queryByRole('form', { name: 'Muuda: Konsultatsioon' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Muuda: Konsultatsioon' }))
+    form = within(await screen.findByRole('form', { name: 'Muuda: Konsultatsioon' }))
+    fireEvent.change(form.getByLabelText('Kirjeldus'), { target: { value: 'serveri MAJUTUS' } })
+    fireEvent.click(form.getByRole('button', { name: 'Salvesta' }))
+    expect(await form.findByText('Sama kirjeldusega toode on kataloogis juba olemas.')).toBeInTheDocument()
+    fireEvent.change(form.getByLabelText('Kirjeldus'), { target: { value: 'Konsultatsioon (kaugtöö)' } })
+    fireEvent.click(form.getByRole('button', { name: 'Salvesta' }))
     await waitFor(() => expect(repo.saveProduct).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', description: 'Konsultatsioon (kaugtöö)' })))
     expect(await screen.findByText('Konsultatsioon (kaugtöö)')).toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: /^Muuda:/ })).not.toBeInTheDocument()
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Otsi tooteid ja teenuseid' }), { target: { value: 'kaug' } })
     expect(screen.queryByText('Serveri majutus')).not.toBeInTheDocument()
     fireEvent.change(screen.getByRole('searchbox', { name: 'Otsi tooteid ja teenuseid' }), { target: { value: '' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Kustuta: Serveri majutus' }))
-    dialog = within(await screen.findByRole('dialog', { name: 'Kas kustutada „Serveri majutus“?' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Kas kustutada „Serveri majutus“?' }))
     fireEvent.click(dialog.getByRole('button', { name: 'Kustuta' }))
     await waitFor(() => expect(repo.deleteProduct).toHaveBeenCalledWith('p2'))
     await waitFor(() => expect(screen.queryByText('Serveri majutus')).not.toBeInTheDocument())

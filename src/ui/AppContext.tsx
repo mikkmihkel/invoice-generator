@@ -10,7 +10,7 @@ import {
   type RecurringRule,
   type UiLanguage,
 } from '../domain'
-import { getRepository, subscribe, type Repository, type SaveProfileOptions, type StorageArea } from '../storage'
+import { getRepository, subscribe, type DeletedDocuments, type Repository, type SaveProfileOptions, type StorageArea } from '../storage'
 import { makeT, type Translate } from './i18n'
 import { errorMessage, nowISO, reconcileList, setErrorLanguage, sortInvoices } from './util'
 import { applyTheme, normalizeTheme, readStoredTheme } from './theme'
@@ -38,7 +38,12 @@ export interface AppData {
   saveClient(client: Client): Promise<void>
   deleteClient(id: string): Promise<void>
   saveInvoice(invoice: Invoice): Promise<void>
-  deleteInvoice(id: string): Promise<void>
+  /** Deletes the document and what goes with it (see Repository.deleteInvoice); null when it did not exist. */
+  deleteInvoice(id: string): Promise<DeletedDocuments | null>
+  /** Undo a deletion. */
+  restoreDeletedInvoice(deleted: DeletedDocuments): Promise<void>
+  /** Open an issued, unsent document for editing again (it keeps its number). */
+  reopenInvoice(id: string): Promise<Invoice>
   issueInvoice(id: string): Promise<Invoice>
   /** Status-only changes of issued invoices (the repository rejects other edits to them). */
   markInvoicePaid(id: string, paidAt: string): Promise<Invoice>
@@ -210,8 +215,29 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
 
   const deleteInvoice = useCallback(
     async (id: string) => {
-      await repo.deleteInvoice(id)
-      setInvoices((list) => list.filter((x) => x.id !== id))
+      const deleted = await repo.deleteInvoice(id)
+      const ids = new Set([id, ...(deleted?.invoices.map((d) => d.id) ?? [])])
+      setInvoices((list) => list.filter((x) => !ids.has(x.id)))
+      // Linked documents, events, recurring rules and the number series may have changed as well.
+      if (deleted) await load(['invoices', 'profile', 'recurringRules', 'invoiceEvents'])
+      return deleted
+    },
+    [repo, load],
+  )
+
+  const restoreDeletedInvoice = useCallback(
+    async (deleted: DeletedDocuments) => {
+      await repo.restoreDeleted(deleted)
+      await load(['invoices', 'profile', 'recurringRules', 'invoiceEvents'])
+    },
+    [repo, load],
+  )
+
+  const reopenInvoice = useCallback(
+    async (id: string) => {
+      const reopened = await repo.reopenInvoice(id)
+      setInvoices((list) => sortInvoices([...list.filter((x) => x.id !== id), reopened]))
+      return reopened
     },
     [repo],
   )
@@ -303,6 +329,8 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
       deleteClient,
       saveInvoice,
       deleteInvoice,
+      restoreDeletedInvoice,
+      reopenInvoice,
       issueInvoice,
       markInvoicePaid,
       markInvoiceUnpaid,
@@ -334,6 +362,8 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
       deleteClient,
       saveInvoice,
       deleteInvoice,
+      restoreDeletedInvoice,
+      reopenInvoice,
       issueInvoice,
       markInvoicePaid,
       markInvoiceUnpaid,

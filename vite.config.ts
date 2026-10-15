@@ -15,7 +15,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self' https://ariregister.rik.ee https://data-api.ecb.europa.eu https://ec.europa.eu/taxation_customs/vies/rest-api/ https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://accounts.google.com/gsi/",
+  "connect-src 'self' https://ariregister.rik.ee https://data-api.ecb.europa.eu https://ec.europa.eu/taxation_customs/vies/rest-api/ms/ https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://accounts.google.com/gsi/",
   'frame-src blob: https://accounts.google.com/gsi/',
   "worker-src 'none'",
   "manifest-src 'self'",

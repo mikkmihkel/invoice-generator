@@ -3,8 +3,8 @@ import { isWoff, woffToSfnt } from './woff'
 
 const FONTS = {
   'IBMPlexSans-Regular': () => import('@ibm/plex-sans/fonts/complete/woff/IBMPlexSans-Regular.woff?inline'),
+  'IBMPlexSans-SemiBold': () => import('@ibm/plex-sans/fonts/complete/woff/IBMPlexSans-SemiBold.woff?inline'),
   'IBMPlexSans-Bold': () => import('@ibm/plex-sans/fonts/complete/woff/IBMPlexSans-Bold.woff?inline'),
-  'IBMPlexMono-Regular': () => import('@ibm/plex-mono/fonts/complete/woff/IBMPlexMono-Regular.woff?inline'),
 }
 
 async function woffBytes(load: () => Promise<{ default: string }>): Promise<Uint8Array> {
@@ -56,7 +56,7 @@ describe('woffToSfnt', () => {
 
   it('rejects data that is not WOFF 1.0', async () => {
     await expect(woffToSfnt(new Uint8Array(64))).rejects.toThrow(/WOFF/)
-    const woff = await woffBytes(FONTS['IBMPlexMono-Regular'])
+    const woff = await woffBytes(FONTS['IBMPlexSans-SemiBold'])
     await expect(woffToSfnt(woff.subarray(0, 200))).rejects.toThrow(/WOFF/)
   })
 })

@@ -1,16 +1,18 @@
-import { ArrowDownIcon, ArrowUpIcon, BookmarkSimpleIcon, PercentIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowDownIcon, ArrowsClockwiseIcon, ArrowUpIcon, BookmarkSimpleIcon, CopyIcon, PackageIcon, PercentIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { newId, vatSchemeAllowsRates, type InvoiceLine, type InvoiceTotals, type VatScheme } from '../../../domain'
+import { newId, vatSchemeAllowsRates, type InvoiceLine, type InvoiceTotals, type Product, type VatScheme } from '../../../domain'
 import { formatUnitMoney } from '../../../pdf/format'
 import { useApp } from '../../AppContext'
+import { useConfirm } from '../../components/Dialog'
 import { DecimalInput, fieldId } from '../../components/fields'
 import { MIN_POPUP_HEIGHT, verticalPlacement, visibleArea } from '../../components/menuPlacement'
-import { IconButton } from '../../components/ui'
+import { IconButton, Menu, type MenuItem } from '../../components/ui'
 import { formatDate, formatMoney } from '../../format'
 import { UNIT_SUGGESTIONS, vatRates } from '../../options'
 import { useToast } from '../../Toasts'
 import { errorMessage, roundTo } from '../../util'
-import { findProduct, invoicedLinesFor, lineMatches, lineSuggestions, productFromLine, useProducts, type BuyerRef, type LineSuggestion } from '../products'
+import { findProduct, invoicedLinesFor, lineMatches, lineSuggestions, productFromLine, productMatchesLine, useProducts, type BuyerRef, type LineSuggestion } from '../products'
+import { CataloguePicker, type CataloguePick } from './CataloguePicker'
 
 // Same precision as the PDF prints (quantity 3, unit price 4 decimals), so printed qty × price matches the line total.
 const QTY_DECIMALS = 3
@@ -34,7 +36,17 @@ interface Props {
   grossLabel?: string
   /** The invoice's buyer: lines invoiced to them before are suggested with their last price. */
   buyer?: BuyerRef
+  /**
+   * Offer the catalogue actions ("Lisa kataloogist", saving lines as products). Default true; credit notes
+   * pass false (their lines are negative copies of the credited invoice).
+   */
+  catalogue?: boolean
 }
+
+const PRODUCTS_HREF = '#/products'
+
+/** A line with nothing typed in it yet (the empty line a new invoice starts with). */
+const isBlank = (l: InvoiceLine) => !l.description.trim() && !l.unitPrice && !l.discountPercent
 
 const focusById = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.focus())
 
@@ -42,11 +54,14 @@ const focusById = (id: string) => requestAnimationFrame(() => document.getElemen
  * Spreadsheet-like line editor: Tab walks the cells in reading order, Enter in a cell of the last line adds
  * a new line (in other lines it moves down to the next description). Amounts are right-aligned tabular figures.
  */
-export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defaultUnit, defaultVatRate, disabled, grossLabel, buyer }: Props) {
+export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defaultUnit, defaultVatRate, disabled, grossLabel, buyer, catalogue = true }: Props) {
   const { t, invoices } = useApp()
   const { products, save: saveProduct } = useProducts()
   const toast = useToast()
+  const confirm = useConfirm()
+  const [picking, setPicking] = useState(false)
   const showRates = vatSchemeAllowsRates(vatScheme)
+  const withCatalogue = catalogue && !disabled
   const { clientId, registryCode, name } = buyer ?? {}
   const history = useMemo(() => (disabled ? [] : invoicedLinesFor(invoices, { clientId, registryCode, name: name ?? '' }, currency)), [disabled, invoices, clientId, registryCode, name, currency])
   const [showDiscount, setShowDiscount] = useState(() => lines.some((l) => l.discountPercent))
@@ -61,7 +76,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
     const next = [...lines]
     ;[next[i], next[j]] = [next[j], next[i]]
     onChange(next)
-    focusById(`line-${dir < 0 ? 'up' : 'down'}-${next[j].id}`)
+    focusById(`line-menu-${next[j].id}`)
   }
   const add = () => {
     const l = newLine(defaultUnit, showRates ? defaultVatRate : 0)
@@ -69,21 +84,85 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
     focusById(fieldId(`lines.${lines.length}.description`))
   }
   const remove = (i: number) => onChange(lines.filter((_, j) => j !== i))
+  const duplicate = (i: number) => {
+    const copy = { ...lines[i], id: newId() }
+    onChange([...lines.slice(0, i + 1), copy, ...lines.slice(i + 1)])
+    focusById(fieldId(`lines.${i + 1}.description`))
+  }
+
+  /** New lines from the catalogue replace blank lines, so a new invoice does not keep its empty first line. */
+  const addFromCatalogue = (picks: CataloguePick[]) => {
+    const kept = lines.filter((l) => !isBlank(l))
+    const added = picks.map(({ product, quantity }) => ({
+      id: newId(),
+      description: product.description,
+      quantity,
+      unit: product.unit || defaultUnit,
+      unitPrice: product.unitPrice,
+      vatRate: showRates ? (product.vatRate ?? defaultVatRate) : 0,
+    }))
+    onChange([...kept, ...added])
+    setPicking(false)
+    focusById(fieldId(`lines.${kept.length}.quantity`))
+  }
 
   const pick = (i: number, s: LineSuggestion) => {
     const vatRate = showRates ? (s.vatRate ?? (s.source === 'catalogue' ? defaultVatRate : lines[i].vatRate)) : lines[i].vatRate
     update(i, { description: s.description, unit: s.unit || lines[i].unit, unitPrice: s.unitPrice, vatRate })
   }
 
+  const describe = (p: Pick<Product, 'unit' | 'unitPrice' | 'vatRate'>) =>
+    [formatUnitMoney(p.unitPrice, 'EUR', 'et') + (p.unit ? ` / ${p.unit}` : ''), showRates ? t('products.vatShort', { rate: p.vatRate ?? defaultVatRate }) : ''].filter(Boolean).join(', ')
+
+  /** Save the line as a catalogue item; replacing an existing item with different details asks first. */
   const saveToCatalogue = async (l: InvoiceLine) => {
+    if (!l.description.trim()) {
+      toast.info(t('products.lineEmpty'))
+      return
+    }
     const existing = findProduct(products, l.description)
+    if (existing && productMatchesLine(existing, l, showRates ? defaultVatRate : null)) {
+      toast.info(t('catalogue.alreadySaved', { name: existing.description }))
+      return
+    }
+    if (existing) {
+      const ok = await confirm({
+        title: t('products.updateTitle', { name: existing.description }),
+        message: t('products.updateConfirm', { old: describe(existing), new: describe(l) }),
+        confirmLabel: t('products.updateAction'),
+        cancelLabel: t('common.cancel'),
+      })
+      if (!ok) return
+    }
     try {
       const product = productFromLine(l, existing, showRates)
       await saveProduct(product)
-      toast.success(t(existing ? 'products.updatedInCatalogue' : 'products.savedToCatalogue', { name: product.description }))
+      const action = { label: t('catalogue.openProducts'), onClick: () => void (window.location.hash = PRODUCTS_HREF) }
+      toast.success(t(existing ? 'products.updatedInCatalogue' : 'products.savedToCatalogue', { name: product.description }), action)
     } catch (e) {
       toast.error(t('common.saveFailed') + ' ' + errorMessage(e))
     }
+  }
+
+  const lineMenu = (l: InvoiceLine, i: number, product: Product | undefined): MenuItem[] => {
+    const items: MenuItem[] = []
+    if (withCatalogue) {
+      const same = product && productMatchesLine(product, l, showRates ? defaultVatRate : null)
+      if (!same)
+        items.push({
+          key: 'catalogue',
+          label: product ? t('products.updateInCatalogue') : t('products.saveToCatalogue'),
+          icon: product ? <ArrowsClockwiseIcon /> : <BookmarkSimpleIcon />,
+          onSelect: () => void saveToCatalogue(l),
+          disabled: !l.description.trim(),
+        })
+    }
+    items.push(
+      { key: 'duplicate', label: t('lines.duplicate'), icon: <CopyIcon />, onSelect: () => duplicate(i) },
+      { key: 'up', label: t('lines.moveUpShort'), icon: <ArrowUpIcon />, onSelect: () => move(i, -1), disabled: i === 0, separatorBefore: true },
+      { key: 'down', label: t('lines.moveDownShort'), icon: <ArrowDownIcon />, onSelect: () => move(i, 1), disabled: i === lines.length - 1 },
+    )
+    return items
   }
 
   const onCellKey = (i: number) => (e: React.KeyboardEvent<HTMLElement>) => {
@@ -113,6 +192,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
         {lines.map((l, i) => {
           const lt = lineTotal.get(l.id)
           const p = `lines.${i}`
+          const product = withCatalogue && l.description.trim() ? findProduct(products, l.description) : undefined
           return (
             <li key={l.id} className="line" aria-label={t('lines.lineN', { n: i + 1 })} onKeyDown={onCellKey(i)}>
               <div className="c-desc">
@@ -127,11 +207,16 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                   onChange={(description) => update(i, { description })}
                   onPick={(s) => pick(i, s)}
                   suggest={(q) => lineSuggestions(q, history, products)}
-                  onSave={() => void saveToCatalogue(l)}
-                  saveLabel={t('products.saveLineN', { n: i + 1 })}
                   disabled={disabled}
                   placeholder={disabled ? undefined : t('lines.descriptionPlaceholder')}
+                  marker={product && <CatalogueMarker line={l} product={product} details={describe(product)} defaultVatRate={showRates ? defaultVatRate : null} />}
                 />
+                {withCatalogue && !product && isSaveable(l) && (
+                  <button type="button" className="line-cat-save" onClick={() => void saveToCatalogue(l)}>
+                    <BookmarkSimpleIcon size={12} />
+                    {t('catalogue.saveAsProduct')}
+                  </button>
+                )}
               </div>
               <div className="c-qty">
                 <label className="line-label" htmlFor={fieldId(`${p}.quantity`)}>
@@ -193,8 +278,7 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
               </div>
               {!disabled && (
                 <div className="c-tools">
-                  <IconButton id={`line-up-${l.id}`} className="icon-btn-sm" onClick={() => move(i, -1)} disabled={i === 0} label={t('lines.moveUp', { n: i + 1 })} icon={<ArrowUpIcon size={14} />} />
-                  <IconButton id={`line-down-${l.id}`} className="icon-btn-sm" onClick={() => move(i, 1)} disabled={i === lines.length - 1} label={t('lines.moveDown', { n: i + 1 })} icon={<ArrowDownIcon size={14} />} />
+                  <Menu id={`line-menu-${l.id}`} small label={t('lines.menu', { n: i + 1 })} items={lineMenu(l, i, product)} />
                   <IconButton className="icon-btn-sm icon-btn-danger" onClick={() => remove(i)} label={t('lines.remove', { n: i + 1 })} icon={<XIcon size={14} />} />
                 </div>
               )}
@@ -209,30 +293,70 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
       </datalist>
       <div className="lines-foot">
         {!disabled && (
-          <div className="lines-actions">
-            <button ref={addBtn} type="button" className="ed-text-btn" onClick={add} title={t('lines.enterHint')}>
-              <PlusIcon />
-              {t('lines.add')}
-            </button>
-            {!discountCol && (
-              <button
-                type="button"
-                className="ed-text-btn ed-text-btn-quiet"
-                onClick={() => {
-                  // The button disappears with the click: move focus to the first discount field instead of <body>.
-                  setShowDiscount(true)
-                  requestAnimationFrame(() => (document.getElementById(fieldId('lines.0.discountPercent')) ?? addBtn.current)?.focus())
-                }}
-              >
-                <PercentIcon />
-                {t('lines.addDiscount')}
+          <div className="lines-foot-main">
+            <div className="lines-actions">
+              <button ref={addBtn} type="button" className="ed-text-btn" onClick={add} title={t('lines.enterHint')}>
+                <PlusIcon />
+                {t('lines.add')}
               </button>
+              {withCatalogue && products.length > 0 && (
+                <button type="button" className="ed-text-btn" onClick={() => setPicking(true)} aria-haspopup="dialog">
+                  <PackageIcon />
+                  {t('catalogue.add')}
+                </button>
+              )}
+              {!discountCol && (
+                <button
+                  type="button"
+                  className="ed-text-btn ed-text-btn-quiet"
+                  onClick={() => {
+                    // The button disappears with the click: move focus to the first discount field instead of <body>.
+                    setShowDiscount(true)
+                    requestAnimationFrame(() => (document.getElementById(fieldId('lines.0.discountPercent')) ?? addBtn.current)?.focus())
+                  }}
+                >
+                  <PercentIcon />
+                  {t('lines.addDiscount')}
+                </button>
+              )}
+            </div>
+            {withCatalogue && products.length === 0 && (
+              <p className="lines-hint">
+                {t('catalogue.emptyHint')} <a href={PRODUCTS_HREF}>{t('catalogue.openProducts')}</a>
+              </p>
             )}
           </div>
         )}
         <TotalsTable totals={totals} currency={currency} grossLabel={grossLabel} />
       </div>
+      {picking && (
+        <CataloguePicker
+          products={products}
+          currency={currency}
+          showVat={showRates}
+          defaultVatRate={defaultVatRate}
+          onInvoice={lines.map((l) => l.description)}
+          onAdd={addFromCatalogue}
+          onClose={() => setPicking(false)}
+        />
+      )}
     </div>
+  )
+}
+
+/** Filled enough to be worth keeping in the catalogue (credit note lines are negative and never qualify). */
+const isSaveable = (l: InvoiceLine) => !!l.description.trim() && l.unitPrice > 0 && l.quantity > 0
+
+/** Inside the description field: the line is in the catalogue (the catalogue's values in the tooltip). */
+function CatalogueMarker({ line, product, details, defaultVatRate }: { line: InvoiceLine; product: Product; details: string; defaultVatRate: number | null }) {
+  const { t } = useApp()
+  const differs = !productMatchesLine(product, line, defaultVatRate)
+  const label = differs ? t('catalogue.inCatalogueDiffers') : t('catalogue.inCatalogue')
+  return (
+    <span className={`line-cat-mark${differs ? ' differs' : ''}`} title={`${label}. ${t('catalogue.catalogueValues', { details })}`}>
+      <PackageIcon size={14} />
+      <span className="visually-hidden">{label}</span>
+    </span>
   )
 }
 
@@ -243,9 +367,9 @@ interface DescriptionCellProps {
   onChange: (description: string) => void
   onPick: (s: LineSuggestion) => void
   suggest: (query: string) => LineSuggestion[]
-  onSave: () => void
-  saveLabel: string
   disabled?: boolean
+  /** Shown at the field's end, e.g. the catalogue marker. */
+  marker?: React.ReactNode
   placeholder?: string
 }
 
@@ -254,7 +378,7 @@ interface DescriptionCellProps {
  * textbox role (descriptions may span lines) and drives a listbox through aria-activedescendant: Arrow keys
  * move, Enter chooses, Escape closes. Enter without an active suggestion behaves as before.
  */
-function DescriptionCell({ id, line, currency, onChange, onPick, suggest, onSave, saveLabel, disabled, placeholder }: DescriptionCellProps) {
+function DescriptionCell({ id, line, currency, onChange, onPick, suggest, disabled, placeholder, marker }: DescriptionCellProps) {
   const { t } = useApp()
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
@@ -363,9 +487,7 @@ function DescriptionCell({ id, line, currency, onChange, onPick, suggest, onSave
         aria-controls={shown ? listId : undefined}
         aria-activedescendant={shown && current >= 0 ? `${listId}-${current}` : undefined}
       />
-      {!disabled && (
-        <IconButton className="icon-btn-sm line-save" label={saveLabel} icon={<BookmarkSimpleIcon size={14} />} onClick={onSave} disabled={!line.description.trim()} />
-      )}
+      {marker}
       {shown && (
         <ul ref={listRef} id={listId} role="listbox" className="combo-list line-suggestions" aria-label={t('products.suggestions')}>
           {items.map((s, i) => (

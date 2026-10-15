@@ -236,10 +236,12 @@ describe('selected invoice', () => {
       'Salvesta Drive’i',
       'E-arve (XML)',
       'Prindi',
+      'Ava muutmiseks',
       'Tee koopia',
       'Koosta kreeditarve',
       'Tasutud muul kuupäeval…',
       'Tühista arve',
+      'Kustuta arve',
     ])
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Tühista arve' }))
     const dialog = await screen.findByRole('dialog', { name: 'Kas tühistada arve 2026-0004?' })
@@ -349,6 +351,76 @@ describe('selected invoice', () => {
     fireEvent.click(rowA)
     expect(await screen.findByRole('heading', { name: 'Arve 2026-0001' })).toBeInTheDocument()
     expect(screen.getByText('2026-0001').closest('a')).toHaveAttribute('aria-current', 'true')
+  })
+})
+
+describe('deleting and reopening', () => {
+  const sent = (invoiceId: string) => ({ id: 'e1', invoiceId, kind: 'sent' as const, at: `${addDaysISO(today, -9)}T10:00:00.000Z` })
+
+  it('explains what deleting a sent invoice means, offers the credit note, and can undo it', async () => {
+    const inv = invoice()
+    const repo = createMemoryRepo({ profile, invoices: [inv], events: [sent(inv.id)] })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const article = await doc()
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent)
+    expect(items).not.toContain('Ava muutmiseks')
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta arve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0004?' })
+    expect(within(dialog).getByText(/Arve on kliendile juba saadetud/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/säilitada 7 aastat \(RPS § 12\)/)).toHaveTextContent('Numeratsiooni jääb lünk (2026-0004).')
+    expect(within(dialog).getByRole('button', { name: 'Koosta kreeditarve' })).toHaveClass('btn-primary')
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Kustuta' }))
+    })
+    expect(repo.deleteInvoice).toHaveBeenCalledWith(inv.id)
+    expect(await repo.listInvoices()).toEqual([])
+    expect(await screen.findByText('Arve 2026-0004 on kustutatud.')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Võta tagasi' }))
+    })
+    expect(repo.restoreDeleted).toHaveBeenCalled()
+    expect(await screen.findByText('Arve 2026-0004 on taastatud.')).toBeInTheDocument()
+    expect((await repo.listInvoices()).map((i) => i.id)).toEqual([inv.id])
+  })
+
+  it('lists the credit notes deleted with an invoice and opens the credit note instead on request', async () => {
+    const inv = invoice({ status: 'paid', paidAt: today })
+    const cn = invoice({ id: 'cn', number: '2026-0005', type: 'credit-note', creditedInvoiceNumber: '2026-0004', lines: [{ id: 'l', description: 'Allahindlus', quantity: -1, unit: 'tk', unitPrice: 10, vatRate: 24 }] })
+    const repo = createMemoryRepo({ profile, invoices: [inv, cn] })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const article = await doc()
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta arve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0004?' })
+    expect(within(dialog).getByText('Koos arvega kustutatakse ka selle kreeditarve 2026-0005.')).toBeInTheDocument()
+    expect(within(dialog).getByText(/tühista see kustutamise asemel kreeditarvega/)).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Koosta kreeditarve' }))
+    })
+    expect(repo.deleteInvoice).not.toHaveBeenCalled()
+    const draft = repo.saveInvoice.mock.calls[0][0] as Invoice
+    expect(draft).toMatchObject({ type: 'credit-note', status: 'draft', creditedInvoiceNumber: '2026-0004' })
+  })
+
+  it('reopens an unsent invoice for editing; it keeps its number', async () => {
+    const inv = invoice()
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const article = await doc()
+    expect(within(article).getByText(/Kuni seda pole kliendile saadetud, saad selle veel/)).toBeInTheDocument()
+    fireEvent.click(within(article).getByRole('button', { name: 'muutmiseks avada' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas avada arve 2026-0004 muutmiseks?' })
+    expect(within(dialog).getByText(/Arve muutub uuesti mustandiks ja number 2026-0004 jääb samaks/)).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Ava muutmiseks' }))
+    })
+    expect(repo.reopenInvoice).toHaveBeenCalledWith(inv.id)
+    await waitFor(() => expect(window.location.hash).toBe(`#/invoices/${inv.id}`))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Arve 2026-0004' })).toBeInTheDocument()
+    expect(screen.getByText('Muutmiseks avatud: number 2026-0004 jääb samaks. Väljasta dokument pärast muudatusi uuesti.')).toBeInTheDocument()
+    expect(screen.getByText('Väljastatakse uuesti sama numbriga 2026-0004.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Kirjeldus 1')).not.toBeDisabled()
   })
 })
 

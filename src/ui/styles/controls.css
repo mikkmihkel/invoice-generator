@@ -368,6 +368,10 @@ fieldset > legend.label {
   flex: none;
   margin-top: 2px;
 }
+.vies-check .vies-ext {
+  margin-left: 2px;
+  vertical-align: -2px;
+}
 .field-check {
   display: grid;
   grid-template-columns: 16px 1fr;

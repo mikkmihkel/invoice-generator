@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Invoice, Product } from '../../domain'
 import { line, sampleInvoice } from '../../pdf/testFixtures'
-import { findProduct, invoicedLinesFor, lineMatches, lineSuggestions, productFromLine, sameBuyer } from './products'
+import { findProduct, invoicedLinesFor, lineMatches, lineSuggestions, productFromLine, productMatchesLine, sameBuyer, searchProducts } from './products'
 
 const product = (id: string, description: string, unitPrice = 10, patch: Partial<Product> = {}): Product => ({
   id,
@@ -97,5 +97,36 @@ describe('catalogue helpers', () => {
     expect(findProduct([existing], l.description)).toBe(existing)
     const updated = productFromLine(l, existing, false)
     expect(updated).toMatchObject({ id: 'p1', unitPrice: 130, vatRate: 9, createdAt: existing.createdAt })
+  })
+})
+
+describe('searchProducts', () => {
+  const list = [product('a', 'Veebilehe hooldus'), product('b', 'Hooldustasu', 5, { unit: 'kuu' }), product('c', 'Ämblikutõrje')]
+
+  it('lists everything alphabetically (Estonian order) without a query', () => {
+    expect(searchProducts(list, '  ').map((p) => p.id)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('ranks prefix matches first and also matches the unit', () => {
+    expect(searchProducts(list, 'hool').map((p) => p.id)).toEqual(['b', 'a'])
+    expect(searchProducts(list, 'kuu').map((p) => p.id)).toEqual(['b'])
+    expect(searchProducts(list, 'xyz')).toEqual([])
+  })
+})
+
+describe('productMatchesLine', () => {
+  const p = product('p', 'Konsultatsioon', 55, { unit: 'h' })
+  const l = { unit: 'h', unitPrice: 55, vatRate: 24 }
+
+  it('compares unit, price and the effective VAT rate', () => {
+    expect(productMatchesLine(p, l, 24)).toBe(true)
+    expect(productMatchesLine(p, { ...l, vatRate: 9 }, 24)).toBe(false)
+    expect(productMatchesLine({ ...p, vatRate: 9 }, { ...l, vatRate: 9 }, 24)).toBe(true)
+    expect(productMatchesLine(p, { ...l, unitPrice: 60 }, 24)).toBe(false)
+    expect(productMatchesLine(p, { ...l, unit: ' h ' }, 24)).toBe(true)
+  })
+
+  it('ignores rates on lines without VAT', () => {
+    expect(productMatchesLine(p, { ...l, vatRate: 0 }, null)).toBe(true)
   })
 })

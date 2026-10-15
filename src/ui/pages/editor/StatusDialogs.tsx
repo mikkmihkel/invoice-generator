@@ -1,11 +1,14 @@
 import { useState } from 'react'
-import type { Invoice } from '../../../domain'
+import { invoiceFromQuote, outstandingAmount, planDeletion, type Invoice } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { Dialog } from '../../components/Dialog'
 import { CheckboxField, TextField } from '../../components/fields'
 import { formatDate, formatMoney } from '../../format'
 import { useToast } from '../../Toasts'
 import { errorMessage, localTodayISO } from '../../util'
+import { eventDate } from '../invoice-detail/events'
+import { docNoun } from '../invoice-detail/status'
+import { useDeleteDocument } from '../invoice-detail/useInvoiceActions'
 
 /** Pick the payment date: marking paid on another day than today, or (`change`) correcting the date of a paid invoice. */
 export function MarkPaidDialog({
@@ -128,6 +131,108 @@ export function CancelInvoiceDialog({
   )
 }
 
+/**
+ * Deleting a numbered document (issued, paid, cancelled or reopened): what the deletion means for the accounting
+ * records and the numbering, which linked documents go with it, and the credit note as the alternative for an
+ * invoice that may already be with the client.
+ */
+export function DeleteInvoiceDialog({
+  invoice,
+  onClose,
+  onDeleted,
+  onCreditNote,
+  beforeDelete,
+}: {
+  invoice: Invoice
+  onClose: () => void
+  /** After a successful deletion (e.g. leave the page). */
+  onDeleted: () => void
+  /** Offered for invoices that still have something to credit. */
+  onCreditNote?: () => void
+  /** Runs before deleting (e.g. let a pending autosave finish). */
+  beforeDelete?: () => Promise<void>
+}) {
+  const { t, invoices, profile, invoiceEvents, recurringRules } = useApp()
+  const deleteDocument = useDeleteDocument()
+  const [busy, setBusy] = useState(false)
+  const plan = planDeletion(invoice, invoices, profile)
+  const ids = new Set(plan.documents.map((d) => d.id))
+  const quote = invoice.type === 'quote'
+  const sent = invoiceEvents.filter((e) => e.invoiceId === invoice.id && e.kind === 'sent').at(-1)
+  const recurring = recurringRules.some((r) => ids.has(r.sourceInvoiceId))
+  const fromQuote = quote ? invoiceFromQuote(invoice, invoices) : undefined
+  const canCredit =
+    !!onCreditNote && (invoice.type === 'invoice' || invoice.type === 'prepayment') && (invoice.status === 'issued' || invoice.status === 'paid') && outstandingAmount(invoice, invoices) > 0
+  const list = (docs: Invoice[]) => docs.map((d) => d.number || t('list.draftNumber').toLocaleLowerCase()).join(', ')
+  const numbers = (n: string[]) => n.join(', ')
+
+  const remove = async () => {
+    setBusy(true)
+    try {
+      await beforeDelete?.()
+      await deleteDocument(invoice)
+      onClose()
+      onDeleted()
+    } catch {
+      // deleteDocument has shown the error
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog
+      title={t('delete.title', { doc: docNoun(t, invoice), number: invoice.number })}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+      dismissible={!busy}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={onClose} disabled={busy} data-autofocus>
+            {t('common.cancel')}
+          </button>
+          {canCredit && (
+            <button
+              type="button"
+              className={`btn${sent ? ' btn-primary' : ''}`}
+              disabled={busy}
+              onClick={() => {
+                onClose()
+                onCreditNote()
+              }}
+            >
+              {t('actions.creditNote')}
+            </button>
+          )}
+          <button type="button" className="btn btn-danger" disabled={busy} onClick={() => void remove()}>
+            {busy ? t('common.working') : t('common.delete')}
+          </button>
+        </>
+      }
+    >
+      {sent && canCredit && <p className="notice notice-warn">{t('delete.sent', { date: formatDate(eventDate(sent.at)) })}</p>}
+      <p>
+        {quote ? t('delete.quoteText') : t('delete.sourceDocument')}{' '}
+        {plan.released.length > 0 && t(plan.released.length > 1 ? 'delete.releasedMany' : 'delete.releasedOne', { numbers: numbers(plan.released) })}
+        {plan.released.length > 0 && plan.gaps.length > 0 && ' '}
+        {plan.gaps.length > 0 && t('delete.gap', { numbers: numbers(plan.gaps) })}
+      </p>
+      {(plan.creditNotes.length > 0 || plan.creditedInvoice || recurring || fromQuote) && (
+        <p>
+          {[
+            plan.creditNotes.length > 0 && t(plan.creditNotes.length > 1 ? 'delete.withCreditMany' : 'delete.withCreditOne', { numbers: list(plan.creditNotes) }),
+            plan.creditedInvoice && t('delete.creditOf', { number: plan.creditedInvoice.number }),
+            fromQuote && t('delete.quoteInvoiceStays', { number: fromQuote.number || t('list.draftNumber').toLocaleLowerCase() }),
+            recurring && t('delete.recurring'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        </p>
+      )}
+      {!sent && canCredit && <p className="muted small">{t('delete.ifSent')}</p>}
+    </Dialog>
+  )
+}
+
 /** Shown when a draft is dated before today: what "set to today" would change. */
 export interface StaleIssueDate {
   date: string
@@ -142,6 +247,7 @@ export interface StaleIssueDate {
 export function IssueDialog({
   credit,
   predictedNumber,
+  keepsNumber,
   warnings,
   stale,
   onClose,
@@ -150,6 +256,8 @@ export function IssueDialog({
   /** Issuing a credit note: the title says so. */
   credit?: boolean
   predictedNumber: string
+  /** A reopened document is issued again under its own number. */
+  keepsNumber?: boolean
   warnings: number
   stale?: StaleIssueDate | null
   onClose: () => void
@@ -207,7 +315,7 @@ export function IssueDialog({
           )}
         </div>
       )}
-      <p>{t('issue.number', { number })}</p>
+      <p>{t(keepsNumber ? 'reopen.issueNumber' : 'issue.number', { number })}</p>
       <p>{t('issue.lockExplain')}</p>
       <p className="muted small">{t('issue.creditHint')}</p>
       {warnings > 0 && <p className="notice notice-warn">{t('issue.warnings', { count: warnings })}</p>}

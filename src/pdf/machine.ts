@@ -9,7 +9,7 @@ import { formatAmount, formatDate } from './format'
 import { invoiceFileName } from './fileName'
 
 /** Value of the PDF `Creator` entry. */
-export const PDF_CREATOR = 'Arvegeneraator'
+export const PDF_CREATOR = 'Arveldaja'
 
 // ---------------------------------------------------------------------------------------------------------
 // EPC069-12 QR code ("GiroCode" / "SEPA QR")

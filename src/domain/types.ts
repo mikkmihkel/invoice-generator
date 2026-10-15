@@ -263,6 +263,11 @@ export interface Invoice {
   paymentQr?: boolean
 
   issuedAt?: ISODateTime
+  /**
+   * Set while an issued document that was not sent yet is open for editing again: it is a draft that keeps its
+   * number, and issuing it again keeps that number. Removed when it is issued.
+   */
+  reopenedAt?: ISODateTime
   paidAt?: ISODate
   createdAt: ISODateTime
   updatedAt: ISODateTime

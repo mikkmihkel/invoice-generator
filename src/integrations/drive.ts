@@ -5,7 +5,14 @@ import { googleFetch } from './http'
 const API = 'https://www.googleapis.com/drive/v3/files'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files'
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
-export const DRIVE_BACKUP_FILE_NAME = 'invoice-generator-backup.json'
+export const DRIVE_BACKUP_FILE_NAME = 'arveldaja-backup.json'
+/** The manual backup file of earlier versions: still listed, restored and overwritten in place. */
+export const LEGACY_DRIVE_BACKUP_FILE_NAME = 'invoice-generator-backup.json'
+
+/** Drive query for the manual backup file (current or earlier name) in a folder. */
+function manualBackupQuery(folderId: string): string {
+  return `(name=${driveQueryString(DRIVE_BACKUP_FILE_NAME)} or name=${driveQueryString(LEGACY_DRIVE_BACKUP_FILE_NAME)}) and ${driveQueryString(folderId)} in parents and trashed=false`
+}
 
 interface DriveFile {
   id: string
@@ -131,12 +138,15 @@ export async function uploadToDrive(
   return { id: result.id, webViewLink: result.webViewLink ?? `https://drive.google.com/file/d/${result.id}/view` }
 }
 
-/** Backup JSON to Drive (drive.file) as "invoice-generator-backup.json" in the folder (overwrite). */
+/**
+ * Backup JSON to Drive (drive.file) as "arveldaja-backup.json" in the folder. Overwrites the existing manual backup
+ * file, also one saved under the earlier name.
+ */
 export async function backupToDrive(clientId: string, json: string, folderName: string): Promise<{ id: string; modifiedTime: string }> {
   const fields = 'id,modifiedTime'
   const mime = 'application/json'
   const result = await withFolder(clientId, folderName, async (folderId) => {
-    const existing = await findFile(clientId, `name=${driveQueryString(DRIVE_BACKUP_FILE_NAME)} and ${driveQueryString(folderId)} in parents and trashed=false`, 'id')
+    const existing = await findFile(clientId, manualBackupQuery(folderId), 'id')
     return existing
       ? updateFileContent(clientId, existing.id, json, mime, fields)
       : createFile(clientId, folderId, DRIVE_BACKUP_FILE_NAME, json, mime, fields)
@@ -148,7 +158,7 @@ export async function backupToDrive(clientId: string, json: string, folderName: 
 export async function restoreFromDrive(clientId: string, folderName: string): Promise<string | null> {
   const folderId = await findOrCreateFolder(clientId, folderName, false)
   if (!folderId) return null
-  const file = await findFile(clientId, `name=${driveQueryString(DRIVE_BACKUP_FILE_NAME)} and ${driveQueryString(folderId)} in parents and trashed=false`, 'id')
+  const file = await findFile(clientId, manualBackupQuery(folderId), 'id')
   if (!file) return null
   const res = await googleFetch(clientId, ['drive'], `${API}/${encodeURIComponent(file.id)}?alt=media`)
   return res.text()
@@ -234,7 +244,8 @@ export async function listDriveBackups(clientId: string, folderName: string, opt
   if (!folderId) return []
   const q =
     `${driveQueryString(folderId)} in parents and trashed=false and ` +
-    `(appProperties has { key=${driveQueryString(BACKUP_VERSION_PROPERTY)} and value='auto' } or name=${driveQueryString(DRIVE_BACKUP_FILE_NAME)})`
+    `(appProperties has { key=${driveQueryString(BACKUP_VERSION_PROPERTY)} and value='auto' } or ` +
+    `name=${driveQueryString(DRIVE_BACKUP_FILE_NAME)} or name=${driveQueryString(LEGACY_DRIVE_BACKUP_FILE_NAME)})`
   const out: DriveBackupFile[] = []
   let pageToken: string | undefined
   for (let page = 0; page < MAX_LIST_PAGES; page++) {

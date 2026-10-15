@@ -6,7 +6,7 @@ import { listDriveBackups, trashDriveFile, uploadBackupVersion, type DriveBackup
 import { GoogleApiError } from './errors'
 import { hasAccessToken } from './googleAuth'
 
-export const AUTO_BACKUP_FILE_PREFIX = 'arvegeneraator-backup-'
+export const AUTO_BACKUP_FILE_PREFIX = 'arveldaja-backup-'
 export const AUTO_BACKUP_DEBOUNCE_MS = 10_000
 export const AUTO_BACKUP_MIN_INTERVAL_MS = 60_000
 /** Retry after a failed upload (network, Drive error). */
@@ -29,16 +29,16 @@ export function normalizeAutoBackup(s: Partial<AutoBackupSettings> | null | unde
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0')
 
-/** `arvegeneraator-backup-YYYY-MM-DD-HHmmss.json` (`.json.enc` when encrypted), in local time. */
+/** `arveldaja-backup-YYYY-MM-DD-HHmmss.json` (`.json.enc` when encrypted), in local time. */
 export function autoBackupFileName(date: Date = new Date(), encrypted = false): string {
   const d = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
   const t = `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
   return `${AUTO_BACKUP_FILE_PREFIX}${d}-${t}.json${encrypted ? '.enc' : ''}`
 }
 
-const NAME_RE = /^arvegeneraator-backup-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})\.json(\.enc)?$/
+const NAME_RE = /^(?:arveldaja|arvegeneraator)-backup-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})\.json(\.enc)?$/
 
-/** Local time and encryption flag from an automatic backup's file name, or null for other names. */
+/** Local time and encryption flag from an automatic backup's file name (current or earlier prefix), or null for other names. */
 export function parseAutoBackupFileName(name: string): { date: Date; encrypted: boolean } | null {
   const m = NAME_RE.exec(name)
   if (!m) return null
@@ -58,9 +58,40 @@ function fileTime(f: DriveBackupFile): number {
 const newestFirst = (files: DriveBackupFile[]) =>
   [...files].sort((a, b) => fileTime(b) - fileTime(a) || (a.name < b.name ? 1 : a.name > b.name ? -1 : 0))
 
-/** Issued (non-draft) documents in a backup: these can never be deleted, so a backup with fewer is missing data. */
+/**
+ * Issued (numbered) documents in a backup. A backup with fewer is normally missing data; documents deleted on
+ * purpose in this browser are accounted for with noteDeletedDocuments.
+ */
 export function issuedCount(backup: BackupFile): number {
-  return backup.invoices.filter((i) => i.status !== 'draft').length
+  return backup.invoices.filter((i) => i.status !== 'draft' || !!i.reopenedAt).length
+}
+
+const DELETED_KEY = 'invoice-generator:deletedSinceBackup'
+let sessionDeleted = 0
+
+/** Issued documents deleted in this browser since its last uploaded backup. */
+export function deletedSinceBackup(): number {
+  try {
+    const v = Number(localStorage.getItem(DELETED_KEY))
+    return Number.isSafeInteger(v) && v > 0 ? v : 0
+  } catch {
+    return sessionDeleted
+  }
+}
+
+/**
+ * Record issued documents deleted on purpose (negative after an undo), so the next background backup is not held
+ * back for having fewer documents than the previous one. Reset after each uploaded backup.
+ */
+export function noteDeletedDocuments(delta: number): void {
+  const next = Math.max(0, deletedSinceBackup() + Math.trunc(delta))
+  sessionDeleted = next
+  try {
+    if (next) localStorage.setItem(DELETED_KEY, String(next))
+    else localStorage.removeItem(DELETED_KEY)
+  } catch {
+    // storage unavailable: kept for this session
+  }
 }
 
 /**
@@ -352,7 +383,7 @@ export function runAutoBackup(opts: AutoBackupRunOptions): Promise<AutoBackupRes
     try {
       if (!interactive) {
         existing = await listDriveBackups(clientId, folderName, call)
-        const hold = backupHold(existing, device, issued)
+        const hold = backupHold(existing, device, issued + deletedSinceBackup())
         if (hold) return { kind: 'held', hold }
       }
       const json = opts.serialize(backup)
@@ -365,6 +396,7 @@ export function runAutoBackup(opts: AutoBackupRunOptions): Promise<AutoBackupRes
       throw e
     }
     writeLastFingerprint(clientId, folderName, hash)
+    noteDeletedDocuments(-deletedSinceBackup())
 
     let pruned = 0
     let pruneFailed = false

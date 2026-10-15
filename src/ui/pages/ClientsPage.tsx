@@ -113,7 +113,9 @@ export default function ClientsPage() {
                     <tr key={c.id}>
                       <td className="col-name">
                         <span className="client-name">
-                          {c.name}
+                          <button type="button" className="name-btn" onClick={() => setEditing({ client: c, search: false })} title={t('clients.editNamed', { name: c.name })}>
+                            {c.name}
+                          </button>
                           {c.kind === 'person' && <span className="chip chip-neutral">{t('clients.kind.person')}</span>}
                         </span>
                         {formatAddress(c.address) && <span className="client-addr">{formatAddress(c.address)}</span>}
@@ -142,7 +144,7 @@ export default function ClientsPage() {
           )}
         </>
       )}
-      {editing && <ClientDialog initial={editing.client} withSearch={editing.search} onClose={() => setEditing(null)} />}
+      {editing && <ClientDialog initial={editing.client} withSearch={editing.search} onClose={() => setEditing(null)} offerInvoice />}
     </div>
   )
 }

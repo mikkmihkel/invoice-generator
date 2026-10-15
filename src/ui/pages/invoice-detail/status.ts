@@ -20,6 +20,11 @@ export function localDateOf(ts: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+/** The document type in lower case for running text: "arve", "kreeditarve", "hinnapakkumine". */
+export function docNoun(t: Translate, invoice: Pick<Invoice, 'type'>): string {
+  return t(`invoice.type.${invoice.type}`).toLocaleLowerCase()
+}
+
 /** Days from today to the due date (negative when overdue), or null without a usable date. */
 export function daysToDue(inv: Invoice, today: string): number | null {
   return isDate(inv.dueDate) ? daysBetween(today, inv.dueDate) : null

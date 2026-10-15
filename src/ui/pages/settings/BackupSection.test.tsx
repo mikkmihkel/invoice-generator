@@ -127,7 +127,7 @@ describe('automatic backup settings', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Varunda nüüd' }))
     await waitFor(() => expect(uploadBackupVersion).toHaveBeenCalledTimes(1))
     expect(googleSignIn).toHaveBeenCalledWith(CLIENT_ID, ['drive'])
-    expect(vi.mocked(uploadBackupVersion).mock.calls[0][2]).toMatch(/^arvegeneraator-backup-\d{4}-\d{2}-\d{2}-\d{6}\.json$/)
+    expect(vi.mocked(uploadBackupVersion).mock.calls[0][2]).toMatch(/^arveldaja-backup-\d{4}-\d{2}-\d{2}-\d{6}\.json$/)
     await waitFor(() => expect(savedAutoBackup(repo)?.lastBackupAt).toBeTruthy())
     expect(await screen.findByText(/Varukoopia salvestatud Drive’i/)).toBeInTheDocument()
     expect(await screen.findByText(/Viimane automaatne varundus:/)).toBeInTheDocument()

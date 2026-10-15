@@ -5,6 +5,8 @@ import {
   backupFingerprint,
   backupHold,
   BackupScheduler,
+  deletedSinceBackup,
+  noteDeletedDocuments,
   getAutoBackupStatus,
   getBackupDeviceId,
   getBackupPassphrase,
@@ -64,11 +66,20 @@ const draftInvoice = (id: string) => ({ id, status: 'draft' }) as never
 describe('file names and settings', () => {
   it('names versions by local date and time', () => {
     const d = new Date(2026, 9, 15, 14, 23, 5)
-    expect(autoBackupFileName(d)).toBe('arvegeneraator-backup-2026-10-15-142305.json')
-    expect(autoBackupFileName(d, true)).toBe('arvegeneraator-backup-2026-10-15-142305.json.enc')
-    expect(parseAutoBackupFileName('arvegeneraator-backup-2026-10-15-142305.json.enc')).toEqual({ date: d, encrypted: true })
-    expect(parseAutoBackupFileName('arvegeneraator-backup-2026-02-30-120000.json')).toBeNull()
+    expect(autoBackupFileName(d)).toBe('arveldaja-backup-2026-10-15-142305.json')
+    expect(autoBackupFileName(d, true)).toBe('arveldaja-backup-2026-10-15-142305.json.enc')
+    expect(parseAutoBackupFileName('arveldaja-backup-2026-10-15-142305.json.enc')).toEqual({ date: d, encrypted: true })
+    expect(parseAutoBackupFileName('arveldaja-backup-2026-02-30-120000.json')).toBeNull()
     expect(parseAutoBackupFileName('invoice-generator-backup.json')).toBeNull()
+    expect(parseAutoBackupFileName('arveldaja-backup.json')).toBeNull()
+  })
+
+  it('still recognises versions uploaded under the earlier name', () => {
+    expect(parseAutoBackupFileName('arvegeneraator-backup-2026-10-15-142305.json')).toEqual({ date: new Date(2026, 9, 15, 14, 23, 5), encrypted: false })
+    expect(parseAutoBackupFileName('arvegeneraator-backup-2026-10-15-142305.json.enc')?.encrypted).toBe(true)
+    const current = { ...auto('new', '2026-10-20T10:00:00Z', 'arveldaja-backup-2026-10-20-100000.json'), device: 'me', issued: 5 }
+    const old = ['1', '2', '3'].map((id) => ({ ...auto(id, `2026-10-1${id}T10:00:00Z`), device: 'me', issued: 5 }))
+    expect(versionsToPrune([current, ...old], 3, 'me', current).map((f) => f.id)).toEqual(['1'])
   })
 
   it('applies defaults and clamps keepVersions', () => {
@@ -218,7 +229,7 @@ describe('runAutoBackup', () => {
   it('uploads a version, then skips until the data changes', async () => {
     const res = await run()
     expect(res).toMatchObject({ kind: 'uploaded', at: new Date(2026, 9, 15, 14, 23, 5).toISOString(), pruned: 0 })
-    expect(uploadBackupVersion).toHaveBeenCalledWith(CLIENT, 'Arved', 'arvegeneraator-backup-2026-10-15-142305.json', JSON.stringify(data), false, { interactive: false }, { device: getBackupDeviceId(), issued: 0 })
+    expect(uploadBackupVersion).toHaveBeenCalledWith(CLIENT, 'Arved', 'arveldaja-backup-2026-10-15-142305.json', JSON.stringify(data), false, { interactive: false }, { device: getBackupDeviceId(), issued: 0 })
     expect(await run()).toEqual({ kind: 'unchanged' })
     data = backup({ exportedAt: '2031-01-01T00:00:00Z' })
     expect(await run()).toEqual({ kind: 'unchanged' })
@@ -259,7 +270,7 @@ describe('runAutoBackup', () => {
     const settings = { enabled: true, encrypt: true, keepVersions: 3 }
     expect(await run({ settings })).toEqual({ kind: 'needs-passphrase' })
     const res = await run({ settings, passphrase: 'salajane parool' })
-    expect(res).toMatchObject({ kind: 'uploaded', file: { name: 'arvegeneraator-backup-2026-10-15-142305.json.enc', encrypted: true } })
+    expect(res).toMatchObject({ kind: 'uploaded', file: { name: 'arveldaja-backup-2026-10-15-142305.json.enc', encrypted: true } })
     const [, , , content, encrypted] = vi.mocked(uploadBackupVersion).mock.calls[0]
     expect(encrypted).toBe(true)
     expect(isEncryptedEnvelope(content)).toBe(true)
@@ -287,6 +298,21 @@ describe('runAutoBackup', () => {
     vi.mocked(listDriveBackups).mockResolvedValue(['1', '2', '3', '4'].map((id) => mine(id, `2026-10-1${id}T10:00:00Z`)))
     vi.mocked(trashDriveFile).mockRejectedValueOnce(new GoogleApiError('network'))
     expect(await run()).toMatchObject({ kind: 'uploaded', pruneFailed: true })
+  })
+
+  it('does not hold back a backup after documents were deleted on purpose in this browser', async () => {
+    const mine = { ...auto('mine', '2026-10-14T10:00:00Z'), device: getBackupDeviceId(), issued: 3 }
+    vi.mocked(listDriveBackups).mockResolvedValue([mine])
+    data = backup({ invoices: [issuedInvoice('a'), issuedInvoice('b')] })
+    expect(await run()).toEqual({ kind: 'held', hold: { local: 2, existing: 3 } })
+    noteDeletedDocuments(1)
+    expect(deletedSinceBackup()).toBe(1)
+    expect((await run()).kind).toBe('uploaded')
+    // Counted from the new version on.
+    expect(deletedSinceBackup()).toBe(0)
+    noteDeletedDocuments(2)
+    noteDeletedDocuments(-5)
+    expect(deletedSinceBackup()).toBe(0)
   })
 
   it('holds the first background backup of an empty browser when Drive has another computer’s backups', async () => {

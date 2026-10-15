@@ -1,11 +1,12 @@
 import type { BackupFile } from '../domain/types'
 
+/** Format id written into every backup file. It stays the same across product renames, so all versions can read each other's files. */
 export const BACKUP_APP = 'invoice-generator'
 export const BACKUP_VERSION = 2
 /** Oldest backup format that can still be read. */
 export const BACKUP_MIN_VERSION = 1
 
-/** Thrown when a backup file is not a valid invoice-generator backup. Carries a bilingual message. */
+/** Thrown when a file is not a valid backup of this app. Carries a bilingual message. */
 export class BackupFormatError extends Error {
   readonly messages: { et: string; en: string }
   constructor(et: string, en: string) {
@@ -310,6 +311,7 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
     ['periodEnd', 'perioodi lõpp', 'period end'],
     ['paidAt', 'tasumise kuupäev', 'payment date'],
     ['issuedAt', 'väljastamise aeg', 'issue time'],
+    ['reopenedAt', 'muutmiseks avamise aeg', 'reopening time'],
     ['referenceNumber', 'viitenumber', 'reference number'],
     ['notes', 'märkused', 'notes'],
     ['quoteAcceptedAt', 'pakkumise aktsepteerimise aeg', 'quote acceptance time'],
@@ -474,7 +476,7 @@ function checkRecords(
 /** Validate the shape of an unknown value and return it typed as a BackupFile. Throws BackupFormatError. */
 export function validateBackup(data: unknown): BackupFile {
   if (!isObject(data) || data.app !== BACKUP_APP) {
-    throw new BackupFormatError('See fail ei ole arvegeneraatori varukoopia.', 'This file is not an invoice-generator backup.')
+    throw new BackupFormatError('See fail ei ole Arveldaja varukoopia.', 'This file is not an Arveldaja backup.')
   }
   if (typeof data.version !== 'number' || data.version > BACKUP_VERSION) {
     throw new BackupFormatError(
@@ -566,9 +568,9 @@ export function serializeBackup(backup: BackupFile): string {
   return JSON.stringify(backup, null, 2)
 }
 
-/** Suggested file name, e.g. "invoice-generator-backup-2026-10-12.json". */
+/** Suggested file name, e.g. "arveldaja-backup-2026-10-12.json" (any file name is accepted when importing). */
 export function backupFileName(date: Date = new Date()): string {
-  return `invoice-generator-backup-${date.toISOString().slice(0, 10)}.json`
+  return `arveldaja-backup-${date.toISOString().slice(0, 10)}.json`
 }
 
 /** True if `a` is strictly newer than `b` (ISO timestamps; unparsable values count as oldest). */

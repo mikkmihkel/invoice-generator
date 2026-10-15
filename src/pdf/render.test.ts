@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { TemplateId } from '../domain/types'
 import { renderInvoicePdf, renderInvoicePdfBase64, renderInvoicePdfDataUrl } from './render'
-import { extractPdf } from './testing/extract'
+import { formatMoney } from './format'
+import { extractPdf, normalizeSpaces } from './testing/extract'
 import { creditNoteInvoice, line, notRegisteredInvoice, sampleInvoice } from './testFixtures'
 
 async function blobBytes(blob: Blob): Promise<Uint8Array> {
@@ -40,6 +41,23 @@ describe('renderInvoicePdf (real pdfmake)', () => {
     const raw = Array.from(bytes, (b) => String.fromCharCode(b)).join('')
     expect(raw).toMatch(/\/FontFile2\b/)
     expect(raw).toMatch(/\/BaseFont\s*\/[A-Z]{6}\+IBMPlexSans/)
+  }, 30_000)
+
+  it('embeds only IBM Plex Sans, whose figures are tabular: amounts with the same number of digits are equally wide', async () => {
+    const prices = [111.11, 888.88, 404.04, 777.77]
+    const bytes = await blobBytes(await renderInvoicePdf(sampleInvoice({ lines: prices.map((unitPrice, i) => line({ id: `t${i}`, unitPrice })) })))
+    const raw = Array.from(bytes, (b) => String.fromCharCode(b)).join('')
+    const fonts = [...raw.matchAll(/\/BaseFont\s*\/[A-Z]{6}\+([\w-]+)/g)].map((m) => m[1])
+    expect(fonts.length).toBeGreaterThan(0)
+    for (const f of fonts) expect(f).toMatch(/^IBMPlexSans(-|$)/)
+    const pdf = await extractPdf(bytes)
+    const widths = prices.map((p) => {
+      const text = formatMoney(p, 'EUR', 'et').replace(/\s/g, ' ')
+      const items = pdf.items.filter((i) => normalizeSpaces(i.str).trim() === text)
+      expect(items.length, text).toBeGreaterThan(0)
+      return items[0].width
+    })
+    for (const w of widths) expect(w).toBeCloseTo(widths[0], 2)
   }, 30_000)
 
   it('provides base64 and data URL variants', async () => {

@@ -99,6 +99,26 @@ export function lineSuggestions(query: string, history: readonly LineSuggestion[
   return [...fromHistory, ...fromCatalogue].slice(0, limit)
 }
 
+/** Catalogue items matching the query (best matches first), alphabetical when the query is empty. */
+export function searchProducts(products: readonly Product[], query: string): Product[] {
+  const q = normalizeText(query)
+  const byName = (a: Product, b: Product) => a.description.localeCompare(b.description, 'et')
+  if (!q) return [...products].sort(byName)
+  return products
+    .map((p) => ({ p, score: Math.max(score(p.description, q), score(`${p.description} ${p.unit}`, q)) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || byName(a.p, b.p))
+    .map((x) => x.p)
+}
+
+/**
+ * Whether the catalogue item holds the same unit, price and VAT rate as the line (the description already matches).
+ * `defaultVatRate` stands in for an item without its own rate; null ignores rates (lines without VAT).
+ */
+export function productMatchesLine(p: Product, line: Pick<InvoiceLine, 'unit' | 'unitPrice' | 'vatRate'>, defaultVatRate: number | null): boolean {
+  return p.unit.trim() === line.unit.trim() && p.unitPrice === line.unitPrice && (defaultVatRate == null || (p.vatRate ?? defaultVatRate) === line.vatRate)
+}
+
 /** Whether the line already holds exactly this suggestion (then there is nothing to offer). */
 export function lineMatches(line: Pick<InvoiceLine, 'description' | 'unit' | 'unitPrice'>, s: LineSuggestion): boolean {
   return normalizeText(line.description) === normalizeText(s.description) && line.unit === s.unit && line.unitPrice === s.unitPrice

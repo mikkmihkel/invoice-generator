@@ -5,6 +5,7 @@ import { computeTotals, type InvoiceLine, type Product } from '../../../domain'
 import { line, sampleInvoice } from '../../../pdf/testFixtures'
 import type { Repository } from '../../../storage'
 import { AppProvider } from '../../AppContext'
+import { ConfirmProvider } from '../../components/Dialog'
 import { createMemoryRepo, sampleProfile } from '../../testing/memoryRepo'
 import { ToastProvider } from '../../Toasts'
 import { LinesEditor } from './LinesEditor'
@@ -33,7 +34,7 @@ const earlier = sampleInvoice({
   lines: [line({ id: 'o1', description: 'Konsultatsioon', unit: 'h', unitPrice: 65, vatRate: 24 })],
 })
 
-function Harness({ initial, withBuyer = true, currency = 'EUR' }: { initial: InvoiceLine[]; withBuyer?: boolean; currency?: string }) {
+function Harness({ initial, withBuyer = true, currency = 'EUR', catalogue }: { initial: InvoiceLine[]; withBuyer?: boolean; currency?: string; catalogue?: boolean }) {
   const [lines, setLines] = useState(initial)
   return (
     <>
@@ -46,21 +47,26 @@ function Harness({ initial, withBuyer = true, currency = 'EUR' }: { initial: Inv
         defaultUnit="tk"
         defaultVatRate={24}
         buyer={withBuyer ? buyer : undefined}
+        catalogue={catalogue}
       />
       <output data-testid="lines">{JSON.stringify(lines.map(({ description, unit, unitPrice, vatRate }) => ({ description, unit, unitPrice, vatRate })))}</output>
     </>
   )
 }
 
-function setup(repo: Repository, initial: InvoiceLine[] = [line({ id: 'l1', description: '', unit: 'tk', unitPrice: 0, vatRate: 24 })], withBuyer = true, currency = 'EUR') {
+function setup(repo: Repository, initial: InvoiceLine[] = [line({ id: 'l1', description: '', unit: 'tk', unitPrice: 0, vatRate: 24 })], withBuyer = true, currency = 'EUR', catalogue?: boolean) {
   render(
     <AppProvider repository={repo}>
       <ToastProvider>
-        <Harness initial={initial} withBuyer={withBuyer} currency={currency} />
+        <ConfirmProvider>
+          <Harness initial={initial} withBuyer={withBuyer} currency={currency} catalogue={catalogue} />
+        </ConfirmProvider>
       </ToastProvider>
     </AppProvider>,
   )
 }
+
+const row = (n: number) => within(screen.getByRole('listitem', { name: `Rida ${n}` }))
 
 const current = () => JSON.parse(screen.getByTestId('lines').textContent!)
 
@@ -163,21 +169,143 @@ describe('line description suggestions', () => {
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
-  it('saves a line to the catalogue, updating an item with the same description', async () => {
-    const repo = createMemoryRepo({ profile: sampleProfile(), products })
-    setup(repo, [line({ id: 'l1', description: 'Uus teenus', unit: 'päev', unitPrice: 400, vatRate: 24 }), line({ id: 'l2', description: 'konsultatsioon', unit: 'h', unitPrice: 70, vatRate: 24 }), line({ id: 'l3', description: '' })])
-    await waitFor(() => expect(repo.listProducts).toHaveBeenCalled())
-    expect(screen.getByRole('button', { name: 'Salvesta rida 3 kataloogi' })).toBeDisabled()
+})
 
-    fireEvent.click(screen.getByRole('button', { name: 'Salvesta rida 1 kataloogi' }))
+describe('catalogue', () => {
+  it('offers "Salvesta tooteks" for filled lines that are not in the catalogue and marks the ones that are', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile(), products })
+    setup(repo, [line({ id: 'l1', description: 'Uus teenus', unit: 'päev', unitPrice: 400, vatRate: 24 }), line({ id: 'l2', description: 'veebilehe hooldus', unit: 'kuu', unitPrice: 120, vatRate: 13 }), line({ id: 'l3', description: '', unitPrice: 0 })])
+    await waitFor(() => expect(repo.listProducts).toHaveBeenCalled())
+    await row(2).findByText('Kataloogis')
+    expect(row(2).queryByRole('button', { name: 'Salvesta tooteks' })).not.toBeInTheDocument()
+    expect(row(3).queryByRole('button', { name: 'Salvesta tooteks' })).not.toBeInTheDocument()
+
+    fireEvent.click(row(1).getByRole('button', { name: 'Salvesta tooteks' }))
     await waitFor(() => expect(repo.saveProduct).toHaveBeenCalledTimes(1))
     expect(repo.saveProduct.mock.calls[0][0]).toMatchObject({ description: 'Uus teenus', unit: 'päev', unitPrice: 400, vatRate: 24 })
-    expect(await screen.findByText('„Uus teenus“ lisati kataloogi.')).toBeInTheDocument()
+    expect(await screen.findByText('Salvestatud kataloogi: Uus teenus')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ava tooted' })).toBeInTheDocument()
+    // Saved: the chip gives way to the marker.
+    expect(await row(1).findByText('Kataloogis')).toBeInTheDocument()
+    expect(row(1).queryByRole('button', { name: 'Salvesta tooteks' })).not.toBeInTheDocument()
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Salvesta rida 2 kataloogi' }))
-    await waitFor(() => expect(repo.saveProduct).toHaveBeenCalledTimes(2))
-    expect(repo.saveProduct.mock.calls[1][0]).toMatchObject({ id: 'p2', description: 'konsultatsioon', unitPrice: 70 })
-    expect(await screen.findByText('„konsultatsioon“ uuendati kataloogis.')).toBeInTheDocument()
+  it('asks before updating an item whose details differ, from the line menu', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile(), products })
+    setup(repo, [line({ id: 'l1', description: 'konsultatsioon', unit: 'h', unitPrice: 70, vatRate: 24 })])
+    expect(await row(1).findByText('Kataloogis, andmed erinevad')).toBeInTheDocument()
+
+    fireEvent.click(row(1).getByRole('button', { name: 'Rea 1 toimingud' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Uuenda kataloogis' }))
+    let dialog = within(await screen.findByRole('dialog', { name: 'Kas uuendada „Konsultatsioon“ kataloogis?' }))
+    expect(dialog.getByText(/Kataloogis on praegu 55,00 € \/ h, KM 24%\. Uued andmed: 70,00 € \/ h, KM 24%\./)).toBeInTheDocument()
+    fireEvent.click(dialog.getByRole('button', { name: 'Loobu' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(repo.saveProduct).not.toHaveBeenCalled()
+
+    fireEvent.click(row(1).getByRole('button', { name: 'Rea 1 toimingud' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Uuenda kataloogis' }))
+    dialog = within(await screen.findByRole('dialog'))
+    fireEvent.click(dialog.getByRole('button', { name: 'Uuenda' }))
+    await waitFor(() => expect(repo.saveProduct).toHaveBeenCalledTimes(1))
+    expect(repo.saveProduct.mock.calls[0][0]).toMatchObject({ id: 'p2', description: 'konsultatsioon', unitPrice: 70 })
+    expect(await screen.findByText('Uuendatud kataloogis: konsultatsioon')).toBeInTheDocument()
+    expect(await row(1).findByText('Kataloogis')).toBeInTheDocument()
+  })
+
+  it('adds the best match with Enter and replaces the empty first line', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile(), products })
+    setup(repo, undefined, false)
+    fireEvent.click(await screen.findByRole('button', { name: 'Lisa kataloogist' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Lisa kataloogist' }))
+    const search = dialog.getByRole('searchbox', { name: 'Otsi tooteid ja teenuseid' })
+    expect(search).toHaveFocus()
+    // Alphabetical without a query.
+    expect(dialog.getAllByRole('checkbox').map((c) => c.closest('label')!.querySelector('.pick-name')!.textContent)).toEqual(['Konsultatsioon', 'Veebilehe hooldus'])
+    fireEvent.change(search, { target: { value: 'hool' } })
+    expect(dialog.getAllByRole('checkbox')).toHaveLength(1)
+    fireEvent.keyDown(search, { key: 'Enter' })
+
+    expect(current()).toEqual([{ description: 'Veebilehe hooldus', unit: 'kuu', unitPrice: 120, vatRate: 13 }])
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('adds several selected items with their quantities in the order they were chosen', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile(), products })
+    setup(repo, [line({ id: 'l1', description: 'Konsultatsioon', unit: 'h', unitPrice: 55, vatRate: 24 })], false)
+    fireEvent.click(await screen.findByRole('button', { name: 'Lisa kataloogist' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Lisa kataloogist' }))
+    expect(dialog.getByRole('button', { name: 'Lisa arvele' })).toBeDisabled()
+    expect(within(dialog.getByRole('checkbox', { name: /Konsultatsioon/ }).closest('li')!).getByText('juba arvel')).toBeInTheDocument()
+
+    fireEvent.click(dialog.getByRole('checkbox', { name: /Veebilehe hooldus/ }))
+    fireEvent.click(dialog.getByRole('checkbox', { name: /Konsultatsioon/ }))
+    expect(dialog.getByText('Valitud: 2')).toBeInTheDocument()
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Kogus: Veebilehe hooldus' }), { target: { value: '3' } })
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Kogus: Konsultatsioon' }), { target: { value: '2,5' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Lisa arvele (2)' }))
+
+    expect(current()).toEqual([
+      { description: 'Konsultatsioon', unit: 'h', unitPrice: 55, vatRate: 24 },
+      { description: 'Veebilehe hooldus', unit: 'kuu', unitPrice: 120, vatRate: 13 },
+      { description: 'Konsultatsioon', unit: 'h', unitPrice: 55, vatRate: 24 },
+    ])
+    expect(screen.getAllByRole('textbox', { name: 'Kogus' }).map((i) => (i as HTMLInputElement).value)).toEqual(['1', '3', '2,5'])
+  })
+
+  it('moves between items with the arrow keys and selects with the keyboard', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile(), products })
+    setup(repo, undefined, false)
+    fireEvent.click(await screen.findByRole('button', { name: 'Lisa kataloogist' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    const search = dialog.getByRole('searchbox')
+    const [first, second] = dialog.getAllByRole('checkbox')
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    expect(first).toHaveFocus()
+    fireEvent.keyDown(first, { key: 'ArrowDown' })
+    expect(second).toHaveFocus()
+    fireEvent.keyDown(second, { key: 'ArrowUp' })
+    fireEvent.keyDown(first, { key: 'ArrowUp' })
+    expect(search).toHaveFocus()
+    // Enter on an item with nothing selected adds that item.
+    fireEvent.keyDown(second, { key: 'Enter' })
+    expect(current()).toEqual([{ description: 'Veebilehe hooldus', unit: 'kuu', unitPrice: 120, vatRate: 13 }])
+  })
+
+  it('shows a quiet hint instead of the picker while the catalogue is empty', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile() })
+    setup(repo, undefined, false)
+    await waitFor(() => expect(repo.listProducts).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Lisa kataloogist' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Korduvaid ridu saad salvestada tooteks/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ava tooted' })).toHaveAttribute('href', '#/products')
+  })
+
+  it('leaves the catalogue out when the editor asks for it (credit notes)', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile(), products })
+    setup(repo, [line({ id: 'l1', description: 'Uus teenus', quantity: 1, unitPrice: 400 })], false, 'EUR', false)
+    await waitFor(() => expect(repo.listProducts).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Lisa kataloogist' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Salvesta tooteks' })).not.toBeInTheDocument()
+    fireEvent.click(row(1).getByRole('button', { name: 'Rea 1 toimingud' }))
+    expect(screen.queryByRole('menuitem', { name: 'Salvesta kataloogi' })).not.toBeInTheDocument()
+  })
+})
+
+describe('line menu', () => {
+  it('duplicates and moves lines', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile() })
+    setup(repo, [line({ id: 'a', description: 'Esimene' }), line({ id: 'b', description: 'Teine' })], false)
+    fireEvent.click(row(1).getByRole('button', { name: 'Rea 1 toimingud' }))
+    expect(screen.getByRole('menuitem', { name: 'Liiguta üles' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Tee koopia' }))
+    expect(current().map((l: InvoiceLine) => l.description)).toEqual(['Esimene', 'Esimene', 'Teine'])
+
+    fireEvent.click(row(1).getByRole('button', { name: 'Rea 1 toimingud' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Liiguta alla' }))
+    fireEvent.click(row(3).getByRole('button', { name: 'Rea 3 toimingud' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Liiguta üles' }))
+    expect(current().map((l: InvoiceLine) => l.description)).toEqual(['Esimene', 'Teine', 'Esimene'])
   })
 })
 
@@ -187,7 +315,9 @@ describe('read-only lines', () => {
     render(
       <AppProvider repository={createMemoryRepo({ profile: sampleProfile() })}>
         <ToastProvider>
-          <LinesEditor lines={lines} onChange={() => undefined} vatScheme="domestic" currency="EUR" totals={computeTotals({ lines, vatScheme: 'domestic' })} defaultUnit="tk" defaultVatRate={24} disabled />
+          <ConfirmProvider>
+            <LinesEditor lines={lines} onChange={() => undefined} vatScheme="domestic" currency="EUR" totals={computeTotals({ lines, vatScheme: 'domestic' })} defaultUnit="tk" defaultVatRate={24} disabled />
+          </ConfirmProvider>
         </ToastProvider>
       </AppProvider>,
     )

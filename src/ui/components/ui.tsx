@@ -91,7 +91,25 @@ export interface MenuItem {
  * With `text` the trigger is a quiet text button ("Rohkem ▾") instead of the icon-only "…" button.
  * The popup is measured on open and kept inside the viewport; on phones it is a bottom sheet.
  */
-export function Menu({ label, items, disabled, text, align = 'end' }: { label: string; items: MenuItem[]; disabled?: boolean; text?: string; align?: 'start' | 'end' }) {
+export function Menu({
+  label,
+  items,
+  disabled,
+  text,
+  align = 'end',
+  small,
+  id: triggerId,
+}: {
+  label: string
+  items: MenuItem[]
+  disabled?: boolean
+  text?: string
+  align?: 'start' | 'end'
+  /** Compact icon trigger for dense rows (invoice lines). */
+  small?: boolean
+  /** Id of the trigger button, so callers can return focus to it. */
+  id?: string
+}) {
   const [open, setOpen] = useState(false)
   const [place, setPlace] = useState<CSSProperties | undefined>(undefined)
   const wrap = useRef<HTMLDivElement>(null)
@@ -158,8 +176,9 @@ export function Menu({ label, items, disabled, text, align = 'end' }: { label: s
     <div ref={wrap} className={`menu-wrap${align === 'start' ? ' menu-start' : ''}`}>
       <button
         ref={btn}
+        id={triggerId}
         type="button"
-        className={text ? 'btn btn-text' : 'btn btn-icon'}
+        className={text ? 'btn btn-text' : small ? 'icon-btn icon-btn-sm' : 'btn btn-icon'}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
@@ -174,7 +193,7 @@ export function Menu({ label, items, disabled, text, align = 'end' }: { label: s
             <CaretDownIcon size={12} className="menu-caret" />
           </>
         ) : (
-          <DotsThreeIcon size={18} />
+          <DotsThreeIcon size={small ? 14 : 18} />
         )}
       </button>
       {open && <div className="menu-backdrop" aria-hidden="true" />}

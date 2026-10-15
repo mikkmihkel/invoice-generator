@@ -1,4 +1,4 @@
-// IBM Plex fonts for invoice PDFs (OFL-1.1). The WOFF files are inlined as base64 by Vite (`?inline`) in lazily
+// IBM Plex Sans fonts for invoice PDFs (OFL-1.1). The WOFF files are inlined as base64 by Vite (`?inline`) in lazily
 // imported chunks, so neither pdfmake nor the fonts are part of the main bundle. `?inline` works the same in the
 // browser build and in Vitest/Node. The "complete" Plex files cover Latin Extended (õ ä ö ü š ž) and €.
 
@@ -11,22 +11,22 @@ export interface FontFamily {
   bolditalics: string
 }
 
-/** pdfmake font family names used by the templates. */
+/**
+ * pdfmake font family names used by the templates. Every document is set in IBM Plex Sans only; its figures are
+ * tabular by default (all digits share one advance width in every weight), so amounts line up in columns without a
+ * font feature.
+ */
 export const FONT = {
-  /** Body text. `bold: true` → SemiBold. */
+  /** All text: labels, values, identifiers and amounts. `bold: true` → SemiBold. */
   sans: 'PlexSans',
-  /** Headings and figures. Normal → Medium, `bold: true` → Bold. */
-  strong: 'PlexSansStrong',
-  /** Identifiers only: invoice number, registry code, VAT number, IBAN, reference number. */
-  mono: 'PlexMono',
+  /** Display weight (Bold) for the large title and headline amount of the expressive templates. */
+  display: 'PlexSansDisplay',
 } as const
 
 const FILES = {
   'IBMPlexSans-Regular.woff': () => import('@ibm/plex-sans/fonts/complete/woff/IBMPlexSans-Regular.woff?inline'),
-  'IBMPlexSans-Medium.woff': () => import('@ibm/plex-sans/fonts/complete/woff/IBMPlexSans-Medium.woff?inline'),
   'IBMPlexSans-SemiBold.woff': () => import('@ibm/plex-sans/fonts/complete/woff/IBMPlexSans-SemiBold.woff?inline'),
   'IBMPlexSans-Bold.woff': () => import('@ibm/plex-sans/fonts/complete/woff/IBMPlexSans-Bold.woff?inline'),
-  'IBMPlexMono-Regular.woff': () => import('@ibm/plex-mono/fonts/complete/woff/IBMPlexMono-Regular.woff?inline'),
 } satisfies Record<string, () => Promise<{ default: string }>>
 
 export const FONT_FAMILIES: Record<string, FontFamily> = {
@@ -36,17 +36,11 @@ export const FONT_FAMILIES: Record<string, FontFamily> = {
     italics: 'IBMPlexSans-Regular.woff',
     bolditalics: 'IBMPlexSans-SemiBold.woff',
   },
-  [FONT.strong]: {
-    normal: 'IBMPlexSans-Medium.woff',
+  [FONT.display]: {
+    normal: 'IBMPlexSans-Bold.woff',
     bold: 'IBMPlexSans-Bold.woff',
-    italics: 'IBMPlexSans-Medium.woff',
+    italics: 'IBMPlexSans-Bold.woff',
     bolditalics: 'IBMPlexSans-Bold.woff',
-  },
-  [FONT.mono]: {
-    normal: 'IBMPlexMono-Regular.woff',
-    bold: 'IBMPlexMono-Regular.woff',
-    italics: 'IBMPlexMono-Regular.woff',
-    bolditalics: 'IBMPlexMono-Regular.woff',
   },
 }
 // Anything that still asks for pdfmake's default font gets Plex Sans instead of failing.

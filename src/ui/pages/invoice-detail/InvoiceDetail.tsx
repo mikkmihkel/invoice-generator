@@ -18,8 +18,8 @@ import {
   TrashIcon,
 } from '@phosphor-icons/react'
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
-import { computeTotals, selectedBankAccounts, textRows, type Invoice } from '../../../domain'
+import { Link, useNavigate } from 'react-router-dom'
+import { computeTotals, holdsNumber, selectedBankAccounts, textRows, type Invoice } from '../../../domain'
 import { quoteStatus } from '../../../domain/quote'
 import { TEMPLATES } from '../../../pdf'
 import { useApp } from '../../AppContext'
@@ -29,13 +29,13 @@ import { pick, type MessageKey } from '../../i18n'
 import { daysBetween, displayStatus, effectiveInvoice, formatAddress, isUnpaid, localTodayISO } from '../../util'
 import { EmailDialog } from '../editor/EmailDialog'
 import { RecurringControl } from '../editor/RecurringControl'
-import { CancelInvoiceDialog, MarkPaidDialog } from '../editor/StatusDialogs'
+import { CancelInvoiceDialog, DeleteInvoiceDialog, MarkPaidDialog } from '../editor/StatusDialogs'
 import { QuoteActions } from '../quotes/QuoteActions'
 import { useInvoiceEvents } from './events'
 import { PdfPage } from './PdfPage'
-import { detailStatus, quoteDetailStatus, settlementOf } from './status'
+import { detailStatus, docNoun, quoteDetailStatus, settlementOf } from './status'
 import { interpolate } from './text'
-import { useInvoiceActions } from './useInvoiceActions'
+import { useCanReopen, useInvoiceActions } from './useInvoiceActions'
 
 const PAGE_KEY = 'invoice-generator:detailPage'
 
@@ -60,7 +60,7 @@ function Facts({ rows }: { rows: [string, ReactNode][] }) {
   )
 }
 
-type Dialog = null | 'paid' | 'paidDate' | 'cancel' | 'email' | 'reminder'
+type Dialog = null | 'paid' | 'paidDate' | 'cancel' | 'email' | 'reminder' | 'delete'
 
 /** After a reminder, wait this many days before offering the next one as the main action. */
 const REMIND_AGAIN_DAYS = 7
@@ -68,6 +68,7 @@ const REMIND_AGAIN_DAYS = 7
 /** The selected invoice, typeset like a document, with one status-dependent primary action. */
 export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBack?: boolean }) {
   const { t, lang, profile, invoices } = useApp()
+  const navigate = useNavigate()
   const [dialog, setDialog] = useState<Dialog>(null)
   const [showPage, setShowPage] = useState(initialShowPage)
   const effective = useMemo(() => effectiveInvoice(invoice, profile), [invoice, profile])
@@ -77,6 +78,8 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   const sentAt = history.sentAt
   const today = localTodayISO()
   const draft = invoice.status === 'draft'
+  const numbered = holdsNumber(invoice)
+  const canReopen = useCanReopen(invoice)
   const credit = invoice.type === 'credit-note'
   const quote = invoice.type === 'quote'
   const status = quote ? invoice.status : displayStatus(invoice, today, invoices)
@@ -121,7 +124,8 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   if (!draft) items.push({ key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void actions.saveToDrive() })
   if (!draft && !quote) items.push({ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void actions.downloadXml() })
   items.push({ key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void actions.print() })
-  items.push({ key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: true, onSelect: () => void actions.duplicate() })
+  if (canReopen) items.push({ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void actions.reopen() })
+  items.push({ key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void actions.duplicate() })
   if (!draft && !credit && !quote && invoice.status !== 'cancelled' && !settle.settled) items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
   if (unpaid) items.push({ key: 'paidOn', label: t('payment.otherDate'), icon: <CalendarCheckIcon />, onSelect: () => setDialog('paid') })
   if (invoice.status === 'paid') items.push({ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void actions.markUnpaid() })
@@ -134,14 +138,23 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
       separatorBefore: true,
       onSelect: () => (actions.cancelsWithCredit ? setDialog('cancel') : void actions.cancel()),
     })
-  if (draft) items.push({ key: 'delete', label: t('actions.deleteDraft'), icon: <TrashIcon />, danger: true, separatorBefore: true, onSelect: () => void actions.deleteDraft() })
+  if (numbered)
+    items.push({
+      key: 'delete',
+      label: t('delete.menu', { doc: docNoun(t, invoice) }),
+      icon: <TrashIcon />,
+      danger: true,
+      separatorBefore: invoice.status !== 'issued',
+      onSelect: () => setDialog('delete'),
+    })
+  else if (draft) items.push({ key: 'delete', label: t('actions.deleteDraft'), icon: <TrashIcon />, danger: true, separatorBefore: true, onSelect: () => void actions.deleteDraft() })
 
   // ---- text ---------------------------------------------------------------------
   const title = quote
-    ? draft
+    ? draft && !numbered
       ? t('detail.quoteDraftTitle')
       : t('detail.quoteTitle', { number: invoice.number })
-    : draft
+    : draft && !numbered
       ? t(credit ? 'detail.draftCreditTitle' : 'detail.draftTitle')
       : t(credit ? 'editor.titleCredit' : 'editor.title', { number: invoice.number })
   const head = quote ? quoteDetailStatus(invoice, quoteStatus(invoice, today, invoices), today, t) : detailStatus(invoice, status, today, t, settle)
@@ -383,7 +396,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
 
       <footer className="doc-foot">
         {draft ? (
-          <p>{t('detail.draftNote')}</p>
+          <p>{numbered ? t('reopen.banner', { number: invoice.number }) : t('detail.draftNote')}</p>
         ) : (
           <>
             <RecurringControl invoice={invoice} className="doc-recurring" />
@@ -403,6 +416,18 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
                           </button>
                         ),
                       })}
+                {canReopen && (
+                  <>
+                    {' '}
+                    {interpolate(t('reopen.hint'), {
+                      link: (
+                        <button type="button" className="link-btn" onClick={() => void actions.reopen()} disabled={busy}>
+                          {t('reopen.hintLink')}
+                        </button>
+                      ),
+                    })}
+                  </>
+                )}
               </span>
             </p>
             {creditedBy.length > 0 && (
@@ -433,6 +458,14 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           onClose={() => setDialog(null)}
           onConfirm={actions.cancelWithCredit}
           onPartial={() => void actions.creditNote()}
+        />
+      )}
+      {dialog === 'delete' && (
+        <DeleteInvoiceDialog
+          invoice={invoice}
+          onClose={() => setDialog(null)}
+          onDeleted={() => navigate('/')}
+          onCreditNote={credit || quote || invoice.status === 'cancelled' ? undefined : () => void actions.creditNote()}
         />
       )}
       {(dialog === 'email' || dialog === 'reminder') && (

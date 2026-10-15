@@ -38,7 +38,7 @@ The console calls this **Google Auth Platform** (menu **APIs & Services → OAut
 leads there). Its sections are *Branding*, *Audience*, *Data Access* and *Clients*.
 
 1. Click **Get started** (or **Branding**):
-   - **App name**: e.g. `Arvegeneraator`
+   - **App name**: e.g. `Arveldaja`
    - **User support email**: your email address
    - **Audience**: **External**. ("Internal" is only available for Google Workspace organisations. If you have Workspace and are the only user, Internal works too and skips steps 2–3 below.)
    - **Contact information**: your email address. Accept the policy and click **Create**.
@@ -52,7 +52,7 @@ leads there). Its sections are *Branding*, *Audience*, *Data Access* and *Client
   review. While the app stays in **Testing**, no verification is needed and it works for the test users
   you listed, which here is you.
 - When you sign in, Google shows the warning **"Google hasn't verified this app"**. That is expected,
-  because it is your own app. Click **Continue** (on some screens: *Advanced → Go to Arvegeneraator (unsafe)*).
+  because it is your own app. Click **Continue** (on some screens: *Advanced → Go to Arveldaja (unsafe)*).
 - You may have read that Testing-mode authorisations expire after **7 days**. That rule applies to
   **refresh tokens**. This app uses the Google Identity Services **token model**, which issues only
   short-lived access tokens (about 1 hour), kept in memory and never stored. It never gets a refresh token,
@@ -99,13 +99,16 @@ Changes to origins can take a few minutes, and occasionally longer, to take effe
 - Data never passes through any server of ours. The browser talks directly to `accounts.google.com`,
   `www.googleapis.com` and `gmail.googleapis.com`.
 - With `drive.file`, the app can only see what it created. A backup restore therefore finds only
-  backups that this app uploaded. The manual backup `invoice-generator-backup.json` is overwritten on each
-  manual Drive backup.
+  backups that this app uploaded. The manual backup `arveldaja-backup.json` is overwritten on each
+  manual Drive backup (a manual backup saved by an earlier version as `invoice-generator-backup.json` is
+  overwritten in place and keeps that name).
+- Automatic backups are named `arveldaja-backup-YYYY-MM-DD-HHmmss.json` (`.json.enc` when encrypted). Versions
+  named `arvegeneraator-backup-…` by earlier versions are still listed, restored and pruned the same way.
 - Automatic backups (Settings → Automatic backup to Google Drive) are separate, dated files in the same
   folder, optionally encrypted with a passphrase. Each browser keeps its own newest versions (at least 3) and
   moves only its own older versions to the Drive trash; copies made on other devices are never touched. If
   Drive already holds a backup with more issued documents than this browser, automatic backup pauses and
-  offers to restore it first.
+  offers to restore it first. Documents you delete on purpose do not trigger this pause.
 - Automatic backup never opens a Google sign-in window on its own. After the page is reloaded it waits until
   you use a Google feature or press **Back up now**.
 - Emails are sent from your Gmail account and appear in your *Sent* folder.
