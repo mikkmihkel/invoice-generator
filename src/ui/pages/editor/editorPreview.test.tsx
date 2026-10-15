@@ -94,8 +94,13 @@ describe('live preview panel', () => {
     unmount()
     renderAt(`#/invoices/${draft.id}`, repo)
     expect(await screen.findByRole('complementary', { name: 'Eelvaade' })).toBeInTheDocument()
+    // The close button returns focus to the toggle without scrolling the page.
+    const reopened = screen.getByRole('button', { name: 'Eelvaade' })
+    const focus = vi.spyOn(reopened, 'focus')
     fireEvent.click(screen.getByRole('button', { name: 'Sulge eelvaade' }))
     expect(screen.queryByRole('complementary', { name: 'Eelvaade' })).not.toBeInTheDocument()
+    expect(reopened).toHaveFocus()
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
     expect(localStorage.getItem(PREVIEW_KEY)).toBe('0')
   })
 
@@ -124,11 +129,13 @@ describe('live preview panel', () => {
     fireEvent.click(toggle)
     const panel = await screen.findByRole('complementary', { name: 'Eelvaade' })
     expect(await within(panel).findByTitle('Arve PDF-eelvaade')).toHaveAttribute('src', expect.stringContaining('blob:preview'))
-    // Escape inside the panel closes it and returns focus to the toggle.
+    // Escape inside the panel closes it and returns focus to the toggle, keeping the scroll position.
+    const focus = vi.spyOn(toggle, 'focus')
     within(panel).getByRole('button', { name: 'Sulge eelvaade' }).focus()
     fireEvent.keyDown(within(panel).getByRole('button', { name: 'Sulge eelvaade' }), { key: 'Escape' })
     expect(screen.queryByRole('complementary', { name: 'Eelvaade' })).not.toBeInTheDocument()
     expect(toggle).toHaveFocus()
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true })
     fireEvent.click(toggle)
     await screen.findByRole('complementary', { name: 'Eelvaade' })
     expect(renderPdf).toHaveBeenCalledTimes(1)

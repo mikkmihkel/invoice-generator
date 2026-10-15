@@ -56,6 +56,7 @@ import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
 import { LinesEditor } from './editor/LinesEditor'
 import { PreviewPanel } from './editor/PdfPreview'
+import { useFixedBarHeight } from './editor/useFixedBarHeight'
 import { useMediaQuery } from './editor/useMediaQuery'
 import { IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
 import { TextRows } from './editor/TextRows'
@@ -164,6 +165,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const persistedRef = useRef(false)
   const previewBtn = useRef<HTMLButtonElement>(null)
   const previewOpener = useRef<HTMLElement | null>(null)
+  const barRef = useFixedBarHeight()
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
@@ -823,7 +825,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
         <div className="ed-dock">
         {!ro ? (
-          <aside id="ed-side" className="ed-side" aria-label={t('editor.sideLabel')} tabIndex={-1}>
+          <aside ref={barRef} id="ed-side" className="ed-side" aria-label={t('editor.sideLabel')} tabIndex={-1}>
             <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : undefined} />
             <ValidationPanel issues={checklist} summaryId="issue-summary" />
             {sheet && (

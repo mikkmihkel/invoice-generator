@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { TemplateId } from '../domain/types'
 import { renderInvoicePdf, renderInvoicePdfBase64, renderInvoicePdfDataUrl } from './render'
+import { extractPdf } from './testing/extract'
 import { creditNoteInvoice, line, notRegisteredInvoice, sampleInvoice } from './testFixtures'
 
 async function blobBytes(blob: Blob): Promise<Uint8Array> {
@@ -30,6 +31,16 @@ describe('renderInvoicePdf (real pdfmake)', () => {
       expect(latin1(bytes).startsWith('%PDF-')).toBe(true)
     }
   }, 60_000)
+
+  it('draws Estonian letters and € with the embedded Plex fonts (converted from WOFF)', async () => {
+    const text = 'Õunad ja šokolaad: õõ ää öö üü šš žž ÕÄÖÜŠŽ €'
+    const bytes = await blobBytes(await renderInvoicePdf(sampleInvoice({ lines: [line({ id: 'et', description: text })] })))
+    const pdf = await extractPdf(bytes)
+    expect(pdf.text).toContain(text)
+    const raw = Array.from(bytes, (b) => String.fromCharCode(b)).join('')
+    expect(raw).toMatch(/\/FontFile2\b/)
+    expect(raw).toMatch(/\/BaseFont\s*\/[A-Z]{6}\+IBMPlexSans/)
+  }, 30_000)
 
   it('provides base64 and data URL variants', async () => {
     const b64 = await renderInvoicePdfBase64(sampleInvoice({ status: 'draft', number: '' }))

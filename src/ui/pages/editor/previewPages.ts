@@ -18,6 +18,9 @@ export async function pdfPageCount(pdf: Blob): Promise<number> {
   return Math.min(MAX_PAGES, Math.max(1, n))
 }
 
+/** Let the browser handle input and paint between the heavy steps (pdfmake, then each page), so no single task is long. */
+const nextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
 export type Rendered = { version: string; pages: PageImage[] } | { version: string; url: string }
 
 /** Each page of the invoice PDF as an image; when rasterising is unavailable, the PDF itself for the browser's viewer. */
@@ -25,11 +28,15 @@ export async function renderDocument(invoice: Invoice, version: string, stale: (
   const pdf = await renderInvoicePdf(invoice, { embedEInvoice: false })
   if (stale()) return null
   try {
+    await nextTask()
+    if (stale()) return null
     const first = await renderPdfPageImage(pdf, PAGE_WIDTH, 1)
     if (stale()) return null
     const count = Math.min(MAX_PAGES, Math.max(1, first.pageCount ?? (await pdfPageCount(pdf))))
     const pages: PageImage[] = [first]
     for (let page = 2; page <= count; page++) {
+      await nextTask()
+      if (stale()) return null
       pages.push(await renderPdfPageImage(pdf, PAGE_WIDTH, page))
       if (stale()) return null
     }

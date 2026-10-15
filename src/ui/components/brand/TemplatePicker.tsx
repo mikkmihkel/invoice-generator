@@ -31,12 +31,15 @@ export function TemplatePicker({ value, onChange, disabled, compact, legend }: T
       <legend className="label">{legend ?? t('appearance.template')}</legend>
       <div className="template-list">
         {templates().map((tpl) => {
+          const nameId = `${name}-${tpl.id}-name`
           const descId = `${name}-${tpl.id}-desc`
           return (
             <label key={tpl.id} className={`template-option${value === tpl.id ? ' selected' : ''}`}>
-              <input type="radio" name={name} value={tpl.id} checked={value === tpl.id} onChange={() => onChange(tpl.id)} aria-describedby={descId} />
+              <input type="radio" name={name} value={tpl.id} checked={value === tpl.id} onChange={() => onChange(tpl.id)} aria-labelledby={nameId} aria-describedby={descId} />
               <span className="tpl-text">
-                <span className="tpl-name">{tpl.name[lang]}</span>
+                <span className="tpl-name" id={nameId}>
+                  {tpl.name[lang]}
+                </span>
                 <span className="tpl-desc" id={descId}>
                   {tpl.description[lang]}
                 </span>

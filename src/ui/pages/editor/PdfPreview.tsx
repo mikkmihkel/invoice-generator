@@ -98,7 +98,7 @@ export function PreviewPanel({
   // As a sheet: focus moves in, Escape closes, focus returns to the opener and the page keeps its scroll position.
   useEffect(() => {
     if (!open || !sheet) return
-    const prev = document.activeElement as HTMLElement | null
+    const opener = returnFocus?.current ?? (document.activeElement as HTMLElement | null)
     const scrollY = window.scrollY
     panel.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus({ preventScroll: true })
     const onKey = (e: KeyboardEvent) => {
@@ -113,18 +113,23 @@ export function PreviewPanel({
       document.removeEventListener('keydown', onKey)
       document.documentElement.classList.remove('ed-sheet-open')
       if (Math.abs(window.scrollY - scrollY) > 1) window.scrollTo?.(0, scrollY)
-      ;(returnFocus?.current ?? prev)?.focus?.({ preventScroll: true })
+      opener?.focus?.({ preventScroll: true })
     }
   }, [open, sheet, returnFocus])
 
   if (!open) return null
 
+  // Docked, closing moves focus back to the toggle (the sheet's effect does this itself) without scrolling the page.
+  const close = () => {
+    onClose()
+    if (!sheet) returnFocus?.current?.focus({ preventScroll: true })
+  }
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape' && !sheet) {
-      // Docked: Escape closes when focus is inside the panel, then focus goes back to the toggle.
+      // Docked: Escape closes when focus is inside the panel.
       e.stopPropagation()
-      onClose()
-      returnFocus?.current?.focus()
+      close()
       return
     }
     if (e.key !== 'Tab' || !sheet || !panel.current) return
@@ -150,7 +155,7 @@ export function PreviewPanel({
           <p className="pv-sub">{rendering && doc ? t('preview.updating') : t('editor.previewSub')}</p>
         </div>
         {actions}
-        <button type="button" className="icon-btn" aria-label={t('editor.previewClose')} title={t('editor.previewClose')} onClick={onClose} data-autofocus>
+        <button type="button" className="icon-btn" aria-label={t('editor.previewClose')} title={t('editor.previewClose')} onClick={close} data-autofocus>
           <XIcon size={18} />
         </button>
       </div>

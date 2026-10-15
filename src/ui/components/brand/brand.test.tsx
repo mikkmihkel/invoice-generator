@@ -118,8 +118,9 @@ describe('TemplatePicker', () => {
     wrap(<TemplatePicker value="modern" onChange={onChange} accent="#0b5d7a" secondary="url(https://evil.example/x)" mode="duo" />)
     const radios = screen.getAllByRole('radio')
     expect(radios.map((r) => r.getAttribute('value'))).toEqual(['standard', 'classic', 'modern', 'minimal', 'bold', 'compact'])
-    expect(screen.getByRole('radio', { name: /Moodne/ })).toBeChecked()
-    expect(screen.getByRole('radio', { name: /Moodne/ })).toHaveAccessibleDescription('Värviline päiseriba, kus summa on suurelt näha.')
+    // The name alone labels the radio; the description is announced once, as its description.
+    expect(screen.getByRole('radio', { name: 'Moodne' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Moodne' })).toHaveAccessibleDescription('Värviline päiseriba, kus summa on suurelt näha.')
     expect(screen.getByRole('group', { name: 'Kujundus' })).toBeInTheDocument()
     expect(document.querySelector('.tpl-thumb, [style]')).toBeNull()
     fireEvent.click(screen.getByRole('radio', { name: /Julge/ }))

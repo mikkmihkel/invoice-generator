@@ -1,5 +1,5 @@
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { CompanyProfile, RegistryCompany } from '../../domain'
 import { useApp } from '../AppContext'
@@ -31,9 +31,12 @@ export default function CompanyPage() {
     return () => clearTimeout(h)
   }, [focus, ready])
 
+  // Follow background profile reloads only while there are no unsaved edits. The ref is updated synchronously in
+  // change(), so a reload whose effect runs after the user's first edit can no longer overwrite that edit.
+  const dirtyRef = useRef(false)
   useEffect(() => {
-    if (!dirty) setDraft(profile)
-  }, [profile, dirty])
+    setDraft((cur) => (dirtyRef.current ? cur : profile))
+  }, [profile])
 
   // Leaving through the top bar with unsaved changes asks first (reloads/closing the tab: beforeunload below).
   const confirm = useConfirm()
@@ -51,6 +54,7 @@ export default function CompanyPage() {
   if (!draft) return null
 
   const change = (p: CompanyProfile) => {
+    dirtyRef.current = true
     setDraft(p)
     setDirty(true)
   }
@@ -73,6 +77,7 @@ export default function CompanyPage() {
     setSaving(true)
     try {
       await saveProfile(profileForSave(draft))
+      dirtyRef.current = false
       setDirty(false)
       toast.success(t('common.saved'))
     } catch (err) {
@@ -103,6 +108,7 @@ export default function CompanyPage() {
           className="btn btn-ghost"
           disabled={!dirty || saving}
           onClick={() => {
+            dirtyRef.current = false
             setDraft(profile)
             setDirty(false)
           }}

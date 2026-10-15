@@ -1146,14 +1146,18 @@ html.ed-sheet-open {
 
 /* 1024-1279 px: the preview takes the summary's place; a draft's summary is the pinned bottom bar. */
 @media (min-width: 1024px) and (max-width: 1279px) {
-  .ed-draft.ed-pv {
-    padding-bottom: var(--ed-bar-h);
+  /*
+   * --ed-bar-live is the bar's measured height (useFixedBarHeight); it grows when the check list is expanded. Only the
+   * footer leaves room for the bar: any more space after the layout would push the sticky preview up at the page end.
+   */
+  .shell:has(.ed-draft.ed-pv) main {
+    padding-bottom: 0;
   }
   .shell:has(.ed-draft.ed-pv) .footer {
-    padding-bottom: calc(var(--ed-bar-h) + var(--s-4));
+    padding-bottom: calc(var(--ed-bar-live, var(--ed-bar-h, 128px)) + var(--s-2));
   }
   .ed-draft.ed-pv .ed-dock {
-    height: calc(100svh - var(--topbar-h) - var(--ed-bar-h) - var(--s-12));
+    height: calc(100svh - var(--topbar-h) - var(--ed-bar-live, var(--ed-bar-h)) - var(--s-12));
   }
   .ed-draft.ed-pv .ed-side {
     position: fixed;
@@ -1169,8 +1173,9 @@ html.ed-sheet-open {
     border-top: 1px solid var(--border);
     box-shadow: 0 -6px 16px rgb(20 24 30 / 0.05);
   }
+  /* Shorter list than on tablets: the preview above the bar keeps most of the height. */
   .ed-draft.ed-pv .ed-side .check {
-    max-height: 40svh;
+    max-height: 24svh;
     overflow: auto;
     padding-bottom: var(--s-3);
     border-bottom: 1px solid var(--ed-rule);
@@ -1283,10 +1288,10 @@ html.ed-sheet-open {
     display: block;
   }
   .ed-draft {
-    padding-bottom: var(--ed-bar-h);
+    padding-bottom: var(--ed-bar-live, var(--ed-bar-h));
   }
   .shell:has(.ed-draft) .footer {
-    padding-bottom: calc(var(--ed-bar-h) + var(--s-4));
+    padding-bottom: calc(var(--ed-bar-live, 128px) + var(--s-4));
   }
   .ed-draft .ed-side {
     position: fixed;
@@ -1411,7 +1416,7 @@ html.ed-sheet-open {
     padding-bottom: var(--s-3);
   }
   .shell:has(.ed-draft) .footer {
-    padding-bottom: calc(var(--ed-bar-h) + var(--s-4));
+    padding-bottom: calc(var(--ed-bar-live, 120px) + var(--s-4));
   }
   .ed-head {
     margin-bottom: var(--s-6);
