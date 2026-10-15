@@ -15,12 +15,15 @@ export interface StaleQuoteDate {
 /** Confirm issuing a quote: it gets its number from the quote series and is locked. */
 export function QuoteIssueDialog({
   predictedNumber,
+  keepsNumber,
   warnings,
   stale,
   onClose,
   onConfirm,
 }: {
   predictedNumber: string
+  /** A reopened quote is issued again under its own number. */
+  keepsNumber?: boolean
   warnings: number
   stale?: StaleQuoteDate | null
   onClose: () => void
@@ -70,7 +73,7 @@ export function QuoteIssueDialog({
           {useToday && <p className="small">{t('quote.setTodayValid', { date: formatDate(stale.validUntil) })}</p>}
         </div>
       )}
-      <p>{t('quote.issueText', { number })}</p>
+      <p>{t(keepsNumber ? 'reopen.issueNumber' : 'quote.issueText', { number })}</p>
       <p className="muted small">{t('quote.issueHint')}</p>
       {warnings > 0 && <p className="notice notice-warn">{t('quote.issueWarnings', { count: warnings })}</p>}
     </Dialog>

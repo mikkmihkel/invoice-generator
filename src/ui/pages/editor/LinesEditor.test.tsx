@@ -277,7 +277,7 @@ describe('catalogue', () => {
     setup(repo, undefined, false)
     await waitFor(() => expect(repo.listProducts).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: 'Lisa kataloogist' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Korduvaid ridu saad salvestada tooteks/)).toBeInTheDocument()
+    expect(screen.getByText(/Korduva arverea saad salvestada tooteks/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Ava tooted' })).toHaveAttribute('href', '#/products')
   })
 
