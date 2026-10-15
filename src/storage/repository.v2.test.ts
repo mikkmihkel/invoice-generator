@@ -136,6 +136,55 @@ describe('numbering with resets', () => {
   })
 })
 
+describe('saving the profile from a stale copy', () => {
+  it('never lowers the number series that another tab advanced', async () => {
+    const dbName = `test-v2-tabs-${++dbCounter}-${Math.random()}`
+    repo = createRepository({ dbName })
+    const other = createRepository({ dbName })
+    await repo.saveProfile(makeProfile({ numbering: { prefix: '{YYYY}-', nextNumber: 1, padding: 4, reset: 'yearly', counters: { '2025': 9 } } }))
+    const stale = await repo.getProfile()
+    // Meanwhile another tab issues an invoice and a quote.
+    await other.saveInvoice(makeInvoice('i', { issueDate: '2026-10-15', dueDate: '2026-10-29' }))
+    await other.saveInvoice(makeInvoice('q', { type: 'quote', issueDate: '2026-10-15', dueDate: '2026-10-29', validUntil: '2026-10-29' }))
+    await other.issueInvoice('i')
+    await other.issueInvoice('q')
+
+    await repo.saveProfile({ ...stale!, name: 'Uus Nimi OÜ', numbering: { ...stale!.numbering, padding: 3 } })
+    const p = await repo.getProfile()
+    expect(p?.name).toBe('Uus Nimi OÜ')
+    expect(p?.numbering).toEqual({ prefix: '{YYYY}-', nextNumber: 1, padding: 3, reset: 'yearly', counters: { '2025': 9, '2026': 2 } })
+    expect(p?.quoteNumbering?.counters).toEqual({ '2026': 2 })
+    await repo.saveInvoice(makeInvoice('j', { issueDate: '2026-10-16', dueDate: '2026-10-30' }))
+    expect((await repo.issueInvoice('j')).number).toBe('2026-002')
+  })
+
+  it('lowers the next number only when asked to, per series', async () => {
+    await repo.saveProfile(makeProfile({ numbering: { prefix: 'A-', nextNumber: 30, padding: 1 }, quoteNumbering: { prefix: 'HP-', nextNumber: 8, padding: 1 } }))
+    const lower = makeProfile({ numbering: { prefix: 'A-', nextNumber: 12, padding: 1 }, quoteNumbering: { prefix: 'HP-', nextNumber: 2, padding: 1 } })
+    await repo.saveProfile(lower)
+    expect((await repo.getProfile())?.numbering.nextNumber).toBe(30)
+    await repo.saveProfile(lower, { allowLowerNumbering: { invoice: true } })
+    let p = await repo.getProfile()
+    expect([p?.numbering.nextNumber, p?.quoteNumbering?.nextNumber]).toEqual([12, 8])
+    await repo.saveProfile(lower, { allowLowerNumbering: true })
+    p = await repo.getProfile()
+    expect([p?.numbering.nextNumber, p?.quoteNumbering?.nextNumber]).toEqual([12, 2])
+  })
+})
+
+describe('issued quotes', () => {
+  it('can only be cancelled, never marked paid', async () => {
+    await repo.saveProfile(makeProfile())
+    await repo.saveInvoice(makeInvoice('q', { type: 'quote', issueDate: '2026-10-15', dueDate: '2026-10-29', validUntil: '2026-10-29' }))
+    const q = await repo.issueInvoice('q')
+    await expect(repo.markInvoicePaid('q', '2026-10-20')).rejects.toMatchObject({ code: 'invalid-transition' })
+    await expect(repo.saveInvoice({ ...q, status: 'paid', paidAt: '2026-10-20' })).rejects.toMatchObject({ code: 'invalid-transition' })
+    expect((await repo.getInvoice('q'))?.status).toBe('issued')
+    expect(await repo.markInvoiceUnpaid('q')).toMatchObject({ status: 'issued' })
+    expect((await repo.cancelInvoice('q')).status).toBe('cancelled')
+  })
+})
+
 describe('backup version 2', () => {
   it('exports and restores products, rules and events', async () => {
     await repo.saveProfile(makeProfile())

@@ -9,7 +9,9 @@ import {
   nextOccurrence,
   prepareRecurringDrafts,
   recurringDraft,
+  recurringDraftId,
   ruleForInvoice,
+  stopRulesFor,
   upcomingOccurrence,
 } from './recurring'
 import type { CompanyProfile, Invoice, RecurringRule } from './types'
@@ -149,6 +151,19 @@ describe('recurringDraft', () => {
     const q = recurringDraft(src, rule(), '2026-04-30', profile(), NOW)
     expect(q.periodEnd).toBe('2026-04-30')
   })
+  it('leaves the exchange rate empty: the new supply date needs its own rate', () => {
+    const d = recurringDraft(source({ currency: 'USD', eurExchangeRate: 1.08 }), rule(), '2026-02-28', profile(), NOW)
+    expect(d.currency).toBe('USD')
+    expect(d.eurExchangeRate).toBeUndefined()
+  })
+  it('gets an id derived from the rule and the date', () => {
+    const a = recurringDraft(source(), rule(), '2026-02-28', profile(), NOW)
+    const b = recurringDraft(source(), rule(), '2026-02-28', profile(), '2026-10-16T08:00:00.000Z')
+    expect(a.id).toBe('rec-r1-2026-02-28')
+    expect(b.id).toBe(a.id)
+    expect(recurringDraft(source(), rule(), '2026-03-31', profile(), NOW).id).not.toBe(a.id)
+    expect(recurringDraftId('a/b c?', '2026-02-28')).toBe('rec-a_b_c_-2026-02-28')
+  })
   it('keeps prepayment invoices and drops credit-note specifics', () => {
     expect(recurringDraft(source({ type: 'prepayment' }), rule(), '2026-02-28', profile(), NOW).type).toBe('prepayment')
   })
@@ -179,6 +194,11 @@ describe('prepareRecurringDrafts', () => {
     expect(again.drafts).toEqual([])
     expect(again.rules[0].nextDate).toBe('2026-03-31')
   })
+  it('does not recreate a draft whose issue date was edited', () => {
+    const first = prepareRecurringDrafts([rule()], [source()], profile(), '2026-02-28', NOW)
+    const edited = { ...first.drafts[0], issueDate: '2026-02-27' }
+    expect(prepareRecurringDrafts([rule()], [source(), edited], profile(), '2026-02-28', NOW).drafts).toEqual([])
+  })
   it('skips paused rules and missing, draft or cancelled sources', () => {
     expect(prepareRecurringDrafts([rule({ active: false })], [source()], profile(), '2026-12-01', NOW).drafts).toEqual([])
     expect(prepareRecurringDrafts([rule()], [], profile(), '2026-12-01', NOW).rules).toEqual([])
@@ -192,13 +212,19 @@ describe('prepareRecurringDrafts', () => {
 })
 
 describe('helpers', () => {
-  it('only issued invoices and prepayments recur', () => {
+  it('only issued invoices recur', () => {
     expect(canRecur({ type: 'invoice', status: 'issued' })).toBe(true)
-    expect(canRecur({ type: 'prepayment', status: 'paid' })).toBe(true)
+    expect(canRecur({ type: 'invoice', status: 'paid' })).toBe(true)
+    expect(canRecur({ type: 'prepayment', status: 'paid' })).toBe(false)
     expect(canRecur({ type: 'invoice', status: 'draft' })).toBe(false)
     expect(canRecur({ type: 'credit-note', status: 'issued' })).toBe(false)
     expect(canRecur({ type: 'quote', status: 'issued' })).toBe(false)
     expect(canRecur({ type: 'invoice', status: 'cancelled' })).toBe(false)
+  })
+  it('switches off the active rules of a cancelled invoice', () => {
+    const rules = [rule({ id: 'a' }), rule({ id: 'b', active: false }), rule({ id: 'c', sourceInvoiceId: 'x' })]
+    expect(stopRulesFor(rules, 'src', NOW)).toEqual([{ ...rule({ id: 'a' }), active: false, updatedAt: NOW }])
+    expect(stopRulesFor(rules, 'none', NOW)).toEqual([])
   })
   it('finds the active rule of an invoice', () => {
     const rules = [rule({ id: 'old', active: false }), rule({ id: 'cur' }), rule({ id: 'other', sourceInvoiceId: 'x' })]

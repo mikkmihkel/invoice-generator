@@ -1,9 +1,10 @@
 import { ArrowDownIcon, ArrowUpIcon, BookmarkSimpleIcon, PercentIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { newId, vatSchemeAllowsRates, type InvoiceLine, type InvoiceTotals, type VatScheme } from '../../../domain'
 import { formatUnitMoney } from '../../../pdf/format'
 import { useApp } from '../../AppContext'
 import { DecimalInput, fieldId } from '../../components/fields'
+import { MIN_POPUP_HEIGHT, verticalPlacement, visibleArea } from '../../components/menuPlacement'
 import { IconButton } from '../../components/ui'
 import { formatDate, formatMoney } from '../../format'
 import { UNIT_SUGGESTIONS, vatRates } from '../../options'
@@ -116,7 +117,8 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
             <li key={l.id} className="line" aria-label={t('lines.lineN', { n: i + 1 })} onKeyDown={onCellKey(i)}>
               <div className="c-desc">
                 <label className="line-label" htmlFor={fieldId(`${p}.description`)}>
-                  {t('lines.description')} {i + 1}
+                  {/* Each read-only card is already labelled with its row ("Rida 1"). */}
+                  {disabled ? t('lines.description') : `${t('lines.description')} ${i + 1}`}
                 </label>
                 <DescriptionCell
                   id={fieldId(`${p}.description`)}
@@ -147,7 +149,13 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                 <label className="line-label" htmlFor={fieldId(`${p}.unitPrice`)}>
                   {t('lines.unitPrice')}
                 </label>
-                <DecimalInput id={fieldId(`${p}.unitPrice`)} className="cell num" value={l.unitPrice} onChange={(v) => update(i, { unitPrice: roundTo(v ?? 0, PRICE_DECIMALS) })} disabled={disabled} />
+                {disabled ? (
+                  <output id={fieldId(`${p}.unitPrice`)} className="cell num cell-ro">
+                    {formatUnitMoney(l.unitPrice, currency || 'EUR', 'et')}
+                  </output>
+                ) : (
+                  <DecimalInput id={fieldId(`${p}.unitPrice`)} className="cell num" value={l.unitPrice} onChange={(v) => update(i, { unitPrice: roundTo(v ?? 0, PRICE_DECIMALS) })} />
+                )}
               </div>
               {discountCol && (
                 <div className="c-disc">
@@ -254,6 +262,39 @@ function DescriptionCell({ id, line, currency, onChange, onPick, suggest, onSave
   const items = useMemo(() => (open && !disabled ? suggest(line.description).filter((s) => !lineMatches(line, s)) : []), [open, disabled, suggest, line])
   const shown = items.length > 0
   const current = active < items.length ? active : -1
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+
+  // On phones the editor's summary bar and the tab bar are pinned to the bottom: open the list above the field
+  // when it would otherwise end up behind them.
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current
+    const list = listRef.current
+    if (!shown || !wrap || !list) return
+    const place = () => {
+      list.removeAttribute('data-side')
+      list.style.maxHeight = ''
+      const { above, maxHeight } = verticalPlacement(wrap.getBoundingClientRect(), visibleArea(), list.getBoundingClientRect().height)
+      if (above) list.setAttribute('data-side', 'above')
+      list.style.maxHeight = `min(360px, ${maxHeight}px)`
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.visualViewport?.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.visualViewport?.removeEventListener('resize', place)
+    }
+  }, [shown, items.length])
+
+  /** Bring the field up from behind the bottom bars, with room for a few suggestions below it. */
+  const onFocus = () => {
+    const wrap = wrapRef.current
+    if (!wrap) return
+    const area = visibleArea()
+    const r = wrap.getBoundingClientRect()
+    if (r.top < area.top || r.bottom + Math.min(MIN_POPUP_HEIGHT, (area.bottom - area.top) / 3) > area.bottom) wrap.scrollIntoView?.({ block: 'center' })
+  }
 
   const close = () => {
     setOpen(false)
@@ -297,8 +338,11 @@ function DescriptionCell({ id, line, currency, onChange, onPick, suggest, onSave
   }
 
   const firstCatalogue = items.findIndex((s) => s.source === 'catalogue')
+  // Catalogue prices have no currency and are used as they are, also on a foreign-currency invoice.
+  const catalogueHeading = (currency || 'EUR').toUpperCase() === 'EUR' ? t('products.fromCatalogue') : t('products.fromCatalogueAsIs')
+
   return (
-    <div className="line-desc">
+    <div className="line-desc" ref={wrapRef}>
       <textarea
         id={id}
         className="cell"
@@ -311,6 +355,7 @@ function DescriptionCell({ id, line, currency, onChange, onPick, suggest, onSave
         }}
         onKeyDown={onKeyDown}
         onBlur={close}
+        onFocus={disabled ? undefined : onFocus}
         disabled={disabled}
         placeholder={placeholder}
         autoComplete="off"
@@ -322,7 +367,7 @@ function DescriptionCell({ id, line, currency, onChange, onPick, suggest, onSave
         <IconButton className="icon-btn-sm line-save" label={saveLabel} icon={<BookmarkSimpleIcon size={14} />} onClick={onSave} disabled={!line.description.trim()} />
       )}
       {shown && (
-        <ul id={listId} role="listbox" className="combo-list line-suggestions" aria-label={t('products.suggestions')}>
+        <ul ref={listRef} id={listId} role="listbox" className="combo-list line-suggestions" aria-label={t('products.suggestions')}>
           {items.map((s, i) => (
             <SuggestionOption
               key={s.key}
@@ -330,7 +375,7 @@ function DescriptionCell({ id, line, currency, onChange, onPick, suggest, onSave
               s={s}
               currency={currency}
               active={i === current}
-              heading={i === 0 && s.source === 'history' ? t('products.fromHistory') : i === firstCatalogue ? t('products.fromCatalogue') : undefined}
+              heading={i === 0 && s.source === 'history' ? t('products.fromHistory') : i === firstCatalogue ? catalogueHeading : undefined}
               onHover={() => setActive(i)}
               onChoose={() => choose(s)}
             />

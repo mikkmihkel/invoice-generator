@@ -99,6 +99,13 @@ Changes to origins can take a few minutes, and occasionally longer, to take effe
 - Data never passes through any server of ours. The browser talks directly to `accounts.google.com`,
   `www.googleapis.com` and `gmail.googleapis.com`.
 - With `drive.file`, the app can only see what it created. A backup restore therefore finds only
-  `invoice-generator-backup.json` files that this app uploaded. The backup lives in your Drive folder
-  and is overwritten on each Drive backup. Use file backups if you want to keep several versions.
+  backups that this app uploaded. The manual backup `invoice-generator-backup.json` is overwritten on each
+  manual Drive backup.
+- Automatic backups (Settings → Automatic backup to Google Drive) are separate, dated files in the same
+  folder, optionally encrypted with a passphrase. Each browser keeps its own newest versions (at least 3) and
+  moves only its own older versions to the Drive trash; copies made on other devices are never touched. If
+  Drive already holds a backup with more issued documents than this browser, automatic backup pauses and
+  offers to restore it first.
+- Automatic backup never opens a Google sign-in window on its own. After the page is reloaded it waits until
+  you use a Google feature or press **Back up now**.
 - Emails are sent from your Gmail account and appear in your *Sent* folder.

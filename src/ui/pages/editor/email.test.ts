@@ -36,6 +36,16 @@ describe('emailTemplates', () => {
     expect(t.body.indexOf('Tere!')).toBeLessThan(t.body.indexOf('Hello,'))
   })
 
+  it('has one quote text per language, with the validity date and an invitation to reply', () => {
+    const et = emailTemplates('et', d, 'quote')
+    expect(et.subject).toBe('Hinnapakkumine {number} – {company}')
+    expect(et.body).toBe(
+      'Tere!\n\nManuses on hinnapakkumine nr {number} summas {total}. Pakkumine kehtib kuni {validUntil}.\n\nKüsimuste korral vastake julgelt sellele kirjale.\n\nLugupidamisega\n{company}',
+    )
+    expect(emailTemplates('en', d, 'quote').body).toContain('The offer is valid until {validUntil}.')
+    expect(emailTemplates('et-en', d, 'quote').body).toBe(et.body + '\n\n---\n\n' + emailTemplates('en', d, 'quote').body)
+  })
+
   it('falls back to built-in English defaults for older profiles', () => {
     const { emailSubjectEn: _s, emailBodyEn: _b, ...old } = d
     expect(emailTemplates('en', old).subject).toBe('Invoice {number} from {company}')

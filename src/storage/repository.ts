@@ -50,9 +50,21 @@ export interface ImportResult {
   duplicateNumbers: string[]
 }
 
+export interface SaveProfileOptions {
+  /**
+   * Write the number series as given even where they are below the stored ones: only for a deliberate change of
+   * the next number by the user. `true` for both series, or per series.
+   */
+  allowLowerNumbering?: boolean | { invoice?: boolean; quote?: boolean }
+}
+
 export interface Repository {
   getProfile(): Promise<CompanyProfile | null>
-  saveProfile(profile: CompanyProfile): Promise<void>
+  /**
+   * Save the company profile. The number series never go below the stored ones (another tab may have issued
+   * documents since the profile was loaded) unless `options.allowLowerNumbering` says so.
+   */
+  saveProfile(profile: CompanyProfile, options?: SaveProfileOptions): Promise<void>
 
   listClients(): Promise<Client[]>
   getClient(id: string): Promise<Client | null>
@@ -199,6 +211,28 @@ function isAllowedIssuedTransition(from: InvoiceStatus, to: InvoiceStatus): bool
   return to === 'issued' || to === 'paid' || to === 'cancelled'
 }
 
+/** `profile` with each number series raised to at least the stored one, except where lowering is allowed. */
+function keepNumberingAhead(profile: CompanyProfile, stored: CompanyProfile, allow: SaveProfileOptions['allowLowerNumbering']): CompanyProfile {
+  let next = profile
+  for (const type of ['invoice', 'quote'] as const) {
+    if (allow === true || (typeof allow === 'object' && allow[type])) continue
+    const series = numberingFor(next, type)
+    const raised = raiseNumbering(series, numberingFor(stored, type))
+    if (!deepEqual(raised, series)) next = withNumberingFor(next, type, raised)
+  }
+  return next
+}
+
+/** A quote is never paid: once issued it can only be cancelled. */
+function quoteStatusError(stored: Invoice, status: InvoiceStatus): RepositoryError | null {
+  if (stored.type !== 'quote' || status === stored.status || status === 'cancelled') return null
+  return new RepositoryError(
+    'invalid-transition',
+    'Hinnapakkumist ei saa tasutuks märkida ega selle olekut muul viisil muuta – seda saab ainult tühistada.',
+    'A quote cannot be marked as paid or change status in any other way – it can only be cancelled.',
+  )
+}
+
 function isValidIsoDate(v: unknown): v is ISODate {
   if (typeof v !== 'string') return false
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v)
@@ -257,6 +291,8 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
     let next: Invoice | null
     try {
       next = apply(stored)
+      const quoteError = next && quoteStatusError(stored, next.status)
+      if (quoteError) throw quoteError
     } catch (e) {
       return fail(e)
     }
@@ -276,8 +312,12 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       return (await (await db()).get('profile', PROFILE_KEY)) ?? null
     },
 
-    async saveProfile(profile) {
-      await (await db()).put('profile', { ...profile, updatedAt: clock() }, PROFILE_KEY)
+    async saveProfile(profile, options = {}) {
+      const tx = (await db()).transaction('profile', 'readwrite')
+      const stored = await tx.store.get(PROFILE_KEY)
+      const next = stored ? keepNumberingAhead(profile, stored, options.allowLowerNumbering) : profile
+      await tx.store.put({ ...next, updatedAt: clock() }, PROFILE_KEY)
+      await tx.done
       notifyChange('profile')
     },
 
@@ -325,7 +365,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         )
       }
       if (existing && existing.status !== 'draft') {
-        let error: RepositoryError | null = null
+        let error = quoteStatusError(existing, invoice.status)
         if (!isAllowedIssuedTransition(existing.status, invoice.status)) {
           error =
             invoice.status === 'draft'
@@ -339,7 +379,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
                   'Tühistatud arve olekut ei saa enam muuta.',
                   'The status of a cancelled invoice can no longer be changed.',
                 )
-        } else if (!deepEqual(lockedPart(existing, existing.type === 'quote'), lockedPart(invoice, existing.type === 'quote'))) {
+        } else if (!error && !deepEqual(lockedPart(existing, existing.type === 'quote'), lockedPart(invoice, existing.type === 'quote'))) {
           error = new RepositoryError(
             'immutable',
             'Väljastatud arvet ei saa muuta – muuta saab ainult tasumise olekut. Vea parandamiseks tühista arve või koosta kreeditarve.',

@@ -30,22 +30,29 @@ export function ExchangeRateButton({
       alive.current = false
     }
   }, [])
-  // A different currency or date makes the previous result stale.
-  const [shownFor, setShownFor] = useState(`${currency}:${date}`)
-  if (shownFor !== `${currency}:${date}`) {
-    setShownFor(`${currency}:${date}`)
+  // A different currency or date makes the previous result stale, and a response still on its way for them is ignored.
+  const key = `${currency}:${date}`
+  const [shownFor, setShownFor] = useState(key)
+  if (shownFor !== key) {
+    setShownFor(key)
     setMessage(null)
   }
+  const currentKey = useRef(key)
+  useEffect(() => {
+    currentKey.current = key
+  }, [key])
 
   const cur = currency.trim().toUpperCase()
   if (!cur || cur === 'EUR') return null
 
   const run = async () => {
+    const requested = key
+    const stale = () => !alive.current || currentKey.current !== requested
     setBusy(true)
     setMessage(null)
     try {
       const r = await fetchEcbRate(cur, date)
-      if (!alive.current) return
+      if (stale()) return
       onRate(r.rate, r.date)
       const rate = String(r.rate).replace('.', ',')
       setMessage({
@@ -56,7 +63,7 @@ export function ExchangeRateButton({
         error: false,
       })
     } catch (e) {
-      if (!alive.current) return
+      if (stale()) return
       const notFound = e instanceof EcbRateError && (e.code === 'not-found' || e.code === 'unsupported-currency')
       setMessage({ text: notFound ? t('rates.notFound', { currency: cur }) : t('rates.failed'), error: true })
     } finally {

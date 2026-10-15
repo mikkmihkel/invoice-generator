@@ -62,6 +62,10 @@ describe('backup encryption', () => {
     await expect(bad({ kdf: { ...env.kdf, iterations: 1e9 } })).rejects.toMatchObject({ code: 'invalid_format' })
     await expect(bad({ cipher: { ...env.cipher, iv: 'AAAA' } })).rejects.toMatchObject({ code: 'invalid_format' })
     await expect(bad({ data: 'not base64!' })).rejects.toMatchObject({ code: 'invalid_format' })
+    for (const data of ['A', 'AAAAA', 'AA=A', 'AAA==']) {
+      await expect(bad({ data })).rejects.toBeInstanceOf(BackupCryptoError)
+      await expect(bad({ kdf: { ...env.kdf, salt: data } })).rejects.toMatchObject({ code: 'invalid_format' })
+    }
   })
 
   it('recognises encrypted envelopes', async () => {

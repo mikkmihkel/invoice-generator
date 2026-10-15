@@ -4,12 +4,16 @@ import type { AutoBackupSettings, BackupFile } from '../../../domain'
 import {
   getAutoBackupStatus,
   getBackupPassphrase,
+  getPlaintextVersionCount,
   hasBackupPassphrase,
   normalizeAutoBackup,
   parseAutoBackupFileName,
+  preferredRestoreFile,
   setBackupPassphrase,
   subscribeAutoBackupStatus,
   subscribeBackupPassphrase,
+  subscribePlaintextVersionCount,
+  trashPlaintextVersions,
   KEEP_VERSIONS_MAX,
   KEEP_VERSIONS_MIN,
 } from '../../../integrations/autoBackup'
@@ -17,7 +21,7 @@ import { decryptText, isEncryptedEnvelope } from '../../../integrations/backupCr
 import { downloadDriveFile, listDriveBackups, type DriveBackupFile } from '../../../integrations/drive'
 import { googleSignIn, hasAccessToken } from '../../../integrations/googleAuth'
 import { useApp } from '../../AppContext'
-import { Dialog } from '../../components/Dialog'
+import { Dialog, useConfirm } from '../../components/Dialog'
 import { CheckboxField, NumberField, TextField } from '../../components/fields'
 import { Section } from '../../components/misc'
 import { formatDateTime } from '../../format'
@@ -94,7 +98,7 @@ function backupLabel(f: DriveBackupFile): string {
 /** Pick a Drive backup, decrypt it if needed and hand the parsed backup to the usual import review. */
 function RestoreDialog({ files, clientId, onClose, onBackup }: { files: DriveBackupFile[]; clientId: string; onClose: () => void; onBackup: (backup: BackupFile) => void }) {
   const { t, lang } = useApp()
-  const [selected, setSelected] = useState(files[0]?.id ?? '')
+  const [selected, setSelected] = useState(() => preferredRestoreFile(files)?.id ?? '')
   const [passphrase, setPassphrase] = useState(() => getBackupPassphrase() ?? '')
   const [busy, setBusy] = useState<'download' | 'decrypt' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -147,7 +151,12 @@ function RestoreDialog({ files, clientId, onClose, onBackup }: { files: DriveBac
         <legend className="visually-hidden">{t('autoBackup.restoreList')}</legend>
         <div className="template-list">
           {files.map((f) => {
-            const details = [f.size != null ? size(f.size) : '', f.encrypted ? t('autoBackup.encrypted') : '', f.automatic ? '' : t('autoBackup.manualFile')].filter(Boolean)
+            const details = [
+              f.issued !== undefined ? t('autoBackup.issuedCount', { n: f.issued }) : '',
+              f.size != null ? size(f.size) : '',
+              f.encrypted ? t('autoBackup.encrypted') : '',
+              f.automatic ? '' : t('autoBackup.manualFile'),
+            ].filter(Boolean)
             return (
               <label key={f.id} className={`template-option${selected === f.id ? ' selected' : ''}`}>
                 <input type="radio" name="drive-backup" value={f.id} checked={selected === f.id} onChange={() => setSelected(f.id)} />
@@ -172,15 +181,24 @@ function RestoreDialog({ files, clientId, onClose, onBackup }: { files: DriveBac
   )
 }
 
+/** Scroll to the Google section on the same settings page and focus its first field (the OAuth client ID). */
+function showGoogleSettings() {
+  const section = document.getElementById('set-google')
+  section?.scrollIntoView?.({ block: 'start' })
+  section?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true })
+}
+
 /** Settings: automatic versioned backups to the app's Google Drive folder, optional encryption, restore. */
 export function BackupSection() {
   const { t, settings, saveSettings, repo } = useApp()
   const toast = useToast()
   const status = useSyncExternalStore(subscribeAutoBackupStatus, getAutoBackupStatus)
   const hasPassphrase = useSyncExternalStore(subscribeBackupPassphrase, hasBackupPassphrase)
+  const plaintextLeft = useSyncExternalStore(subscribePlaintextVersionCount, getPlaintextVersionCount)
+  const confirm = useConfirm()
   const cfg = normalizeAutoBackup(settings.autoBackup)
   const clientId = settings.googleClientId
-  const [busy, setBusy] = useState<'backup' | 'restore' | null>(null)
+  const [busy, setBusy] = useState<'backup' | 'restore' | 'trash' | null>(null)
   const [askPassphrase, setAskPassphrase] = useState<{ mode: 'new' | 'session'; then: (passphrase: string) => void } | null>(null)
   const [restoreFiles, setRestoreFiles] = useState<DriveBackupFile[] | null>(null)
   const [pendingImport, setPendingImport] = useState<BackupFile | null>(null)
@@ -193,7 +211,7 @@ export function BackupSection() {
 
   const update = (patch: Partial<AutoBackupSettings>) => saveSettings({ autoBackup: { ...normalizeAutoBackup(settingsRef.current.autoBackup), ...patch } })
 
-  const withBusy = async (key: 'backup' | 'restore', fn: () => Promise<void>) => {
+  const withBusy = async (key: 'backup' | 'restore' | 'trash', fn: () => Promise<void>) => {
     setBusy(key)
     try {
       await fn()
@@ -260,12 +278,47 @@ export function BackupSection() {
       else setRestoreFiles(files)
     })
 
+  const backupAnyway = async () => {
+    const ok = await confirm({
+      title: t('autoBackup.anywayTitle'),
+      message: t('autoBackup.anywayText'),
+      confirmLabel: t('autoBackup.anywayConfirm'),
+      cancelLabel: t('common.cancel'),
+    })
+    if (ok) backupNow()
+  }
+
+  const trashPlaintext = async () => {
+    if (!clientId) return
+    const ok = await confirm({
+      title: t('autoBackup.plaintextTitle'),
+      message: t('autoBackup.plaintextText'),
+      confirmLabel: t('autoBackup.plaintextConfirm'),
+      cancelLabel: t('common.cancel'),
+      danger: true,
+    })
+    if (!ok) return
+    await withBusy('trash', async () => {
+      await googleSignIn(clientId, ['drive'])
+      const n = await trashPlaintextVersions(clientId, settingsRef.current.driveFolderName)
+      toast.success(t('autoBackup.plaintextDone', { n }))
+    })
+  }
+
   const disabled = !clientId || busy !== null
   const running = status.phase === 'running' || busy === 'backup'
+  const hold = cfg.enabled && status.phase === 'pending' && status.reason === 'held' ? status.hold : undefined
 
   return (
     <Section id="set-autobackup" title={t('autoBackup.title')} description={t('autoBackup.intro')}>
-      {!clientId && <p className="notice notice-info">{t('google.needClientId')}</p>}
+      {!clientId && (
+        <p className="notice notice-info">
+          {t('autoBackup.needClientId')}{' '}
+          <button type="button" className="link-btn" onClick={showGoogleSettings}>
+            {t('autoBackup.toGoogleSettings')}
+          </button>
+        </p>
+      )}
       <CheckboxField
         label={t('autoBackup.enable')}
         hint={t('autoBackup.enableHint', { folder: settings.driveFolderName })}
@@ -277,7 +330,7 @@ export function BackupSection() {
         <NumberField
           label={t('autoBackup.keep')}
           suffix={t('autoBackup.keepSuffix')}
-          hint={t('autoBackup.keepHint')}
+          hint={t('autoBackup.keepDeviceHint')}
           value={cfg.keepVersions}
           inputMode="numeric"
           onChange={(v) => {
@@ -306,7 +359,34 @@ export function BackupSection() {
       <p className="status-line" aria-live="polite">
         {running ? t('autoBackup.running') : cfg.lastBackupAt ? t('autoBackup.last', { date: formatDateTime(cfg.lastBackupAt) }) : cfg.enabled ? t('autoBackup.never') : t('autoBackup.off')}
       </p>
-      {cfg.enabled && status.phase === 'pending' && <p className="notice notice-warn">{t(status.reason === 'passphrase' ? 'autoBackup.pendingPassphrase' : 'autoBackup.pendingSignin')}</p>}
+      {cfg.enabled && status.phase === 'pending' && status.reason !== 'held' && (
+        <p className="notice notice-warn">{t(status.reason === 'passphrase' ? 'autoBackup.pendingPassphrase' : 'autoBackup.pendingSignin')}</p>
+      )}
+      {hold && (
+        <div className="notice notice-warn stack-sm" role="status">
+          <p>{hold.existing !== undefined ? t('autoBackup.heldFewer', { existing: hold.existing, local: hold.local }) : t('autoBackup.heldEmpty')}</p>
+          <div className="btn-row">
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => void restore()} disabled={disabled}>
+              <CloudArrowDownIcon />
+              {t('autoBackup.heldRestore')}
+            </button>
+            <button type="button" className="btn btn-sm" onClick={() => void backupAnyway()} disabled={disabled}>
+              <CloudArrowUpIcon />
+              {t('autoBackup.heldBackupAnyway')}
+            </button>
+          </div>
+        </div>
+      )}
+      {cfg.encrypt && plaintextLeft > 0 && (
+        <div className="notice notice-info stack-sm">
+          <p>{t('autoBackup.plaintextLeft', { n: plaintextLeft })}</p>
+          <div className="btn-row">
+            <button type="button" className="btn btn-sm" onClick={() => void trashPlaintext()} disabled={disabled}>
+              {busy === 'trash' ? t('common.working') : t('autoBackup.plaintextTrash')}
+            </button>
+          </div>
+        </div>
+      )}
       {status.phase === 'error' && (
         <p className="notice notice-error" role="alert">
           {t('autoBackup.failed', { reason: errorMessage(status.error) })}

@@ -1,5 +1,5 @@
 // IndexedDB persistence (via `idb`) + backup import/export + change notifications.
-export type { Repository, ImportResult, ImportCount, RepositoryOptions } from './repository'
+export type { Repository, ImportResult, ImportCount, RepositoryOptions, SaveProfileOptions } from './repository'
 export {
   getRepository,
   createRepository,

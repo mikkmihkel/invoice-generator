@@ -116,7 +116,7 @@ const QUOTE_ET = {
   subject: 'Hinnapakkumine {number} – {company}',
   body:
     'Tere!\n\n' +
-    'Saadame manuses hinnapakkumise nr {number} summas {total}. Pakkumine kehtib kuni {validUntil}.\n\n' +
+    'Manuses on hinnapakkumine nr {number} summas {total}. Pakkumine kehtib kuni {validUntil}.\n\n' +
     'Küsimuste korral vastake julgelt sellele kirjale.\n\n' +
     'Lugupidamisega\n{company}',
 }

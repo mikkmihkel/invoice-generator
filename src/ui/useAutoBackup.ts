@@ -10,18 +10,24 @@ import {
   runAutoBackup,
   setAutoBackupStatus,
   setBackupPassphrase,
+  setPlaintextVersionCount,
   subscribeBackupPassphrase,
   wasPassphrasePromptDismissed,
   type AutoBackupResult,
   type SchedulerOptions,
 } from '../integrations/autoBackup'
-import { hasAccessToken } from '../integrations/googleAuth'
+import { googleSignIn, hasAccessToken } from '../integrations/googleAuth'
 import { serializeBackup, subscribe, type Repository } from '../storage'
 import { useApp } from './AppContext'
+import { formatDateTime } from './format'
 import { PassphraseDialog } from './pages/settings/BackupSection'
-import { markBackupDone } from './util'
+import { useToast } from './Toasts'
+import { errorMessage, markBackupDone } from './util'
 
 const TOKEN_POLL_MS = 5_000
+
+/** The "backup is waiting for Google" reminder is shown once per session (Settings shows the state itself). */
+let signinReminderShown = false
 
 export interface BackupContext {
   repo: Repository
@@ -52,12 +58,14 @@ export async function performAutoBackup(ctx: BackupContext, interactive: boolean
       passphrase: getBackupPassphrase(),
     })
     if (res.kind === 'uploaded') {
+      setPlaintextVersionCount(res.plaintextVersions)
       markBackupDone(res.at)
       const latest = normalizeAutoBackup(ctx.getSettings().autoBackup)
       await ctx.saveSettings({ autoBackup: { ...latest, lastBackupAt: res.at } })
     }
     if (res.kind === 'needs-signin') setAutoBackupStatus({ phase: 'pending', reason: 'signin' })
     else if (res.kind === 'needs-passphrase') setAutoBackupStatus({ phase: 'pending', reason: 'passphrase' })
+    else if (res.kind === 'held') setAutoBackupStatus({ phase: 'pending', reason: 'held', hold: res.hold })
     else setAutoBackupStatus({ phase: 'idle' })
     return res
   } catch (error) {
@@ -72,7 +80,8 @@ export async function performAutoBackup(ctx: BackupContext, interactive: boolean
  * backup waits ("pending") until the user signs in anywhere in the app or presses "Back up now".
  */
 export function useAutoBackup(timing: SchedulerOptions & { tokenPollMs?: number } = {}): ReactNode {
-  const { ready, repo, settings, saveSettings } = useApp()
+  const { ready, repo, settings, saveSettings, t } = useApp()
+  const toast = useToast()
   const cfg = normalizeAutoBackup(settings.autoBackup)
   const clientId = settings.googleClientId
   const active = ready && cfg.enabled && !!clientId
@@ -85,6 +94,30 @@ export function useAutoBackup(timing: SchedulerOptions & { tokenPollMs?: number 
   const [asking, setAsking] = useState(false)
   const timingRef = useRef(timing)
 
+  // Outside Settings nothing else says that backups are not running: remind once, with a button that signs in
+  // from its own click and backs up.
+  const remindSignin = useRef(() => {})
+  useEffect(() => {
+    remindSignin.current = () => {
+      if (signinReminderShown || window.location.hash.startsWith('#/settings')) return
+      signinReminderShown = true
+      const backUp = () => {
+        const id = settingsRef.current.googleClientId
+        if (!id) return
+        googleSignIn(id, ['drive']).then(
+          async () => {
+            const res = await performAutoBackup(latest.current, true)
+            if (res.kind === 'uploaded') toast.success(t('autoBackup.saved', { time: formatDateTime(res.at) }))
+            else if (res.kind === 'needs-passphrase') setAsking(true)
+            else if (res.kind === 'error') toast.error(errorMessage(res.error))
+          },
+          (e: unknown) => toast.error(errorMessage(e)),
+        )
+      }
+      toast.info(t('autoBackup.signinReminder'), { label: t('autoBackup.backupNow'), onClick: backUp })
+    }
+  }, [t, toast])
+
   useEffect(() => {
     if (!active || !clientId) {
       setAutoBackupStatus({ phase: 'idle' })
@@ -93,6 +126,7 @@ export function useAutoBackup(timing: SchedulerOptions & { tokenPollMs?: number 
     const scheduler = new BackupScheduler(async () => {
       const res = await performAutoBackup(latest.current, false)
       if (res.kind === 'needs-passphrase' && !wasPassphrasePromptDismissed()) setAsking(true)
+      if (res.kind === 'needs-signin') remindSignin.current()
       return { uploaded: res.kind === 'uploaded', retry: res.kind === 'error' }
     }, timingRef.current)
     // Data may have changed since the last backup (e.g. the tab was closed before it ran).

@@ -316,6 +316,12 @@ describe('validateBackup – version 2 data', () => {
     expect(errorOf(withNumbering({ counters: { '2026': 1.5 } })).message).toMatch(/counter of period 2026/)
     expect(errorOf(withNumbering({ counters: [] })).message).toMatch(/period counters/)
     expect(errorOf(withNumbering({ nextNumber: 'x' }, 'quoteNumbering')).message).toMatch(/quote numbering: next number/)
+    for (const key of ['numbering', 'quoteNumbering']) {
+      expect(() => validateBackup(withNumbering({ padding: 0, nextNumber: Number.MAX_SAFE_INTEGER }, key))).not.toThrow()
+      expect(() => validateBackup(withNumbering({ padding: 10 }, key))).not.toThrow()
+      for (const padding of [1e9, 11, -1, 2.5]) expect(errorOf(withNumbering({ padding }, key)).message).toMatch(/number padding/)
+      for (const nextNumber of [0, -3, 1.5, 2 ** 53]) expect(errorOf(withNumbering({ nextNumber }, key)).message).toMatch(/next (invoice )?number/)
+    }
     expect(errorOf({ ...base(), profile: { ...makeProfile(), quoteNumbering: 'HP' } }).message).toMatch(/quote numbering/)
     const many = Object.fromEntries(Array.from({ length: BACKUP_LIMITS.numberingCounters + 1 }, (_, i) => [String(1000 + i).padStart(4, '0'), 1]))
     expect(errorOf(withNumbering({ counters: many })).message).toMatch(/too many entries/)

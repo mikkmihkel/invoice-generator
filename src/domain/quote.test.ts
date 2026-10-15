@@ -111,6 +111,11 @@ describe('quoteToInvoiceDraft', () => {
     expect(d.quoteAcceptedAt).toBeUndefined()
     expect(d.issuedAt).toBeUndefined()
   })
+  it('leaves the exchange rate for the invoice date to be filled in', () => {
+    const d = quoteToInvoiceDraft(quote({ currency: 'USD', eurExchangeRate: 1.08 }), profile(), TODAY, NOW)
+    expect(d.currency).toBe('USD')
+    expect(d.eurExchangeRate).toBeUndefined()
+  })
   it('records the conversion on the quote once', () => {
     const q = markQuoteAccepted(quote(), 'inv1', NOW)
     expect(q).toMatchObject({ convertedToInvoiceId: 'inv1', quoteAcceptedAt: NOW })

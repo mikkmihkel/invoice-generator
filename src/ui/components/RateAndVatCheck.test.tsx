@@ -55,6 +55,32 @@ describe('ExchangeRateButton', () => {
     )
     expect(screen.queryByRole('button', { name: 'Too EKP kurss' })).not.toBeInTheDocument()
   })
+
+  it('ignores a rate that arrives after the currency or date changed', async () => {
+    let resolve: (v: Awaited<ReturnType<typeof fetchEcbRate>>) => void = () => undefined
+    vi.mocked(fetchEcbRate).mockImplementation(() => new Promise((r) => (resolve = r)))
+    const onRate = vi.fn()
+    const repo = createMemoryRepo()
+    const { rerender } = render(
+      <AppProvider repository={repo}>
+        <ExchangeRateButton currency="USD" date="2026-10-11" onRate={onRate} />
+      </AppProvider>,
+    )
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Too EKP kurss' }))
+    })
+    rerender(
+      <AppProvider repository={repo}>
+        <ExchangeRateButton currency="USD" date="2026-10-12" onRate={onRate} />
+      </AppProvider>,
+    )
+    await act(async () => {
+      resolve({ currency: 'USD', rate: 1.0832, date: '2026-10-09' })
+    })
+    expect(onRate).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+    expect(screen.getByRole('button', { name: 'Too EKP kurss' })).toBeEnabled()
+  })
 })
 
 describe('VatNumberCheck', () => {

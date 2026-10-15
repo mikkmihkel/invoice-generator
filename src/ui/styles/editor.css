@@ -113,7 +113,7 @@
   color: var(--text-3);
 }
 .ed-origin {
-  margin-top: calc(-1 * var(--s-2));
+  margin: calc(-1 * var(--s-2)) 0 var(--s-6);
   font-size: var(--fs-sm);
   color: var(--text-2);
 }
@@ -417,6 +417,14 @@
 .lines .cell.num {
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+.lines .cell-ro {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: var(--h-control);
+  font-size: var(--fs-md);
+  white-space: nowrap;
 }
 .lines select.cell {
   padding-left: 6px;

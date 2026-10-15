@@ -7,6 +7,7 @@ export {
   selectForExport,
   vatRateColumns,
   totalInEur,
+  exportTotals,
   accountantRows,
   accountantCsv,
   accountantZip,

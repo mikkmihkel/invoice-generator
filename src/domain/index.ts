@@ -82,7 +82,7 @@ export {
 export { withVatScheme } from './scheme'
 export { selectedBankAccounts } from './accounts'
 export { COLOR_MODES, HEX_COLOR_PATTERN, MIN_TEXT_CONTRAST, colorModeOf, contrastRatio, hexOr, isColorMode, isHexColor, relativeLuminance } from './brand'
-export { creditNotesFor, creditedAmount, outstandingAmount } from './settlement'
+export { creditNotesFor, creditedAmount, outstandingAmount, isVoided } from './settlement'
 export {
   DEFAULT_QUOTE_VALIDITY_DAYS,
   isQuote,
@@ -111,6 +111,8 @@ export {
   ruleForInvoice,
   canRecur,
   recurringDraft,
+  recurringDraftId,
+  stopRulesFor,
   prepareRecurringDrafts,
 } from './recurring'
 export type { RecurringRun } from './recurring'

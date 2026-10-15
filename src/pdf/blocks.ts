@@ -97,18 +97,21 @@ export function metaRows(ctx: DocContext, o: { exclude?: LabelKey[]; reference?:
   if (inv.periodStart || inv.periodEnd) rows.push({ key: 'period', value: `${ctx.date(inv.periodStart)} – ${ctx.date(inv.periodEnd)}`.trim() })
   const deadline = deadlineRow(ctx)
   if (deadline) rows.push(deadline)
-  if (o.reference && inv.referenceNumber && !ctx.isQuote) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, mono: true })
+  if (o.reference && inv.referenceNumber && !ctx.isQuote && !ctx.isCreditNote) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, mono: true })
   if (inv.orderReference) rows.push({ key: 'orderReference', value: inv.orderReference })
   if (ctx.isCreditNote && inv.creditedInvoiceNumber) rows.push({ key: 'creditedInvoice', value: inv.creditedInvoiceNumber, mono: true, strong: true })
   const exclude = new Set(o.exclude ?? [])
   return rows.filter((r) => !exclude.has(r.key))
 }
 
-/** Payment rows: recipient, bank / IBAN / BIC per printed account, reference number. None on a quote. */
+/**
+ * Payment rows: recipient, bank / IBAN / BIC per printed account, reference number. None on a quote or a credit
+ * note: the buyer pays nothing on either (a credit note is settled against the invoice or refunded separately).
+ */
 export function paymentRows(ctx: DocContext, o: { reference?: boolean } = {}): DefRow[] {
   const inv = ctx.invoice
   const rows: DefRow[] = []
-  if (ctx.isQuote) return rows
+  if (ctx.isQuote || ctx.isCreditNote) return rows
   if (ctx.bankAccounts.length) rows.push({ key: 'recipient', value: inv.seller.name })
   for (const a of ctx.bankAccounts) {
     if (a.bankName?.trim()) rows.push({ key: 'bank', value: a.bankName.trim() })
@@ -454,7 +457,7 @@ export function totalsTable(ctx: DocContext, s: TotalsStyle): ContentTable | nul
 
 /** EPC "scan to pay" QR code with caption, or null when the invoice has no (sensible) payment QR. */
 export function paymentQr(ctx: DocContext, size: number, caption: LabelStyle, color: string = COLORS.ink): Content | null {
-  const payload = paymentQrPayload(ctx.invoice)
+  const payload = ctx.isCreditNote || ctx.isQuote ? null : paymentQrPayload(ctx.invoice)
   if (!payload) return null
   return {
     stack: [

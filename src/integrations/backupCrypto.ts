@@ -61,8 +61,14 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) throw new BackupCryptoError('invalid_format')
-  const bin = atob(b64)
+  // btoa always pads to a multiple of 4; anything else is damaged (and some of it would make atob throw).
+  if (b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) throw new BackupCryptoError('invalid_format')
+  let bin: string
+  try {
+    bin = atob(b64)
+  } catch {
+    throw new BackupCryptoError('invalid_format')
+  }
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
   return out

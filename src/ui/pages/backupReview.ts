@@ -1,5 +1,7 @@
 import { BackupFormatError, parseBackup } from '../../storage'
 import { formatIban, normalizeIban, normalizeVatNumber, type AppSettings, type BackupFile, type CompanyProfile } from '../../domain'
+import { formatDateTime } from '../format'
+import type { Translate } from '../i18n'
 
 export type PaymentField = 'name' | 'registryCode' | 'vatNumber' | 'ibans' | 'googleClientId'
 
@@ -56,4 +58,11 @@ export function readBackupText(text: string, lang: 'et' | 'en'): { backup: Backu
     if (e instanceof BackupFormatError) return { error: e.messages[lang] }
     throw e
   }
+}
+
+/** "Varukoopia (…) sisaldab arveid: 9, hinnapakkumisi: 2, kliente: 4." Quotes are counted on their own. */
+export function backupContents(backup: BackupFile, t: Translate): string {
+  const quotes = backup.invoices.filter((i) => i?.type === 'quote').length
+  const vars = { date: formatDateTime(backup.exportedAt), invoices: backup.invoices.length - quotes, quotes, clients: backup.clients.length }
+  return t(quotes > 0 ? 'backup.containsWithQuotes' : 'backup.contains', vars)
 }

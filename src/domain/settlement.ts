@@ -33,6 +33,14 @@ export function outstandingAmount(invoice: Settleable, allInvoices: readonly Cre
   return fromCents(Math.max(0, cents))
 }
 
+/**
+ * Cancelled without a credit note to offset it: the document counts as zero in totals. An invoice cancelled with a
+ * credit note keeps its amount, since the credit note brings it to zero (a cancelled credit note never counts).
+ */
+export function isVoided(doc: Settleable, allInvoices: readonly CreditNote[]): boolean {
+  return doc.status === 'cancelled' && creditNotesFor(doc, allInvoices).length === 0
+}
+
 const lineKey = (l: InvoiceLine) => [l.description.trim(), l.unit, toCents(l.unitPrice), l.discountPercent ?? 0, l.vatRate].join('\u0000')
 
 function grossCents(invoice: Settleable, lines: InvoiceLine[]): number {
@@ -44,12 +52,14 @@ function grossCents(invoice: Settleable, lines: InvoiceLine[]): number {
  * when there are none). Credited lines are matched by description, unit, price, discount and VAT rate; if an
  * earlier credit note does not match the lines (prices changed by hand), one line per VAT rate carries the
  * remaining net amount, labelled with `remainderLabel`. Quantities are negative; ids are left to the caller.
+ * Null when no such credit note brings the remainder exactly to zero (VAT rounding, or a rate credited beyond
+ * its amount): the user then composes the credit note.
  */
 export function remainingCreditLines(
   invoice: Settleable,
   allInvoices: readonly CreditNote[],
   remainderLabel: (vatRate: number) => string,
-): Omit<InvoiceLine, 'id'>[] {
+): Omit<InvoiceLine, 'id'>[] | null {
   const strip = ({ id: _id, ...rest }: InvoiceLine) => rest
   const credits = creditNotesFor(invoice, allInvoices)
   const full = invoice.lines.map((l) => ({ ...strip(l), quantity: -Math.abs(l.quantity) }))
@@ -72,17 +82,28 @@ export function remainingCreditLines(
     }
     if (left > 0) matched = false
   }
+  const fits = (lines: Omit<InvoiceLine, 'id'>[]) => grossCents(invoice, lines.map((l, i) => ({ ...l, id: String(i) }))) === target
   if (matched) {
     const lines = remaining.filter((r) => r.qty > 0).map((r) => ({ ...strip(r.line), quantity: -r.qty }))
-    const probe = lines.map((l, i) => ({ ...l, id: String(i) }))
-    if (grossCents(invoice, probe) === target) return lines
+    if (fits(lines)) return lines
   }
 
   const netByRate = new Map<number, number>()
   const add = (l: InvoiceLine) => netByRate.set(l.vatRate, (netByRate.get(l.vatRate) ?? 0) + lineNetCents(l))
   invoice.lines.forEach(add)
   credits.forEach((cn) => cn.lines.forEach(add))
-  return [...netByRate.entries()]
+  const lines = [...netByRate.entries()]
     .filter(([, cents]) => cents > 0)
     .map(([vatRate, cents]) => ({ description: remainderLabel(vatRate), quantity: -1, unit: '', unitPrice: fromCents(cents), vatRate }))
+  if (lines.length === 0) return null
+  if (fits(lines)) return lines
+  // VAT is rounded per rate, so the remainder can be a cent or two off: move the last line by as much.
+  const last = lines[lines.length - 1]
+  for (const delta of [1, -1, 2, -2, 3, -3]) {
+    const cents = toCents(last.unitPrice) + delta
+    if (cents <= 0) continue
+    const nudged = [...lines.slice(0, -1), { ...last, unitPrice: fromCents(cents) }]
+    if (fits(nudged)) return nudged
+  }
+  return null
 }

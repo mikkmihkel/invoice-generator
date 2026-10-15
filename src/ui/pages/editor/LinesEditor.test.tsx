@@ -33,7 +33,7 @@ const earlier = sampleInvoice({
   lines: [line({ id: 'o1', description: 'Konsultatsioon', unit: 'h', unitPrice: 65, vatRate: 24 })],
 })
 
-function Harness({ initial, withBuyer = true }: { initial: InvoiceLine[]; withBuyer?: boolean }) {
+function Harness({ initial, withBuyer = true, currency = 'EUR' }: { initial: InvoiceLine[]; withBuyer?: boolean; currency?: string }) {
   const [lines, setLines] = useState(initial)
   return (
     <>
@@ -41,7 +41,7 @@ function Harness({ initial, withBuyer = true }: { initial: InvoiceLine[]; withBu
         lines={lines}
         onChange={setLines}
         vatScheme="domestic"
-        currency="EUR"
+        currency={currency}
         totals={computeTotals({ lines, vatScheme: 'domestic' })}
         defaultUnit="tk"
         defaultVatRate={24}
@@ -52,11 +52,11 @@ function Harness({ initial, withBuyer = true }: { initial: InvoiceLine[]; withBu
   )
 }
 
-function setup(repo: Repository, initial: InvoiceLine[] = [line({ id: 'l1', description: '', unit: 'tk', unitPrice: 0, vatRate: 24 })], withBuyer = true) {
+function setup(repo: Repository, initial: InvoiceLine[] = [line({ id: 'l1', description: '', unit: 'tk', unitPrice: 0, vatRate: 24 })], withBuyer = true, currency = 'EUR') {
   render(
     <AppProvider repository={repo}>
       <ToastProvider>
-        <Harness initial={initial} withBuyer={withBuyer} />
+        <Harness initial={initial} withBuyer={withBuyer} currency={currency} />
       </ToastProvider>
     </AppProvider>,
   )
@@ -106,6 +106,42 @@ describe('line description suggestions', () => {
     expect(current()).toEqual([{ description: 'Konsultatsioon', unit: 'h', unitPrice: 55, vatRate: 24 }])
   })
 
+  it('opens above the field when the bars pinned to the bottom would cover the list', async () => {
+    const bar = document.createElement('div')
+    bar.className = 'main-nav'
+    bar.style.position = 'fixed'
+    document.body.appendChild(bar)
+    const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const box = (top: number, bottom: number) => ({ top, bottom, left: 0, right: 390, width: 390, height: bottom - top, x: 0, y: top, toJSON: () => ({}) }) as DOMRect
+      if (this === bar) return box(661, 844)
+      if (this.classList.contains('line-desc')) return box(580, 620)
+      if (this.classList.contains('line-suggestions')) return box(624, 924)
+      return box(0, 0)
+    })
+    try {
+      const repo = createMemoryRepo({ profile: sampleProfile(), products })
+      setup(repo, undefined, false)
+      await waitFor(() => expect(repo.listProducts).toHaveBeenCalled())
+      fireEvent.change(screen.getByRole('textbox', { name: 'Kirjeldus 1' }), { target: { value: 'hool' } })
+      const list = await screen.findByRole('listbox')
+      expect(list).toHaveAttribute('data-side', 'above')
+    } finally {
+      rects.mockRestore()
+      bar.remove()
+    }
+  })
+
+  it('says that catalogue prices are not converted on a foreign-currency invoice', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile(), products })
+    setup(repo, undefined, false, 'USD')
+    await waitFor(() => expect(repo.listProducts).toHaveBeenCalled())
+    fireEvent.change(screen.getByRole('textbox', { name: 'Kirjeldus 1' }), { target: { value: 'hool' } })
+    const list = await screen.findByRole('listbox')
+    expect(within(list).getByText('Kataloogist – hind kantakse arvele ümber arvestamata')).toBeInTheDocument()
+    fireEvent.click(within(list).getByRole('option', { name: /Veebilehe hooldus/ }))
+    expect(current()).toEqual([{ description: 'Veebilehe hooldus', unit: 'kuu', unitPrice: 120, vatRate: 13 }])
+  })
+
   it('closes on Escape and leaves Enter alone when no suggestion is active', async () => {
     const repo = createMemoryRepo({ profile: sampleProfile(), products })
     setup(repo, undefined, false)
@@ -142,5 +178,22 @@ describe('line description suggestions', () => {
     await waitFor(() => expect(repo.saveProduct).toHaveBeenCalledTimes(2))
     expect(repo.saveProduct.mock.calls[1][0]).toMatchObject({ id: 'p2', description: 'konsultatsioon', unitPrice: 70 })
     expect(await screen.findByText('„konsultatsioon“ uuendati kataloogis.')).toBeInTheDocument()
+  })
+})
+
+describe('read-only lines', () => {
+  it('show unit prices as money and label the description without a number', async () => {
+    const lines = [line({ id: 'r1', description: 'Veebileht', quantity: 1, unit: 'tk', unitPrice: 2500, vatRate: 24 }), line({ id: 'r2', description: 'Tugi', quantity: 2, unit: 'h', unitPrice: 65, vatRate: 24 })]
+    render(
+      <AppProvider repository={createMemoryRepo({ profile: sampleProfile() })}>
+        <ToastProvider>
+          <LinesEditor lines={lines} onChange={() => undefined} vatScheme="domestic" currency="EUR" totals={computeTotals({ lines, vatScheme: 'domestic' })} defaultUnit="tk" defaultVatRate={24} disabled />
+        </ToastProvider>
+      </AppProvider>,
+    )
+    const prices = await screen.findAllByLabelText('Ühikuhind')
+    expect(prices.map((p) => p.textContent)).toEqual(['2 500,00 €', '65,00 €'])
+    expect(screen.getAllByLabelText('Kirjeldus')).toHaveLength(2)
+    expect(screen.queryByLabelText('Kirjeldus 1')).not.toBeInTheDocument()
   })
 })

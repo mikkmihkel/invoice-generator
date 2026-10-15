@@ -20,6 +20,10 @@ function readLegacy(): Record<string, string> | null {
   }
 }
 
+export function legacySentId(invoiceId: string, date: string): string {
+  return `sent-${invoiceId.replace(/[^A-Za-z0-9_-]/g, '_')}-${date}`
+}
+
 /** Move the old per-browser "sent" dates into the repository (the old entry is removed afterwards). */
 export function importLegacySent(repo: Repository): Promise<void> {
   if (legacyImport) return legacyImport
@@ -30,7 +34,8 @@ export function importLegacySent(repo: Repository): Promise<void> {
     const sent = new Set(existing.filter((e) => e.kind === 'sent').map((e) => e.invoiceId))
     for (const [invoiceId, date] of Object.entries(legacy)) {
       if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || sent.has(invoiceId)) continue
-      await repo.addInvoiceEvent({ id: newId(), invoiceId, kind: 'sent', at: `${date}T12:00:00.000Z` })
+      // The id comes from the invoice and the date, so another tab importing at the same time writes the same record.
+      await repo.addInvoiceEvent({ id: legacySentId(invoiceId, date), invoiceId, kind: 'sent', at: `${date}T12:00:00.000Z` })
     }
     try {
       localStorage.removeItem(LEGACY_KEY)

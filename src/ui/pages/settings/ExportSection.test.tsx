@@ -68,8 +68,9 @@ describe('accountant export section', () => {
     expect(csv.charCodeAt(0)).toBe(0xfeff)
     const rows = csv.trim().split('\r\n')
     expect(rows).toHaveLength(3)
-    expect(rows[1].startsWith('2026-0005;Arve;03.09.2026')).toBe(true)
-    expect(rows[2].startsWith('2026-0006;Kreeditarve;20.09.2026')).toBe(true)
+    // Number, viitenumber, type, date.
+    expect(rows[1]).toMatch(/^2026-0005;[^;]*;Arve;03\.09\.2026/)
+    expect(rows[2]).toMatch(/^2026-0006;[^;]*;Kreeditarve;20\.09\.2026/)
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Kreeditarved' }))
     expect(await screen.findByText(/Valitud dokumente: 1/)).toBeInTheDocument()

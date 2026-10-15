@@ -11,11 +11,24 @@ const focusById = (id: string) => requestAnimationFrame(() => document.getElemen
  * "add" control, then one auto-growing text box per row with reorder and remove. Read-only it shows only the
  * rows that will be printed.
  */
-export function TextRows({ kind, rows, onChange, disabled }: { kind: 'before' | 'after'; rows: string[] | undefined; onChange: (rows: string[] | undefined) => void; disabled?: boolean }) {
+export function TextRows({
+  kind,
+  rows,
+  onChange,
+  disabled,
+  quote,
+}: {
+  kind: 'before' | 'after'
+  rows: string[] | undefined
+  onChange: (rows: string[] | undefined) => void
+  disabled?: boolean
+  /** Word the labels for a quote ("pakkumise read") instead of an invoice. */
+  quote?: boolean
+}) {
   const { t } = useApp()
   const addBtn = useRef<HTMLButtonElement>(null)
   const path = kind === 'before' ? 'textBefore' : 'textAfter'
-  const label = t(kind === 'before' ? 'editor.textBefore' : 'editor.textAfter')
+  const label = quote ? t(kind === 'before' ? 'quote.textBefore' : 'quote.textAfter') : t(kind === 'before' ? 'editor.textBefore' : 'editor.textAfter')
   const list = rows ?? []
   const labelId = `${path}-label`
 
@@ -96,7 +109,7 @@ export function TextRows({ kind, rows, onChange, disabled }: { kind: 'before' | 
       )}
       <button ref={addBtn} type="button" className="ed-text-btn ed-text-btn-quiet" onClick={add}>
         <PlusIcon />
-        {t(kind === 'before' ? 'editor.addTextBefore' : 'editor.addTextAfter')}
+        {quote ? t(kind === 'before' ? 'quote.addTextBefore' : 'quote.addTextAfter') : t(kind === 'before' ? 'editor.addTextBefore' : 'editor.addTextAfter')}
       </button>
     </div>
   )

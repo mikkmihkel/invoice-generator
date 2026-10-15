@@ -197,6 +197,10 @@ describe('pdfMetadata', () => {
     expect(pdfMetadata(sampleInvoice({ language: 'et-en' })).title).toBe('Arve / Invoice 2026-0007')
     expect(pdfMetadata(creditNoteInvoice()).title).toBe('Kreeditarve 2026-0008')
     expect(pdfMetadata(creditNoteInvoice()).subject).not.toMatch(/tasuda/)
+    // The buyer pays nothing on a credit note: no account or reference number to pay to.
+    expect(pdfMetadata(creditNoteInvoice()).Iban).toBeUndefined()
+    expect(pdfMetadata(creditNoteInvoice()).ReferenceNumber).toBeUndefined()
+    expect(pdfMetadata(creditNoteInvoice()).keywords).not.toContain('reference:')
     expect(pdfMetadata(sampleInvoice({ status: 'draft', number: '' })).title).toBe('Arve (mustand)')
     expect(pdfLanguage('et')).toBe('et-EE')
     expect(pdfLanguage('et-en')).toBe('et-EE')

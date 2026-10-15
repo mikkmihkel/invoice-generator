@@ -46,10 +46,10 @@ export function StatusWord({ status }: { status: DisplayStatus }) {
   return <span className={`ed-status ed-status-${status}`}>{t(`status.${status}`)}</span>
 }
 
-/** Quote status as a coloured word: Saadetud, Aktsepteeritud, Aegunud… */
-export function QuoteStatusWord({ status }: { status: QuoteStatus }) {
+/** Quote status as a coloured word: Väljastatud (Saadetud once e-mailed), Aktsepteeritud, Aegunud… */
+export function QuoteStatusWord({ status, sent }: { status: QuoteStatus; /** Whether the quote has been e-mailed. */ sent?: boolean }) {
   const { t } = useApp()
-  return <span className={`ed-status ed-status-quote-${status}`}>{t(`quote.status.${status}`)}</span>
+  return <span className={`ed-status ed-status-quote-${status}`}>{status === 'sent' && !sent ? t('quote.status.issued') : t(`quote.status.${status}`)}</span>
 }
 
 export function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => void }) {

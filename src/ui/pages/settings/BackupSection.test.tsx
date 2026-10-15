@@ -1,9 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings, type AppSettings } from '../../../domain'
-import { setAutoBackupStatus, setBackupPassphrase } from '../../../integrations/autoBackup'
+import { getAutoBackupStatus, setAutoBackupStatus, setBackupPassphrase, setPlaintextVersionCount } from '../../../integrations/autoBackup'
 import { encryptText } from '../../../integrations/backupCrypto'
-import { downloadDriveFile, listDriveBackups, uploadBackupVersion } from '../../../integrations/drive'
+import { downloadDriveFile, listDriveBackups, trashDriveFile, uploadBackupVersion, type DriveBackupFile } from '../../../integrations/drive'
 import { googleSignIn, hasAccessToken } from '../../../integrations/googleAuth'
 import { AppProvider } from '../../AppContext'
 import { ConfirmProvider } from '../../components/Dialog'
@@ -57,21 +57,37 @@ function setup(settings: Partial<AppSettings> = {}) {
 const savedAutoBackup = (repo: ReturnType<typeof createMemoryRepo>) => repo.saveSettings.mock.calls.at(-1)?.[0].autoBackup
 
 beforeEach(() => {
+  window.location.hash = '#/settings'
   localStorage.clear()
   setBackupPassphrase(null)
   setAutoBackupStatus({ phase: 'idle' })
+  setPlaintextVersionCount(0)
+  vi.mocked(listDriveBackups).mockReset()
+  vi.mocked(listDriveBackups).mockResolvedValue([])
+  vi.mocked(trashDriveFile).mockClear()
   vi.mocked(hasAccessToken).mockReturnValue(false)
   vi.mocked(googleSignIn).mockClear()
   vi.mocked(uploadBackupVersion).mockClear()
 })
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  // A background run still in flight would report into the next test.
+  await waitFor(() => expect(getAutoBackupStatus().phase).not.toBe('running'))
 })
 
 describe('automatic backup settings', () => {
-  it('needs a Google client ID first', async () => {
+  it('needs a Google client ID first, and points to the Google section on the same page', async () => {
+    const google = document.createElement('section')
+    google.id = 'set-google'
+    const input = document.createElement('input')
+    google.append(input)
+    document.body.append(google)
     setup({ googleClientId: undefined })
-    expect(await screen.findByText(/lisa seadetes oma OAuth-kliendi ID/)).toBeInTheDocument()
+    expect(await screen.findByText(/lisa jaotises „Google Drive ja Gmail“ oma OAuth-kliendi ID/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Ava Google’i seaded' }))
+    expect(input).toHaveFocus()
+    expect(window.location.hash).toBe('#/settings')
+    google.remove()
     expect(screen.getByRole('checkbox', { name: 'Varunda automaatselt pärast muudatusi' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Varunda nüüd' })).toBeDisabled()
   })
@@ -114,7 +130,7 @@ describe('automatic backup settings', () => {
     expect(vi.mocked(uploadBackupVersion).mock.calls[0][2]).toMatch(/^arvegeneraator-backup-\d{4}-\d{2}-\d{2}-\d{6}\.json$/)
     await waitFor(() => expect(savedAutoBackup(repo)?.lastBackupAt).toBeTruthy())
     expect(await screen.findByText(/Varukoopia salvestatud Drive’i/)).toBeInTheDocument()
-    expect(screen.getByText(/Viimane automaatne varundus:/)).toBeInTheDocument()
+    expect(await screen.findByText(/Viimane automaatne varundus:/)).toBeInTheDocument()
   })
 
   it('restores an encrypted backup through the usual import review', async () => {
@@ -145,6 +161,24 @@ describe('automatic backup settings', () => {
 })
 
 describe('background backup', () => {
+  it('reminds once outside Settings that backups wait for Google, and backs up from the reminder', async () => {
+    window.location.hash = '#/'
+    setup({ autoBackup: { enabled: true, encrypt: false, keepVersions: 10 } })
+    const toasts = within(document.querySelector<HTMLElement>('.toasts')!)
+    expect(await toasts.findByText('Automaatne varundus ootab: Google’i konto pole selles seansis ühendatud.')).toBeInTheDocument()
+    fireEvent.click(toasts.getByRole('button', { name: 'Varunda nüüd' }))
+    expect(googleSignIn).toHaveBeenCalledWith(CLIENT_ID, ['drive'])
+    await waitFor(() => expect(uploadBackupVersion).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(uploadBackupVersion).mock.calls[0][5]).toBeUndefined()
+    expect(await toasts.findByText(/Varukoopia salvestatud Drive’i/)).toBeInTheDocument()
+
+    cleanup()
+    vi.mocked(hasAccessToken).mockReturnValue(false)
+    setup({ autoBackup: { enabled: true, encrypt: false, keepVersions: 10 } })
+    expect(await screen.findByText(/Varundus ootab: Google’i konto ei ole/)).toBeInTheDocument()
+    expect(screen.queryByText('Automaatne varundus ootab: Google’i konto pole selles seansis ühendatud.')).not.toBeInTheDocument()
+  })
+
   it('waits without a popup when there is no Google token, and runs once a token appears', async () => {
     setup({ autoBackup: { enabled: true, encrypt: false, keepVersions: 10 } })
     expect(await screen.findByText(/Varundus ootab: Google’i konto ei ole selles seansis ühendatud/)).toBeInTheDocument()
@@ -173,5 +207,51 @@ describe('background backup', () => {
     fireEvent.click(again.getByRole('button', { name: 'Kinnita' }))
     await waitFor(() => expect(uploadBackupVersion).toHaveBeenCalledTimes(1))
     expect(vi.mocked(uploadBackupVersion).mock.calls[0][2]).toMatch(/\.json\.enc$/)
+  })
+})
+
+describe('protecting existing backups', () => {
+  const good: DriveBackupFile = { id: 'good', name: 'arvegeneraator-backup-2026-10-14-100000.json', createdTime: '2026-10-14T07:00:00Z', encrypted: false, automatic: true, device: 'old-pc', issued: 40 }
+  const empty: DriveBackupFile = { id: 'empty', name: 'arvegeneraator-backup-2026-10-15-100000.json', createdTime: '2026-10-15T07:00:00Z', encrypted: false, automatic: true, device: 'other-pc', issued: 0 }
+
+  it('does not back up an empty browser over another computer’s backups, and offers restore or an explicit backup', async () => {
+    vi.mocked(hasAccessToken).mockReturnValue(true)
+    vi.mocked(listDriveBackups).mockResolvedValue([empty, good])
+    setup({ autoBackup: { enabled: true, encrypt: false, keepVersions: 10 } })
+    expect(await screen.findByText(/Automaatne varundus on peatatud: Drive’is on varukoopia, milles on rohkem väljastatud dokumente \(40\) kui selles brauseris \(0\)/)).toBeInTheDocument()
+    expect(uploadBackupVersion).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Taasta' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Taasta varukoopia Drive’ist' }))
+    const radios = dialog.getAllByRole('radio') as HTMLInputElement[]
+    expect(radios.map((r) => r.checked)).toEqual([false, true])
+    expect(dialog.getByText(/väljastatud dokumente: 40/)).toBeInTheDocument()
+    fireEvent.click(dialog.getByRole('button', { name: 'Loobu' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Varunda siiski' }))
+    const confirm = within(await screen.findByRole('dialog', { name: 'Kas varundada siiski?' }))
+    fireEvent.click(confirm.getByRole('button', { name: 'Varunda' }))
+    await waitFor(() => expect(uploadBackupVersion).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(uploadBackupVersion).mock.calls[0][5]).toBeUndefined()
+    await waitFor(() => expect(screen.queryByText(/Automaatne varundus on peatatud/)).not.toBeInTheDocument())
+    expect(trashDriveFile).not.toHaveBeenCalled()
+  })
+
+  it('offers to move plaintext versions to the trash after the first encrypted backup', async () => {
+    const plain: DriveBackupFile = { ...good, id: 'plain', createdTime: '2020-01-01T00:00:00Z', issued: 0 }
+    const enc: DriveBackupFile = { ...good, id: 'enc', name: 'arvegeneraator-backup-2026-10-15-100000.json.enc', createdTime: '2026-10-15T07:00:00Z', encrypted: true, issued: 0 }
+    vi.mocked(hasAccessToken).mockReturnValue(true)
+    vi.mocked(listDriveBackups).mockResolvedValueOnce([plain]).mockResolvedValue([enc, plain])
+    setBackupPassphrase('pikk parool')
+    setup({ autoBackup: { enabled: true, encrypt: true, keepVersions: 10 } })
+    expect(await screen.findByText(/Drive’is on veel krüpteerimata automaatseid varukoopiaid \(1\)/)).toBeInTheDocument()
+    expect(vi.mocked(uploadBackupVersion).mock.calls[0][4]).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vii krüpteerimata varukoopiad prügikasti' }))
+    const confirm = within(await screen.findByRole('dialog', { name: 'Kas viia krüpteerimata varukoopiad prügikasti?' }))
+    fireEvent.click(confirm.getByRole('button', { name: 'Vii prügikasti' }))
+    expect(await screen.findByText('Krüpteerimata varukoopiad viidi prügikasti (1).')).toBeInTheDocument()
+    expect(vi.mocked(trashDriveFile).mock.calls.map((c) => c[1])).toEqual(['plain'])
+    expect(screen.queryByText(/krüpteerimata automaatseid varukoopiaid/)).not.toBeInTheDocument()
   })
 })

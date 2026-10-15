@@ -1,7 +1,8 @@
 import { BuildingsIcon, FileTextIcon, GearSixIcon, PackageIcon, PlusIcon, ReceiptIcon, UsersIcon } from '@phosphor-icons/react'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import type { CompanyProfile } from '../domain'
+import { getAutoBackupStatus, subscribeAutoBackupStatus } from '../integrations/autoBackup'
 import { useApp } from './AppContext'
 import { useGuardedNavigation } from './navGuard'
 import { Skeleton } from './components/ui'
@@ -75,6 +76,7 @@ export function Layout({ children }: { children: ReactNode }) {
   useShortcuts()
   useRecurringDrafts()
   const autoBackupPrompt = useAutoBackup()
+  const backupWaiting = useSyncExternalStore(subscribeAutoBackupStatus, getAutoBackupStatus).phase === 'pending'
 
   // Arved is a full-bleed two-pane screen; its list pane carries the "data stays in this browser" note itself.
   const home = location.pathname === '/'
@@ -136,7 +138,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <footer className="footer">
           <span>{t('footer.local')}</span>
           <Link to="/settings" onClick={onLinkClick('/settings')}>
-            {t('footer.backup')}
+            {t(backupWaiting ? 'footer.backupWaiting' : 'footer.backup')}
           </Link>
         </footer>
       )}

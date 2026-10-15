@@ -1,7 +1,7 @@
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type { CompanyProfile, RegistryCompany } from '../../domain'
+import { numberingFor, raiseNumbering, type CompanyProfile, type NumberingSettings, type RegistryCompany } from '../../domain'
 import { useApp } from '../AppContext'
 import { CompanySearch } from '../components/CompanySearch'
 import { Dialog, useConfirm } from '../components/Dialog'
@@ -10,6 +10,13 @@ import { useToast } from '../Toasts'
 import { errorMessage, partyFromRegistry } from '../util'
 import { focusField } from './editor/ValidationPanel'
 import { ProfileForm, profileForSave, profileProblems } from './ProfileForm'
+
+/** Whether `edited` sets the next number (or a period counter) below `base`. */
+function lowersNumbering(edited: NumberingSettings, base: NumberingSettings): boolean {
+  const raised = raiseNumbering(edited, base)
+  if (raised.nextNumber !== edited.nextNumber) return true
+  return Object.entries(raised.counters ?? {}).some(([key, n]) => edited.counters?.[key] !== n)
+}
 
 export default function CompanyPage() {
   const { t, profile, saveProfile } = useApp()
@@ -34,7 +41,10 @@ export default function CompanyPage() {
   // Follow background profile reloads only while there are no unsaved edits. The ref is updated synchronously in
   // change(), so a reload whose effect runs after the user's first edit can no longer overwrite that edit.
   const dirtyRef = useRef(false)
+  // The profile the draft started from: number series set below it were lowered on purpose in the editor.
+  const baseRef = useRef(profile)
   useEffect(() => {
+    if (!dirtyRef.current) baseRef.current = profile
     setDraft((cur) => (dirtyRef.current ? cur : profile))
   }, [profile])
 
@@ -76,7 +86,10 @@ export default function CompanyPage() {
     }
     setSaving(true)
     try {
-      await saveProfile(profileForSave(draft))
+      const base = baseRef.current
+      const lowered = (type: 'invoice' | 'quote') => !!base && lowersNumbering(numberingFor(draft, type), numberingFor(base, type))
+      // Unless lowered here on purpose, the repository keeps numbers another tab issued in the meantime.
+      await saveProfile(profileForSave(draft), { allowLowerNumbering: { invoice: lowered('invoice'), quote: lowered('quote') } })
       dirtyRef.current = false
       setDirty(false)
       toast.success(t('common.saved'))
@@ -109,6 +122,7 @@ export default function CompanyPage() {
           disabled={!dirty || saving}
           onClick={() => {
             dirtyRef.current = false
+            baseRef.current = profile
             setDraft(profile)
             setDirty(false)
           }}

@@ -1,14 +1,14 @@
 import { FileArchiveIcon, FileCsvIcon } from '@phosphor-icons/react'
 import { useMemo, useRef, useState } from 'react'
-import { computeTotals, isValidISODate } from '../../../domain'
-import { accountantCsv, accountantZip, exportBaseName, periodRange, selectForExport, type DateRange, type ExportPeriod, type ExportProgress } from '../../../export'
+import { isValidISODate } from '../../../domain'
+import { accountantCsv, accountantZip, exportBaseName, exportTotals, periodRange, selectForExport, type DateRange, type ExportPeriod, type ExportProgress } from '../../../export'
 import { downloadBlob } from '../../../integrations'
 import { useApp } from '../../AppContext'
 import { CheckboxField, SelectField, TextField } from '../../components/fields'
 import { Section } from '../../components/misc'
 import { formatDate, formatMoney } from '../../format'
 import { useToast } from '../../Toasts'
-import { errorMessage, localTodayISO, sumByCurrency } from '../../util'
+import { errorMessage, localTodayISO } from '../../util'
 
 const PERIODS: ExportPeriod[] = ['this-month', 'last-month', 'this-quarter', 'last-quarter', 'this-year', 'last-year']
 type PeriodChoice = ExportPeriod | 'custom'
@@ -32,12 +32,12 @@ export default function ExportSection() {
     () => (rangeValid ? selectForExport(invoices, { from, to, invoices: withInvoices, creditNotes: withCredits }) : []),
     [invoices, rangeValid, from, to, withInvoices, withCredits],
   )
-  const totals = useMemo(() => [...sumByCurrency(docs.map((d) => ({ amount: computeTotals(d).gross, currency: d.currency || 'EUR' })))], [docs])
+  const totals = useMemo(() => [...exportTotals(docs, invoices)], [docs, invoices])
   const busy = progress !== null
 
   const downloadCsv = () => {
     const name = `${exportBaseName(range, lang)}.csv`
-    downloadBlob(new Blob([accountantCsv(docs, lang)], { type: 'text/csv;charset=utf-8' }), name)
+    downloadBlob(new Blob([accountantCsv(docs, lang, invoices)], { type: 'text/csv;charset=utf-8' }), name)
     toast.success(t('export.done', { name }))
   }
 
@@ -46,7 +46,7 @@ export default function ExportSection() {
     abort.current = ctrl
     setProgress({ done: 0, total: docs.length })
     try {
-      const res = await accountantZip(docs, { range, lang, signal: ctrl.signal, onProgress: setProgress })
+      const res = await accountantZip(docs, { range, lang, allInvoices: invoices, signal: ctrl.signal, onProgress: setProgress })
       downloadBlob(res.blob, res.fileName)
       if (res.failed.length) toast.warning(t('export.failed', { numbers: res.failed.join(', ') }))
       else toast.success(t('export.done', { name: res.fileName }))

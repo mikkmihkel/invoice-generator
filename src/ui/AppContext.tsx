@@ -10,7 +10,7 @@ import {
   type RecurringRule,
   type UiLanguage,
 } from '../domain'
-import { getRepository, subscribe, type Repository, type StorageArea } from '../storage'
+import { getRepository, subscribe, type Repository, type SaveProfileOptions, type StorageArea } from '../storage'
 import { makeT, type Translate } from './i18n'
 import { errorMessage, nowISO, reconcileList, setErrorLanguage, sortInvoices } from './util'
 import { applyTheme, normalizeTheme, readStoredTheme } from './theme'
@@ -33,7 +33,7 @@ export interface AppData {
   lang: UiLanguage
   t: Translate
   reload(): Promise<void>
-  saveProfile(profile: CompanyProfile): Promise<void>
+  saveProfile(profile: CompanyProfile, options?: SaveProfileOptions): Promise<void>
   saveSettings(patch: Partial<AppSettings>): Promise<void>
   saveClient(client: Client): Promise<void>
   deleteClient(id: string): Promise<void>
@@ -163,10 +163,11 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
   const t = useMemo(() => makeT(lang), [lang])
 
   const saveProfile = useCallback(
-    async (p: CompanyProfile) => {
+    async (p: CompanyProfile, options?: SaveProfileOptions) => {
       const next = { ...p, updatedAt: nowISO() }
-      await repo.saveProfile(next)
-      setProfile(next)
+      await repo.saveProfile(next, options)
+      // The repository may have kept number series that another tab advanced meanwhile.
+      setProfile((await repo.getProfile()) ?? next)
     },
     [repo],
   )

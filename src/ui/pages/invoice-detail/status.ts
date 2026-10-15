@@ -11,6 +11,15 @@ export const DUE_SOON_DAYS = 3
 
 const isDate = (s: string | undefined): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s)
 
+/** Calendar day of a timestamp in the user's time zone (late evening UTC is already the next day in Tallinn). */
+export function localDateOf(ts: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ts)) return ts
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ts.slice(0, 10)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 /** Days from today to the due date (negative when overdue), or null without a usable date. */
 export function daysToDue(inv: Invoice, today: string): number | null {
   return isDate(inv.dueDate) ? daysBetween(today, inv.dueDate) : null
@@ -83,7 +92,7 @@ export function quoteDetailStatus(quote: Invoice, status: QuoteStatus, today: st
   if (status === 'draft') return detailStatus(quote, 'draft', today, t)
   if (status === 'cancelled') return { text: t('status.cancelled'), tone: 'muted' }
   if (status === 'accepted') {
-    return { text: quote.quoteAcceptedAt ? t('detail.quoteAcceptedOn', { date: formatDate(quote.quoteAcceptedAt.slice(0, 10)) }) : t('detail.quoteAccepted'), tone: 'success' }
+    return { text: quote.quoteAcceptedAt ? t('detail.quoteAcceptedOn', { date: formatDate(localDateOf(quote.quoteAcceptedAt)) }) : t('detail.quoteAccepted'), tone: 'success' }
   }
   if (status === 'expired') return { text: t('detail.quoteExpired', { date: formatDate(quote.validUntil) }), tone: 'warn' }
   if (!isDate(quote.validUntil)) return { text: t('status.issued'), tone: 'neutral' }

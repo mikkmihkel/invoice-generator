@@ -152,7 +152,7 @@ export function PreviewPanel({
       <div className="pv-head">
         <div className="pv-title">
           <h2 id="preview-title">{t('preview.title')}</h2>
-          <p className="pv-sub">{rendering && doc ? t('preview.updating') : t('editor.previewSub')}</p>
+          <p className="pv-sub">{rendering && doc ? t('preview.updating') : t(invoice.type === 'quote' ? 'quote.previewSub' : 'editor.previewSub')}</p>
         </div>
         {actions}
         <button type="button" className="icon-btn" aria-label={t('editor.previewClose')} title={t('editor.previewClose')} onClick={close} data-autofocus>

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../../../App'
-import { createDefaultSettings, newId, type Invoice } from '../../../domain'
+import { createDefaultSettings, newId, type Invoice, type RecurringRule } from '../../../domain'
 import { renderInvoicePdf } from '../../../pdf'
 import { addDaysISO, localTodayISO } from '../../util'
 import { createMemoryRepo, sampleProfile } from '../../testing/memoryRepo'
@@ -262,6 +262,33 @@ describe('selected invoice', () => {
     expect(await screen.findByText('Arve 2026-0004 tühistati kreeditarvega 2026-0001.')).toBeInTheDocument()
   })
 
+  it('opens a credit note draft when no credit note comes to exactly the remainder', async () => {
+    // 124.04 € invoiced and 62.01 € credited by hand: one 24 % line cannot credit exactly 62.03 €.
+    const inv = invoice({ lines: [{ id: newId(), description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 100.03, vatRate: 24 }] })
+    const manual = invoice({
+      number: '2026-0005',
+      type: 'credit-note',
+      creditedInvoiceNumber: '2026-0004',
+      referenceNumber: undefined,
+      lines: [{ id: newId(), description: 'Hinnaalandus', quantity: -1, unit: '', unitPrice: 50.01, vatRate: 24 }],
+    })
+    const repo = createMemoryRepo({ profile, invoices: [inv, manual] })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const article = await doc()
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Tühista arve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas tühistada arve 2026-0004?' })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Tühista kreeditarvega' }))
+    })
+    expect(repo.issueInvoice).not.toHaveBeenCalled()
+    expect(repo.cancelInvoice).not.toHaveBeenCalled()
+    const draft = repo.saveInvoice.mock.calls[0][0] as Invoice
+    expect(draft).toMatchObject({ type: 'credit-note', status: 'draft', creditedInvoiceNumber: '2026-0004' })
+    expect(await screen.findByText(/Täpselt jäägi 62,03\s€ suurust kreeditarvet ei õnnestunud automaatselt koostada/)).toBeInTheDocument()
+    await waitFor(() => expect(window.location.hash).toBe(`#/invoices/${draft.id}`))
+  })
+
   it('keeps a partial credit note one link away from the cancel dialog', async () => {
     const inv = invoice()
     const repo = createMemoryRepo({ profile, invoices: [inv] })
@@ -322,5 +349,54 @@ describe('selected invoice', () => {
     fireEvent.click(rowA)
     expect(await screen.findByRole('heading', { name: 'Arve 2026-0001' })).toBeInTheDocument()
     expect(screen.getByText('2026-0001').closest('a')).toHaveAttribute('aria-current', 'true')
+  })
+})
+
+describe('year total', () => {
+  it('nets an invoice cancelled with a credit note to zero and leaves out one cancelled without', async () => {
+    const year = today.slice(0, 4)
+    const open = invoice({ number: `${year}-0001`, issueDate: today })
+    const credited = invoice({ number: `${year}-0002`, issueDate: today, status: 'cancelled' })
+    const credit = invoice({
+      number: `${year}-0003`,
+      issueDate: today,
+      type: 'credit-note',
+      creditedInvoiceNumber: `${year}-0002`,
+      lines: credited.lines.map((l) => ({ ...l, id: newId(), quantity: -l.quantity })),
+    })
+    const voided = invoice({ number: `${year}-0004`, issueDate: today, status: 'cancelled' })
+    renderAt('#/', createMemoryRepo({ profile, invoices: [open, credited, credit, voided] }))
+    expect(await screen.findByText(new RegExp(`${year}\\. aastal on arveid väljastatud`))).toHaveTextContent(/väljastatud 1\s481,68\s€ eest/)
+  })
+})
+
+describe('recurring source cancelled', () => {
+  const rule = (invoiceId: string): RecurringRule => ({ id: 'r1', sourceInvoiceId: invoiceId, interval: 'monthly', nextDate: '2099-01-05', active: true, createdAt: '2026-01-05T10:00:00Z', updatedAt: '2026-01-05T10:00:00Z' })
+
+  it('stops the rule when the invoice is cancelled and says so', async () => {
+    const inv = invoice()
+    const repo = createMemoryRepo({ profile, invoices: [inv], recurringRules: [rule(inv.id)] })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const article = await doc()
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Tühista arve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas tühistada arve 2026-0004?' })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Tühista kreeditarvega' }))
+    })
+    await waitFor(() => expect(repo.saveRecurringRule).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', active: false })))
+    expect(await screen.findByText(/Ka selle arve kordamine on lõpetatud/)).toBeInTheDocument()
+  })
+
+  it('lets a rule still running on a cancelled invoice be stopped, not changed', async () => {
+    const inv = invoice({ status: 'cancelled' })
+    const repo = createMemoryRepo({ profile, invoices: [inv], recurringRules: [rule(inv.id)] })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const select = (await screen.findByLabelText('Kordumine')) as HTMLSelectElement
+    expect([...select.options].map((o) => o.value)).toEqual(['none', 'monthly'])
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'none' } })
+    })
+    await waitFor(() => expect(repo.saveRecurringRule).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', active: false })))
   })
 })

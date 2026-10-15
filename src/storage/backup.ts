@@ -22,6 +22,8 @@ const INVOICE_TYPES = ['invoice', 'credit-note', 'prepayment', 'quote']
 const NUMBERING_RESETS = ['never', 'yearly', 'monthly', 'daily']
 const RECURRENCE_INTERVALS = ['monthly', 'quarterly', 'yearly']
 const EVENT_KINDS = ['sent', 'reminder']
+/** Widest zero padding of a document number (the numbering editor allows the same). */
+const MAX_NUMBER_PADDING = 10
 /** Counter keys of a resetting number series: '2026', '2026-10' or '2026-10-15'. */
 const COUNTER_KEY = /^\d{4}(-\d{2}(-\d{2})?)?$/
 const LANGUAGES = ['et', 'en', 'et-en']
@@ -190,8 +192,8 @@ class RecordCheck {
   /** A number series (`CompanyProfile.numbering` / `quoteNumbering`). */
   numbering(n: Record<string, unknown>, label: Text) {
     const f = (et: string, en: string): Text => ({ et: `${label.et}: ${et}`, en: `${label.en}: ${en}` })
-    this.num('nextNumber', f('järgmine number', 'next number'), n)
-    this.num('padding', f('numbri pikkus', 'number padding'), n)
+    this.int('nextNumber', f('järgmine number', 'next number'), 1, Number.MAX_SAFE_INTEGER, n)
+    this.int('padding', f('numbri pikkus', 'number padding'), 0, MAX_NUMBER_PADDING, n)
     this.optStr('prefix', f('numbri eesliide', 'number prefix'), n)
     this.optOneOf('reset', f('numbri uuesti alustamine', 'numbering reset'), NUMBERING_RESETS, n)
     const counters = n.counters
@@ -372,8 +374,8 @@ function checkProfile(r: Record<string, unknown>): Text | null {
   }
   const numbering = c.obj('numbering', { et: 'arvete numeratsioon', en: 'invoice numbering' })
   if (numbering) {
-    c.num('nextNumber', { et: 'järgmine arve number', en: 'next invoice number' }, numbering)
-    c.num('padding', { et: 'numbri pikkus', en: 'number padding' }, numbering)
+    c.int('nextNumber', { et: 'järgmine arve number', en: 'next invoice number' }, 1, Number.MAX_SAFE_INTEGER, numbering)
+    c.int('padding', { et: 'numbri pikkus', en: 'number padding' }, 0, MAX_NUMBER_PADDING, numbering)
     c.optStr('prefix', { et: 'numbri eesliide', en: 'number prefix' }, numbering)
     c.numbering(numbering, { et: 'arvete numeratsioon', en: 'invoice numbering' })
   }

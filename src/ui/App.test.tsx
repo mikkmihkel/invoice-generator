@@ -220,7 +220,7 @@ describe('invoice editor', () => {
     expect(within(next).getByRole('button', { name: /Laadi PDF/ })).toBeInTheDocument()
     expect(within(next).getByRole('button', { name: /Salvesta Drive’i/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Märgi tasutuks' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Kirjeldus 1')).toBeDisabled()
+    expect(screen.getByLabelText('Kirjeldus')).toBeDisabled()
   })
 })
 

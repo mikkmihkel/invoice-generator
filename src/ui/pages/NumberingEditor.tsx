@@ -115,7 +115,7 @@ export function NumberingEditor({
             <NumberField
               id={`${idPrefix}-padding`}
               label={t('numbering.padding')}
-              hint={t('numbering.paddingHint')}
+              hint={value.padding > 1 ? t('numbering.paddingHintValue', { example: '7'.padStart(value.padding, '0') }) : t('numbering.paddingHintNone')}
               value={value.padding}
               onChange={(v) => onChange({ ...value, padding: Math.min(10, Math.max(0, Math.round(v ?? 0))) })}
             />

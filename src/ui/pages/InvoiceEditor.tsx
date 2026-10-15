@@ -22,10 +22,11 @@ import {
   computeTotals,
   newId,
   isValidReferenceNumber,
-  canRecur,
   numberingFor,
   predictNumber,
   quoteStatus,
+  stopRulesFor,
+  upcomingNumbers,
   selectedBankAccounts,
   validateInvoice,
   vatNoteMode,
@@ -58,6 +59,7 @@ import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './edit
 import { DueAmount, EdSection, MoreOptions, NextStep, QuoteStatusWord, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
+import { localDateOf } from './invoice-detail/status'
 import { LinesEditor } from './editor/LinesEditor'
 import { RecurringControl } from './editor/RecurringControl'
 import { QuoteActions } from './quotes/QuoteActions'
@@ -286,7 +288,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const warnings = issues.filter((i) => i.severity === 'warning')
   const checklist = !ro && invoice.buyer.name && !invoice.buyer.email ? [...issues, EMAIL_SUGGESTION] : issues
   const series = numberingFor(profile, invoice.type)
-  const predicted = predictNumber(series, invoice.issueDate)
+  // Issuing skips numbers any document already has (e.g. after merging a backup); the preview does the same.
+  const usedNumbers = new Set(app.invoices.filter((i) => i.number && i.id !== invoice.id).map((i) => i.number))
+  const numberFor = (date: string) => upcomingNumbers(series, date, usedNumbers, 1)[0] ?? predictNumber(series, date)
+  const predicted = numberFor(invoice.issueDate)
   const term = daysBetween(invoice.issueDate, invoice.dueDate)
   const validity = invoice.validUntil ? daysBetween(invoice.issueDate, invoice.validUntil) : 0
   const note = vatSchemeNote(invoice.vatScheme, invoice.language, invoice.vatExemptionNote)
@@ -311,7 +316,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
           today,
           newDueDate: redateInvoice(invoice, today).dueDate,
           supplyDateMoves: !!invoice.supplyDate && invoice.supplyDate === invoice.issueDate,
-          numberWithToday: predictNumber(series, today),
+          numberWithToday: numberFor(today),
         }
       : null
   const staleQuote: StaleQuoteDate | null = stale && quote ? { date: stale.date, today, validUntil: redateInvoice(invoice, today).validUntil ?? today, numberWithToday: stale.numberWithToday } : null
@@ -351,7 +356,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     accounts.length > 1 && invoice.bankAccountIds.length > 0 && !quote ? t('editor.bankAccounts') : '',
     invoice.notes ? t('field.notes') : '',
   ].filter(Boolean)
-  const moreSummary = inUse.length ? t('editor.moreInUse', { list: inUse.join(', ') }) : t('editor.moreHintCalm')
+  const moreSummary = inUse.length ? t('editor.moreInUse', { list: inUse.join(', ') }) : t(quote ? 'quote.moreHintCalm' : 'editor.moreHintCalm')
 
   // ---- actions --------------------------------------------------------------
   const act = async (key: string, fn: () => Promise<void>) => {
@@ -470,7 +475,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       cancelLabel: t('common.back'),
       danger: true,
     })
-    if (ok) await act('cancel', () => changeStatus(app.cancelInvoice))
+    if (!ok) return
+    await act('cancel', async () => {
+      await changeStatus(app.cancelInvoice)
+      // A cancelled invoice is not repeated any more.
+      const rules = stopRulesFor(app.recurringRules, invoice.id, nowISO())
+      for (const rule of rules) await app.saveRecurringRule(rule)
+      if (rules.length) toast.success(t('payment.cancelledOnly', { number: invoice.number }) + ' ' + t('recurring.stoppedOnCancel'))
+    })
   }
 
   const deleteDraft = async () => {
@@ -559,7 +571,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   <h1 ref={titleRef} tabIndex={-1}>
                     {title}
                   </h1>
-                  {ro && (qStatus ? <QuoteStatusWord status={qStatus} /> : <StatusWord status={status} />)}
+                  {ro && (qStatus ? <QuoteStatusWord status={qStatus} sent={app.invoiceEvents.some((e) => e.invoiceId === invoice.id && e.kind === 'sent')} /> : <StatusWord status={status} />)}
                 </div>
                 <p className="ed-meta">{ro ? meta : <SaveIndicator state={autosave.state} onRetry={() => void autosave.flush()} />}</p>
               </div>
@@ -641,7 +653,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               aside={totals.showVat ? t('editor.pricesExclVat') : undefined}
               hint={invoice.type === 'credit-note' ? t('editor.creditLinesHint') : undefined}
             >
-              <TextRows kind="before" rows={invoice.textBefore} onChange={(textBefore) => set({ textBefore })} disabled={ro} />
+              <TextRows kind="before" rows={invoice.textBefore} onChange={(textBefore) => set({ textBefore })} disabled={ro} quote={quote} />
               <LinesEditor
                 lines={invoice.lines}
                 onChange={(lines) => set({ lines })}
@@ -654,7 +666,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 disabled={ro}
                 grossLabel={credit ? t('totals.credited') : quote ? t('totals.grossShort') : undefined}
               />
-              <TextRows kind="after" rows={invoice.textAfter} onChange={(textAfter) => set({ textAfter })} disabled={ro} />
+              <TextRows kind="after" rows={invoice.textAfter} onChange={(textAfter) => set({ textAfter })} disabled={ro} quote={quote} />
             </EdSection>
 
             <EdSection id="sec-terms" title={quote ? t('quote.sectionTerms') : t('editor.sectionPayment')}>
@@ -780,7 +792,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               {ro ? (
                 <dl className="ed-design-facts">
                   <div>
-                    <dt>{t('field.invoiceLanguage')}</dt>
+                    <dt>{t(quote ? 'quote.language' : 'field.invoiceLanguage')}</dt>
                     <dd>{languageOptions(t).find((o) => o.value === invoice.language)?.label ?? invoice.language}</dd>
                   </div>
                   <div>
@@ -805,7 +817,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               ) : (
                 <>
                 <div className="grid">
-                  <SelectField label={t('field.invoiceLanguage')} path="language" value={invoice.language} onChange={(language) => set({ language })} options={languageOptions(t)} />
+                  <SelectField label={t(quote ? 'quote.language' : 'field.invoiceLanguage')} path="language" value={invoice.language} onChange={(language) => set({ language })} options={languageOptions(t)} />
                 </div>
                 <TemplatePicker
                   value={invoice.templateId}
@@ -938,7 +950,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               {invoice.issuedAt && (
                 <div>
                   <dt>{t('status.issued')}</dt>
-                  <dd>{formatDate(invoice.issuedAt.slice(0, 10))}</dd>
+                  <dd>{formatDate(localDateOf(invoice.issuedAt))}</dd>
                 </div>
               )}
               {quote ? (
@@ -983,12 +995,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 )}
               </div>
             )}
-            {quote && !justIssued && <QuoteActions invoice={invoice} primary={!primary} />}
-            {canRecur(invoice) && (
-              <div className="ed-recurring">
-                <RecurringControl invoice={invoice} />
-              </div>
-            )}
+            {quote && <QuoteActions invoice={invoice} primary={!primary && !justIssued} />}
+            <RecurringControl invoice={invoice} className="ed-recurring" />
             {xmlIssues.length > 0 && (
               <section className="ed-einvoice" aria-labelledby="einvoice-title">
                 <h2 id="einvoice-title">{t('einvoice.title')}</h2>

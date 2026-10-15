@@ -8,7 +8,7 @@ import { backupFileName, requestPersistentStorage, serializeBackup } from '../..
 import { useApp } from '../AppContext'
 import { BackupSection } from './settings/BackupSection'
 import ExportSection from './settings/ExportSection'
-import { GOOGLE_CLIENT_ID_RE, keepClientId, paymentDetailChanges, readBackupText } from './backupReview'
+import { backupContents, GOOGLE_CLIENT_ID_RE, keepClientId, paymentDetailChanges, readBackupText } from './backupReview'
 import { Dialog, useConfirm } from '../components/Dialog'
 import { CheckboxField, TextField } from '../components/fields'
 import { Section } from '../components/misc'
@@ -73,7 +73,7 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
         </>
       }
     >
-      <p>{t('backup.contains', { date: formatDateTime(backup.exportedAt), invoices: backup.invoices.length, clients: backup.clients.length })}</p>
+      <p>{backupContents(backup, t)}</p>
       {backup.profile && <p className="muted">{t('backup.containsProfile', { name: backup.profile.name })}</p>}
       <ul className="muted small">
         <li>{t('backup.mergeHint')}</li>

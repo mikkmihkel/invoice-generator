@@ -70,7 +70,7 @@ export function createEmptyQuote(profile: CompanyProfile, client?: Client, today
 
 /**
  * Invoice draft from an accepted quote: buyer, lines, currency, VAT treatment, notes, free-text rows, order
- * reference and design are copied; dates are today's with the profile's payment term; seller, bank accounts,
+ * reference and design are copied (not the exchange rate); dates are today's with the profile's payment term; seller, bank accounts,
  * late interest, payment QR and footer come from the current profile like on any new draft. The draft links back
  * to the quote (convertedFromQuoteId); use `markQuoteAccepted` for the link on the quote itself.
  */
@@ -92,7 +92,8 @@ export function quoteToInvoiceDraft(quote: Invoice, profile: CompanyProfile, tod
     createdAt: now,
     updatedAt: now,
   }
-  for (const key of ['vatExemptionNote', 'eurExchangeRate', 'orderReference', 'notes', 'textBefore', 'textAfter', 'secondaryColor', 'colorMode'] as const) {
+  // The exchange rate is not copied: VAT in euros needs the rate of the invoice's own supply date.
+  for (const key of ['vatExemptionNote', 'orderReference', 'notes', 'textBefore', 'textAfter', 'secondaryColor', 'colorMode'] as const) {
     if (quote[key] !== undefined) draft[key] = clone(quote[key]) as never
     else delete draft[key]
   }

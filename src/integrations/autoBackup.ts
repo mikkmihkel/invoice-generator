@@ -12,10 +12,10 @@ export const AUTO_BACKUP_MIN_INTERVAL_MS = 60_000
 /** Retry after a failed upload (network, Drive error). */
 export const AUTO_BACKUP_RETRY_MS = 5 * 60_000
 export const KEEP_VERSIONS_DEFAULT = 10
-export const KEEP_VERSIONS_MIN = 1
+export const KEEP_VERSIONS_MIN = 3
 export const KEEP_VERSIONS_MAX = 100
 
-/** Settings with defaults applied and keepVersions clamped to 1–100. */
+/** Settings with defaults applied and keepVersions clamped to 3–100. */
 export function normalizeAutoBackup(s: Partial<AutoBackupSettings> | null | undefined): AutoBackupSettings {
   const keep = Number.isFinite(s?.keepVersions) ? Math.round(s!.keepVersions!) : KEEP_VERSIONS_DEFAULT
   const out: AutoBackupSettings = {
@@ -48,17 +48,107 @@ export function parseAutoBackupFileName(name: string): { date: Date; encrypted: 
   return { date, encrypted: !!m[7] }
 }
 
+/** When the file's content was last written (the manual backup file is overwritten in place). */
 function fileTime(f: DriveBackupFile): number {
-  const t = Date.parse(f.createdTime ?? '')
-  if (!Number.isNaN(t)) return t
+  const times = [f.createdTime, f.modifiedTime].map((v) => Date.parse(v ?? '')).filter((t) => !Number.isNaN(t))
+  if (times.length) return Math.max(...times)
   return parseAutoBackupFileName(f.name)?.date.getTime() ?? 0
 }
 
-/** Automatic backup versions beyond the newest `keep` (other files in the folder are never touched). */
-export function versionsToPrune(files: DriveBackupFile[], keep: number): DriveBackupFile[] {
-  const auto = files.filter((f) => f.automatic && parseAutoBackupFileName(f.name))
-  auto.sort((a, b) => fileTime(b) - fileTime(a) || (a.name < b.name ? 1 : a.name > b.name ? -1 : 0))
-  return auto.slice(Math.max(KEEP_VERSIONS_MIN, keep))
+const newestFirst = (files: DriveBackupFile[]) =>
+  [...files].sort((a, b) => fileTime(b) - fileTime(a) || (a.name < b.name ? 1 : a.name > b.name ? -1 : 0))
+
+/** Issued (non-draft) documents in a backup: these can never be deleted, so a backup with fewer is missing data. */
+export function issuedCount(backup: BackupFile): number {
+  return backup.invoices.filter((i) => i.status !== 'draft').length
+}
+
+/**
+ * This browser's automatic versions to move to the trash after uploading `current`: those beyond the newest
+ * `keep` (at least KEEP_VERSIONS_MIN). Versions of other browsers, older untagged versions and the manual file are
+ * never touched, nor is a version with more issued documents than `current`. Nothing is pruned when `current` has
+ * fewer issued documents than the newest other backup in the folder.
+ */
+export function versionsToPrune(files: DriveBackupFile[], keep: number, device: string, current: DriveBackupFile): DriveBackupFile[] {
+  const floor = current.issued
+  const newestOther = newestFirst(files.filter((f) => f.id !== current.id))[0]
+  if (floor !== undefined && newestOther?.issued !== undefined && floor < newestOther.issued) return []
+  const own = newestFirst(files.filter((f) => f.automatic && f.device === device && parseAutoBackupFileName(f.name)))
+  return own.slice(Math.max(KEEP_VERSIONS_MIN, keep)).filter((f) => f.id !== current.id && (floor === undefined || (f.issued !== undefined && f.issued <= floor)))
+}
+
+/** Why a background backup is held back instead of uploaded. */
+export interface BackupHold {
+  /** Issued documents in this browser. */
+  local: number
+  /** Issued documents in the newest backup in Drive, when known. */
+  existing?: number
+}
+
+/**
+ * Hold a background backup when it would push a backup with less data on top of the existing ones (typically a new
+ * computer, or an older file restored by mistake). Once this browser has versions of its own, it is compared with
+ * its newest one; otherwise with the largest backup in Drive, and an empty database is also held back when a backup
+ * of unknown size exists (older versions and the manual file carry no count).
+ */
+export function backupHold(files: DriveBackupFile[], device: string, local: number): BackupHold | null {
+  const own = newestFirst(files.filter((f) => f.device === device && f.issued !== undefined))[0]
+  if (own) return local < own.issued! ? { local, existing: own.issued } : null
+  const most = Math.max(-1, ...files.map((f) => f.issued ?? -1))
+  if (local < most) return { local, existing: most }
+  return local === 0 && files.some((f) => f.issued === undefined) ? { local } : null
+}
+
+/**
+ * Plaintext automatic versions superseded by the newest encrypted one: older than it and without more issued
+ * documents. Offered for the trash after encryption is switched on.
+ */
+export function plaintextVersions(files: DriveBackupFile[]): DriveBackupFile[] {
+  const encrypted = newestFirst(files.filter((f) => f.automatic && f.encrypted))[0]
+  if (!encrypted) return []
+  const limit = encrypted.issued
+  return files.filter(
+    (f) =>
+      f.automatic &&
+      !f.encrypted &&
+      fileTime(f) <= fileTime(encrypted) &&
+      (limit === undefined || f.issued === undefined || f.issued <= limit),
+  )
+}
+
+/**
+ * The backup to preselect for a restore: the newest one that has at least as many issued documents as any other
+ * (an unknown count counts as large), and never an empty one while another backup may hold documents.
+ */
+export function preferredRestoreFile(files: DriveBackupFile[]): DriveBackupFile | undefined {
+  const sorted = newestFirst(files)
+  const most = Math.max(0, ...sorted.map((f) => f.issued ?? 0))
+  const hasData = sorted.some((f) => f.issued !== 0)
+  return sorted.find((f) => (f.issued ?? Infinity) >= most && !(f.issued === 0 && hasData)) ?? sorted[0]
+}
+
+const DEVICE_KEY = 'invoice-generator:backupDeviceId'
+let sessionDeviceId: string | null = null
+
+/** Random id of this browser (shared by its tabs), recorded on each uploaded version so pruning stays local. */
+export function getBackupDeviceId(): string {
+  try {
+    const stored = localStorage.getItem(DEVICE_KEY)
+    if (stored && /^[0-9a-f]{32}$/.test(stored)) return stored
+  } catch {
+    // storage unavailable: an id for this session only
+  }
+  if (!sessionDeviceId) {
+    const bytes = new Uint8Array(16)
+    globalThis.crypto.getRandomValues(bytes)
+    sessionDeviceId = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+  }
+  try {
+    localStorage.setItem(DEVICE_KEY, sessionDeviceId)
+    return localStorage.getItem(DEVICE_KEY) ?? sessionDeviceId
+  } catch {
+    return sessionDeviceId
+  }
 }
 
 /** The backup without fields that change on every export or by the backup itself (export time, backup bookkeeping). */
@@ -148,8 +238,12 @@ export type AutoBackupPhase = 'idle' | 'running' | 'pending' | 'error'
 
 export interface AutoBackupStatus {
   phase: AutoBackupPhase
-  /** Why a backup is waiting: no Google token in this session, or no passphrase for encryption. */
-  reason?: 'signin' | 'passphrase'
+  /**
+   * Why a backup is waiting: no Google token in this session, no passphrase for encryption, or held back because
+   * Drive has a backup with more data (`hold`).
+   */
+  reason?: 'signin' | 'passphrase' | 'held'
+  hold?: BackupHold
   /** Last failure (phase 'error'). */
   error?: unknown
 }
@@ -161,13 +255,31 @@ export function getAutoBackupStatus(): AutoBackupStatus {
   return status
 }
 export function setAutoBackupStatus(next: AutoBackupStatus): void {
-  if (next.phase === status.phase && next.reason === status.reason && next.error === status.error) return
+  const sameHold = next.hold?.local === status.hold?.local && next.hold?.existing === status.hold?.existing
+  if (next.phase === status.phase && next.reason === status.reason && next.error === status.error && sameHold) return
   status = next
   for (const l of [...statusListeners]) l()
 }
 export function subscribeAutoBackupStatus(listener: () => void): () => void {
   statusListeners.add(listener)
   return () => statusListeners.delete(listener)
+}
+
+let plaintextCount = 0
+const plaintextListeners = new Set<() => void>()
+
+/** Plaintext automatic versions left in Drive after the last encrypted backup (see plaintextVersions). */
+export function getPlaintextVersionCount(): number {
+  return plaintextCount
+}
+export function setPlaintextVersionCount(n: number): void {
+  if (n === plaintextCount) return
+  plaintextCount = n
+  for (const l of [...plaintextListeners]) l()
+}
+export function subscribePlaintextVersionCount(listener: () => void): () => void {
+  plaintextListeners.add(listener)
+  return () => plaintextListeners.delete(listener)
 }
 
 // ---------- Running a backup ----------
@@ -200,30 +312,54 @@ export interface AutoBackupRunOptions {
 }
 
 export type AutoBackupResult =
-  | { kind: 'uploaded'; file: DriveBackupFile; at: string; pruned: number; pruneFailed: boolean }
+  | {
+      kind: 'uploaded'
+      file: DriveBackupFile
+      at: string
+      pruned: number
+      pruneFailed: boolean
+      /** After an encrypted upload: superseded plaintext automatic versions still in Drive. */
+      plaintextVersions: number
+    }
+  | { kind: 'held'; hold: BackupHold }
   | { kind: 'unchanged' }
   | { kind: 'needs-signin' }
   | { kind: 'needs-passphrase' }
 
-/** Upload a new backup version if the data changed, then trash automatic versions beyond `keepVersions`. */
+/**
+ * Upload a new backup version if the data changed, then trash this browser's versions beyond `keepVersions`.
+ * A background run first checks Drive and holds back (kind 'held') a backup with less data than the newest one
+ * there; a user-initiated run always uploads.
+ */
 export function runAutoBackup(opts: AutoBackupRunOptions): Promise<AutoBackupResult> {
   const interactive = opts.interactive === true
   const call: DriveCallOptions | undefined = interactive ? undefined : { interactive: false }
   const { clientId, folderName, settings } = opts
   return withBackupLock(async (): Promise<AutoBackupResult> => {
     const backup = await opts.exportBackup()
-    const hash = await backupFingerprint(backup)
+    // Switching encryption on must produce an encrypted version even when the data did not change.
+    const hash = `${await backupFingerprint(backup)}${settings.encrypt ? ':enc' : ''}`
     if (!interactive && readLastFingerprint(clientId, folderName) === hash) return { kind: 'unchanged' }
     if (!interactive && !hasAccessToken(clientId, ['drive'])) return { kind: 'needs-signin' }
     const secret = settings.encrypt ? opts.passphrase : null
     if (settings.encrypt && !secret) return { kind: 'needs-passphrase' }
 
+    const device = getBackupDeviceId()
+    const issued = issuedCount(backup)
     const now = opts.now?.() ?? new Date()
-    const json = opts.serialize(backup)
-    const content = secret ? await encryptText(json, secret) : json
+    let existing: DriveBackupFile[] | null = null
     let file: DriveBackupFile
     try {
-      file = await uploadBackupVersion(clientId, folderName, autoBackupFileName(now, !!secret), content, !!secret, call)
+      if (!interactive) {
+        existing = await listDriveBackups(clientId, folderName, call)
+        const hold = backupHold(existing, device, issued)
+        if (hold) return { kind: 'held', hold }
+      }
+      const json = opts.serialize(backup)
+      const content = secret ? await encryptText(json, secret) : json
+      const name = autoBackupFileName(now, !!secret)
+      file = await uploadBackupVersion(clientId, folderName, name, content, !!secret, call, { device, issued })
+      file = { ...file, device, issued }
     } catch (e) {
       if (!interactive && e instanceof GoogleApiError && e.code === 'unauthorized') return { kind: 'needs-signin' }
       throw e
@@ -232,18 +368,35 @@ export function runAutoBackup(opts: AutoBackupRunOptions): Promise<AutoBackupRes
 
     let pruned = 0
     let pruneFailed = false
+    let files = existing ? [...existing] : []
     try {
-      const files = await listDriveBackups(clientId, folderName, call)
-      if (!files.some((f) => f.id === file.id)) files.unshift(file)
-      for (const old of versionsToPrune(files, settings.keepVersions)) {
+      if (!existing) files = await listDriveBackups(clientId, folderName, call)
+      files = [file, ...files.filter((f) => f.id !== file.id)]
+      for (const old of versionsToPrune(files, settings.keepVersions, device, file)) {
         await trashDriveFile(clientId, old.id, call)
+        files = files.filter((f) => f.id !== old.id)
         pruned++
       }
     } catch {
       // The backup itself succeeded; old versions are pruned on the next run.
       pruneFailed = true
     }
-    return { kind: 'uploaded', file, at: now.toISOString(), pruned, pruneFailed }
+    const plaintext = secret ? plaintextVersions(files).length : 0
+    return { kind: 'uploaded', file, at: now.toISOString(), pruned, pruneFailed, plaintextVersions: plaintext }
+  })
+}
+
+/** Move the plaintext automatic versions superseded by an encrypted one (plaintextVersions) to the Drive trash. */
+export function trashPlaintextVersions(clientId: string, folderName: string): Promise<number> {
+  return withBackupLock(async () => {
+    const files = await listDriveBackups(clientId, folderName)
+    let trashed = 0
+    for (const f of plaintextVersions(files)) {
+      await trashDriveFile(clientId, f.id)
+      trashed++
+    }
+    setPlaintextVersionCount(0)
+    return trashed
   })
 }
 

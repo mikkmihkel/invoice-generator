@@ -144,6 +144,21 @@ describe('Drive backup versions', () => {
     expect(body).toContain('"parents":["f1"]')
   })
 
+  it('records the uploading browser and the issued document count, and reads them back', async () => {
+    stubFetch(json({ files: [{ id: 'f1' }] }), json({ id: 'v1', name: 'arvegeneraator-backup-2026-10-15-142305.json' }))
+    const file = await uploadBackupVersion(CLIENT, 'Arved', 'arvegeneraator-backup-2026-10-15-142305.json', '{}', false, undefined, { device: 'abc123', issued: 7 })
+    expect(file).toMatchObject({ device: 'abc123', issued: 7 })
+    expect(await bodyText(calls[1].init.body)).toContain('"appProperties":{"invoiceGeneratorBackup":"auto","encrypted":"0","device":"abc123","issued":"7"}')
+
+    stubFetch(
+      json({ files: [{ id: 'f1' }] }),
+      json({ files: [{ id: 'a', name: 'x.json', createdTime: '2026-10-14T07:00:00Z', appProperties: { invoiceGeneratorBackup: 'auto', device: 'd', issued: 'many' } }] }),
+    )
+    const [listed] = await listDriveBackups(CLIENT, 'Arved')
+    expect(listed.device).toBe('d')
+    expect(listed.issued).toBeUndefined()
+  })
+
   it('lists automatic versions and the manual backup file, newest first, across pages', async () => {
     stubFetch(
       json({ files: [{ id: 'f1' }] }),

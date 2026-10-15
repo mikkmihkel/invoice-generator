@@ -1,6 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import App from '../../App'
+import { setAutoBackupStatus } from '../../integrations/autoBackup'
+import { createRepository } from '../../storage'
+import { makeInvoice, makeProfile } from '../../storage/testFixtures'
 import { createMemoryRepo, sampleProfile } from '../testing/memoryRepo'
 
 vi.mock('../../registry', async () => (await import('../testing/mocks')).registryMock())
@@ -75,5 +78,60 @@ describe('company page: default text rows', () => {
     const saved = repo.saveProfile.mock.calls[0][0].defaults
     expect(saved.textBefore).toEqual(['Vastavalt lepingule nr 12/2026', 'Esimene'])
     expect(saved).not.toHaveProperty('textAfter')
+  })
+})
+
+describe('company page: number series and other tabs', () => {
+  it('keeps numbers issued in another tab when saving an older copy of the profile', async () => {
+    const dbName = `company-page-${Math.random()}`
+    const repo = createRepository({ dbName })
+    const otherTab = createRepository({ dbName })
+    await repo.saveProfile(makeProfile({ numbering: { prefix: 'ARVE-', nextNumber: 7, padding: 4 } }))
+    window.location.hash = '#/company'
+    render(<App repository={repo} />)
+    fireEvent.change(await screen.findByLabelText('Veebileht'), { target: { value: 'https://example.ee' } })
+
+    await otherTab.saveInvoice(makeInvoice('i1', { issueDate: '2026-10-15', dueDate: '2026-10-29' }))
+    expect((await otherTab.issueInvoice('i1')).number).toBe('ARVE-0007')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Salvesta' }))
+    await waitFor(async () => expect((await repo.getProfile())?.website).toBe('https://example.ee'))
+    expect((await repo.getProfile())?.numbering.nextNumber).toBe(8)
+  })
+
+  it('lowers the next number only when it was set lower on purpose', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile({ numbering: { prefix: 'ARVE-', nextNumber: 20, padding: 4 } }) })
+    window.location.hash = '#/company'
+    render(<App repository={repo} />)
+    const section = within((await screen.findByRole('heading', { name: 'Arvete numeratsioon' })).closest('section')!)
+    fireEvent.change(section.getByLabelText('Järgmine number'), { target: { value: '5' } })
+    fireEvent.blur(section.getByLabelText('Järgmine number'))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvesta' }))
+    await waitFor(() => expect(repo.saveProfile).toHaveBeenCalledTimes(1))
+    expect(repo.saveProfile).toHaveBeenNthCalledWith(1, expect.objectContaining({ numbering: expect.objectContaining({ nextNumber: 5 }) }), {
+      allowLowerNumbering: { invoice: true, quote: false },
+    })
+
+    fireEvent.change(section.getByLabelText('Järgmine number'), { target: { value: '30' } })
+    fireEvent.blur(section.getByLabelText('Järgmine number'))
+    fireEvent.click(screen.getByRole('button', { name: 'Salvesta' }))
+    await waitFor(() => expect(repo.saveProfile).toHaveBeenCalledTimes(2))
+    expect(repo.saveProfile).toHaveBeenNthCalledWith(2, expect.objectContaining({ numbering: expect.objectContaining({ nextNumber: 30 }) }), {
+      allowLowerNumbering: { invoice: false, quote: false },
+    })
+  })
+})
+
+describe('shell: automatic backup indicator', () => {
+  it('says in the footer when automatic backup is waiting', async () => {
+    const repo = createMemoryRepo({ profile: sampleProfile() })
+    window.location.hash = '#/company'
+    render(<App repository={repo} />)
+    const footer = within((await screen.findByText('Kõik andmed on salvestatud ainult selles brauseris.')).closest('footer')!)
+    expect(footer.getByRole('link', { name: 'Tee varukoopia' })).toBeInTheDocument()
+    act(() => setAutoBackupStatus({ phase: 'pending', reason: 'signin' }))
+    expect(footer.getByRole('link', { name: 'Automaatne varundus ootab' })).toHaveAttribute('href', '#/settings')
+    act(() => setAutoBackupStatus({ phase: 'idle' }))
+    expect(footer.getByRole('link', { name: 'Tee varukoopia' })).toBeInTheDocument()
   })
 })

@@ -181,7 +181,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
 
   const payRows: [string, ReactNode][] = []
   if (invoice.type !== 'invoice' && !quote) payRows.push([t('field.invoiceType'), t(`invoice.type.${invoice.type}`)])
-  if (invoice.issueDate) payRows.push([t('field.issueDate'), formatDate(invoice.issueDate)])
+  if (invoice.issueDate) payRows.push([t(quote ? 'quote.fieldDate' : 'field.issueDate'), formatDate(invoice.issueDate)])
   if (quote && invoice.validUntil) payRows.push([t('detail.validUntil'), formatDate(invoice.validUntil)])
   if (fromQuote) payRows.push([t('detail.fromQuote'), <Link key="quote" to={`/?id=${fromQuote.id}`}>{fromQuote.number || t('list.draftNumber')}</Link>])
   if (invoice.dueDate && !credit && !quote) payRows.push([t('field.dueDate'), term > 0 ? t(term === 1 ? 'detail.termOne' : 'detail.term', { date: formatDate(invoice.dueDate), days: term }) : formatDate(invoice.dueDate)])
@@ -283,7 +283,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
         <Menu label={t('common.more')} text={t('detail.more')} items={items} disabled={busy} align="start" />
         <button type="button" className="btn btn-text doc-page-toggle" aria-pressed={showPage} onClick={togglePage}>
           <FileTextIcon />
-          {t('detail.showPage')}
+          {t(quote ? 'quote.showPage' : 'detail.showPage')}
         </button>
       </div>
 
@@ -305,7 +305,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           </div>
 
           <section className="doc-lines" aria-labelledby="doc-lines">
-            <h3 id="doc-lines">{t('detail.lines')}</h3>
+            <h3 id="doc-lines">{t(quote ? 'quote.sectionLines' : 'detail.lines')}</h3>
             {textRows(invoice.textBefore).map((r, i) => (
               <p key={i} className="doc-text-row doc-text-before">
                 {r}
@@ -386,7 +386,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           <p>{t('detail.draftNote')}</p>
         ) : (
           <>
-            {invoice.type === 'invoice' && (invoice.status === 'issued' || invoice.status === 'paid') && <RecurringControl invoice={invoice} className="doc-recurring" />}
+            <RecurringControl invoice={invoice} className="doc-recurring" />
             <p className="doc-lock">
               <LockSimpleIcon />
               <span>

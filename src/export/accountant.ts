@@ -1,6 +1,6 @@
 // Period export for the accountant: one CSV row per invoice / credit note, and a ZIP with the CSV, the PDFs and the
 // e-invoice XML files. Drafts and quotes are never exported.
-import { computeTotals, roundMoney, type Invoice, type InvoiceType, type ISODate, type UiLanguage, type VatScheme } from '../domain'
+import { computeTotals, isVoided, roundMoney, type Invoice, type InvoiceType, type ISODate, type UiLanguage, type VatScheme } from '../domain'
 import { buildUblXml } from '../einvoice'
 import { invoiceFileName, renderInvoicePdf } from '../pdf'
 import { toCsv, type CsvCell } from './csv'
@@ -81,6 +81,7 @@ const SCHEME_BUCKET: Record<Exclude<VatScheme, 'domestic'>, Bucket> = {
 const TEXT = {
   et: {
     number: 'Number',
+    reference: 'Viitenumber',
     type: 'Liik',
     issueDate: 'Kuupäev',
     supplyDate: 'Käibe kuupäev',
@@ -118,6 +119,7 @@ const TEXT = {
   },
   en: {
     number: 'Number',
+    reference: 'Reference number',
     type: 'Type',
     issueDate: 'Issue date',
     supplyDate: 'Supply date',
@@ -178,12 +180,30 @@ export function vatRateColumns(docs: readonly Invoice[]): number[] {
   return [...rates].sort((a, b) => b - a)
 }
 
-/** Header and data rows of the accountant CSV (amounts as numbers, in the document currency). */
-export function accountantRows(docs: readonly Invoice[], lang: UiLanguage = 'et'): CsvCell[][] {
+/**
+ * Gross total of the documents per currency, as in the CSV: an invoice cancelled without a credit note adds nothing.
+ * Pass every document as `allInvoices` so that credit notes outside the period are found.
+ */
+export function exportTotals(docs: readonly Invoice[], allInvoices: readonly Invoice[] = docs): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const inv of docs) {
+    const cur = (inv.currency || 'EUR').toUpperCase()
+    const gross = isVoided(inv, allInvoices) ? 0 : computeTotals(inv).gross
+    out.set(cur, roundMoney((out.get(cur) ?? 0) + gross))
+  }
+  return out
+}
+
+/**
+ * Header and data rows of the accountant CSV (amounts as numbers, in the document currency). `allInvoices` (every
+ * document, not only the period's) tells whether a cancelled invoice has a credit note: without one its amounts are 0.
+ */
+export function accountantRows(docs: readonly Invoice[], lang: UiLanguage = 'et', allInvoices: readonly Invoice[] = docs): CsvCell[][] {
   const L = TEXT[lang === 'en' ? 'en' : 'et']
   const rates = vatRateColumns(docs)
   const header: CsvCell[] = [
     L.number,
+    L.reference,
     L.type,
     L.issueDate,
     L.supplyDate,
@@ -207,7 +227,10 @@ export function accountantRows(docs: readonly Invoice[], lang: UiLanguage = 'et'
     L.credited,
   ]
   const rows = docs.map((inv): CsvCell[] => {
-    const totals = computeTotals(inv)
+    // Cancelled without a credit note: the row stays (status Tühistatud) with zero amounts. An invoice cancelled
+    // with a credit note keeps its full amounts, because the credit note nets it to zero.
+    const voided = isVoided(inv, allInvoices)
+    const totals = computeTotals(voided ? { ...inv, lines: [] } : inv)
     const byRate = new Map(inv.vatScheme === 'domestic' ? totals.vatBreakdown.map((b) => [b.rate, b]) : [])
     const bucket: Bucket | null = inv.vatScheme === 'domestic' ? (byRate.has(0) ? 'zero' : null) : SCHEME_BUCKET[inv.vatScheme]
     const bucketNet = (b: Bucket): number | null => {
@@ -216,6 +239,7 @@ export function accountantRows(docs: readonly Invoice[], lang: UiLanguage = 'et'
     }
     return [
       inv.number,
+      inv.referenceNumber?.replace(/\s+/g, '') ?? '',
       L.types[inv.type] ?? inv.type,
       csvDate(inv.issueDate),
       csvDate(inv.supplyDate || inv.issueDate),
@@ -236,7 +260,7 @@ export function accountantRows(docs: readonly Invoice[], lang: UiLanguage = 'et'
       bucketNet('outside'),
       totals.vat,
       totals.gross,
-      totalInEur(inv, totals.gross),
+      voided ? 0 : totalInEur(inv, totals.gross),
       L.statuses[inv.status] ?? inv.status,
       csvDate(inv.paidAt),
       inv.creditedInvoiceNumber ?? '',
@@ -246,8 +270,8 @@ export function accountantRows(docs: readonly Invoice[], lang: UiLanguage = 'et'
 }
 
 /** The accountant CSV (UTF-8 with BOM, `;`, decimal comma). */
-export function accountantCsv(docs: readonly Invoice[], lang: UiLanguage = 'et'): string {
-  return toCsv(accountantRows(docs, lang))
+export function accountantCsv(docs: readonly Invoice[], lang: UiLanguage = 'et', allInvoices: readonly Invoice[] = docs): string {
+  return toCsv(accountantRows(docs, lang, allInvoices))
 }
 
 /** File name stem for the period, e.g. "arved_2026-10-01_2026-10-31". */
@@ -263,6 +287,8 @@ export interface ExportProgress {
 export interface AccountantZipOptions {
   range: DateRange
   lang?: UiLanguage
+  /** Every document, for credit notes outside the period (see accountantRows). */
+  allInvoices?: readonly Invoice[]
   signal?: AbortSignal
   onProgress?: (p: ExportProgress) => void
 }
@@ -295,7 +321,7 @@ export async function accountantZip(docs: readonly Invoice[], opts: AccountantZi
   const base = exportBaseName(opts.range, lang)
   const now = new Date()
   const used = new Set<string>()
-  const entries: ZipEntry[] = [{ name: uniqueName(`${base}.csv`, used), data: accountantCsv(docs, lang), date: now }]
+  const entries: ZipEntry[] = [{ name: uniqueName(`${base}.csv`, used), data: accountantCsv(docs, lang, opts.allInvoices ?? docs), date: now }]
   const failed: string[] = []
   const total = docs.length
   opts.onProgress?.({ done: 0, total })

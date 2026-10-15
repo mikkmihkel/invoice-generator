@@ -31,6 +31,10 @@
   min-width: min(340px, calc(100vw - 32px));
   right: auto;
 }
+.line-suggestions[data-side='above'] {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
 .line-suggestions .opt-name {
   display: block;
   overflow-wrap: anywhere;
@@ -64,10 +68,10 @@
 }
 @media (max-width: 767px) {
   .product-table tbody tr {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     grid-template-areas:
-      'name name actions'
-      'unit price actions';
+      'name name name actions'
+      'unit price vat actions';
   }
   .product-table td.col-name {
     grid-area: name;
@@ -81,7 +85,9 @@
     font-size: var(--fs-xs);
   }
   .product-table td.col-vat {
-    display: none;
+    grid-area: vat;
+    font-size: var(--fs-xs);
+    color: var(--text-2);
   }
   .product-table td.col-actions {
     grid-area: actions;

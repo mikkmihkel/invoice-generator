@@ -161,6 +161,21 @@ describe('buildDocDefinition — variants', () => {
     }
   })
 
+  it('credit notes carry no payment instructions in any template', () => {
+    for (const templateId of templates) {
+      for (const language of languages) {
+        const def = buildDocDefinition(creditNoteInvoice({ templateId, language, paymentQr: true }))
+        const all = joined(def).toUpperCase()
+        expect(all, `${templateId} ${language}`).not.toContain('MAKSEANDMED')
+        expect(all, `${templateId} ${language}`).not.toContain('PAYMENT DETAILS')
+        expect(all, `${templateId} ${language}`).not.toContain('VIITENUMBER')
+        expect(all, `${templateId} ${language}`).not.toContain('REFERENCE NO.')
+        expect(all, `${templateId} ${language}`).not.toContain('20260007')
+        expect(all, `${templateId} ${language}`).not.toContain('EE71 7700')
+      }
+    }
+  })
+
   it('renders prepayment invoices', () => {
     const all = joined(buildDocDefinition(sampleInvoice({ type: 'prepayment', language: 'et-en' })))
     expect(all.toUpperCase()).toContain('ETTEMAKSUARVE / PREPAYMENT INVOICE')

@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { computeTotals, newId, outstandingAmount, type Invoice, type InvoiceLanguage } from '../../../domain'
+import { computeTotals, newId, outstandingAmount, stopRulesFor, type Invoice, type InvoiceLanguage } from '../../../domain'
 import { remainingCreditLines } from '../../../domain/settlement'
 import { buildUblXml } from '../../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../../integrations'
 import { invoiceFileName, renderInvoicePdf, renderInvoicePdfBase64 } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { useConfirm } from '../../components/Dialog'
+import { formatMoney } from '../../format'
 import { useToast } from '../../Toasts'
-import { errorMessage, isCreditSettled, localTodayISO } from '../../util'
+import { errorMessage, isCreditSettled, localTodayISO, nowISO } from '../../util'
 import { creditNoteFor, duplicateInvoice } from '../editor/builders'
 
 export type ActionKey = 'pdf' | 'print' | 'xml' | 'drive' | 'copy' | 'cancel' | 'paid' | 'unpaid' | 'delete'
@@ -147,6 +148,14 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
     })
 
   const duplicate = () => profile && openCopy(duplicateInvoice(effective, profile), t('actions.duplicated'))
+  /** Switch off the rules repeating this invoice once it is cancelled; true when there was one. */
+  const stopRecurring = async () => {
+    const rules = stopRulesFor(app.recurringRules, invoice.id, nowISO())
+    for (const rule of rules) await app.saveRecurringRule(rule)
+    return rules.length > 0
+  }
+  const stoppedNote = (stopped: boolean) => (stopped ? ' ' + t('recurring.stoppedOnCancel') : '')
+
   const creditNote = () => profile && openCopy(creditNoteFor(invoice, profile), t('actions.creditCreated', { number: invoice.number }))
 
   const cancel = async () => {
@@ -158,7 +167,11 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
       cancelLabel: t('common.back'),
       danger: true,
     })
-    if (ok) await act('cancel', async () => void (await app.cancelInvoice(invoice.id)))
+    if (!ok) return
+    await act('cancel', async () => {
+      await app.cancelInvoice(invoice.id)
+      if (await stopRecurring()) toast.success(t('payment.cancelledOnly', { number: invoice.number }) + stoppedNote(true))
+    })
   }
 
   const markUnpaid = () => act('unpaid', async () => void (await app.markInvoiceUnpaid(invoice.id)))
@@ -189,9 +202,17 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
       if (!profile) return
       const rates = new Set(invoice.lines.map((l) => l.vatRate))
       const lines = remainingCreditLines(invoice, app.invoices, (rate) => remainderLabel(invoice, rate, rates.size > 1 && invoice.vatScheme === 'domestic'))
+      if (lines === null) {
+        // No credit note comes to exactly the remainder: the user adjusts the lines, the invoice stays as it was.
+        const manual = creditNoteFor(invoice, profile)
+        await app.saveInvoice(manual)
+        toast.warning(t('payment.creditManual', { amount: formatMoney(remaining, invoice.currency) }))
+        navigate(`/invoices/${manual.id}`)
+        return
+      }
       if (lines.length === 0 || computeTotals({ ...invoice, lines: lines.map((l) => ({ ...l, id: '' })) }).gross === 0) {
         await app.cancelInvoice(invoice.id)
-        toast.success(t('payment.cancelledOnly', { number: invoice.number }))
+        toast.success(t('payment.cancelledOnly', { number: invoice.number }) + stoppedNote(await stopRecurring()))
         return
       }
       const draft: Invoice = { ...creditNoteFor(invoice, profile), lines: lines.map((l) => ({ ...l, id: newId() })) }
@@ -205,7 +226,7 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
         return
       }
       await app.cancelInvoice(invoice.id)
-      toast.success(t('payment.cancelled', { number: invoice.number, credit: credit.number }))
+      toast.success(t('payment.cancelled', { number: invoice.number, credit: credit.number }) + stoppedNote(await stopRecurring()))
       // Keep the cancelled invoice in view (the new credit note would otherwise be first in the list).
       navigate(`/?id=${invoice.id}`)
     })

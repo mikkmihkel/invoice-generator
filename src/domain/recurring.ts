@@ -107,9 +107,22 @@ export function ruleForInvoice(rules: readonly RecurringRule[], invoiceId: strin
   return own.find((r) => r.active) ?? own[0]
 }
 
-/** Whether an invoice can be the source of a rule: an issued (or paid) invoice or prepayment invoice. */
+/** The active rules repeating `invoiceId`, switched off: a cancelled invoice is not repeated any more. */
+export function stopRulesFor(rules: readonly RecurringRule[], invoiceId: string, now = new Date().toISOString()): RecurringRule[] {
+  return rules.filter((r) => r.sourceInvoiceId === invoiceId && r.active).map((r) => ({ ...r, active: false, updatedAt: now }))
+}
+
+/** Whether an invoice can be the source of a new rule: an issued (or paid) ordinary invoice. */
 export function canRecur(inv: Pick<Invoice, 'type' | 'status'>): boolean {
-  return (inv.type === 'invoice' || inv.type === 'prepayment') && (inv.status === 'issued' || inv.status === 'paid')
+  return inv.type === 'invoice' && (inv.status === 'issued' || inv.status === 'paid')
+}
+
+/**
+ * Id of the draft a rule makes for one date. Being derived from the rule and the date, a draft prepared twice
+ * (two tabs, or two devices whose backups are merged) is the same record. Safe as a database key and a URL segment.
+ */
+export function recurringDraftId(ruleId: string, date: ISODate): string {
+  return `rec-${ruleId.replace(/[^A-Za-z0-9_-]/g, '_')}-${date}`
 }
 
 /**
@@ -125,6 +138,7 @@ export function recurringDraft(source: Invoice, rule: Pick<RecurringRule, 'id'>,
   const shift = (d: ISODate | undefined, keepMonthEnd = false) => (d && parseISODate(d) ? addMonths(d, months, { keepMonthEnd }) : undefined)
   const draft: Invoice = {
     ...base,
+    id: recurringDraftId(rule.id, date),
     type: source.type === 'prepayment' ? 'prepayment' : 'invoice',
     issueDate: date,
     dueDate: addDays(date, term),
@@ -143,7 +157,8 @@ export function recurringDraft(source: Invoice, rule: Pick<RecurringRule, 'id'>,
     if (source[key] !== undefined) draft[key] = structuredCopy(source[key])
     else delete draft[key]
   }
-  for (const key of ['vatExemptionNote', 'eurExchangeRate', 'orderReference', 'notes', 'textBefore', 'textAfter', 'lateInterestPercentPerDay', 'footerNote', 'secondaryColor', 'colorMode', 'paymentQr'] as const) {
+  // The exchange rate is not copied: VAT in euros needs the rate of the new supply date.
+  for (const key of ['vatExemptionNote', 'orderReference', 'notes', 'textBefore', 'textAfter', 'lateInterestPercentPerDay', 'footerNote', 'secondaryColor', 'colorMode', 'paymentQr'] as const) {
     copy(key)
   }
   const supplyDate = shift(source.supplyDate)
@@ -170,7 +185,7 @@ export interface RecurringRun {
 /**
  * Prepare the drafts that are due on `today`: for every active rule with nextDate ≤ today, one draft per missed
  * period (the latest MAX_CATCH_UP of them), then nextDate moves past today. A draft that already exists for the same rule and
- * issue date (e.g. created in another tab) is not created twice. Rules whose source invoice is missing or was
+ * date (same issue date or same id, e.g. created in another tab) is not created twice. Rules whose source invoice is missing or was
  * cancelled are left untouched.
  */
 export function prepareRecurringDrafts(
@@ -187,6 +202,7 @@ export function prepareRecurringDrafts(
     const source = byId.get(rule.sourceInvoiceId)
     if (!source || source.status === 'cancelled' || source.status === 'draft') continue
     const existing = new Set(invoices.filter((i) => i.recurringRuleId === rule.id && i.id !== source.id).map((i) => i.issueDate))
+    const made = (d: ISODate) => existing.has(d) || byId.has(recurringDraftId(rule.id, d))
     const due: ISODate[] = []
     let date = rule.nextDate
     while (date <= today) {
@@ -195,7 +211,7 @@ export function prepareRecurringDrafts(
     }
     let last: Invoice | undefined
     for (const d of due.slice(-MAX_CATCH_UP)) {
-      if (existing.has(d)) continue
+      if (made(d)) continue
       last = recurringDraft(source, rule, d, profile, now)
       out.drafts.push(last)
     }

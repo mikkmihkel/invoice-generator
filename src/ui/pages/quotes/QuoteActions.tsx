@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { invoiceFromQuote, markQuoteAccepted, quoteStatus, quoteToInvoiceDraft, type Invoice } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { formatDate } from '../../format'
+import { localDateOf } from '../invoice-detail/status'
 import { useToast } from '../../Toasts'
 import { errorMessage, localTodayISO } from '../../util'
 
@@ -46,7 +47,7 @@ export function QuoteActions({ invoice, className, primary = true }: { invoice: 
     <div className={`quote-actions${className ? ' ' + className : ''}`}>
       {converted ? (
         <p className="quote-converted">
-          {invoice.quoteAcceptedAt && <span className="muted">{t('quote.acceptedOn', { date: formatDate(invoice.quoteAcceptedAt.slice(0, 10)) })}. </span>}
+          {invoice.quoteAcceptedAt && <span className="muted">{t('quote.acceptedOn', { date: formatDate(localDateOf(invoice.quoteAcceptedAt)) })}. </span>}
           {t('quote.converted')} <Link to={`/invoices/${converted.id}`}>{converted.number || t('quote.draftNumber')}</Link>
         </p>
       ) : (

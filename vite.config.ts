@@ -46,6 +46,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
+    // UI flows mount whole screens in jsdom; their own waits (up to 5 s) must fit inside the test limit.
+    testTimeout: 15000,
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.{ts,mjs}'],
   },
 })

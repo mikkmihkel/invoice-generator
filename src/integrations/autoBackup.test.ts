@@ -3,16 +3,23 @@ import type { BackupFile } from '../domain'
 import {
   autoBackupFileName,
   backupFingerprint,
+  backupHold,
   BackupScheduler,
   getAutoBackupStatus,
+  getBackupDeviceId,
   getBackupPassphrase,
+  getPlaintextVersionCount,
   normalizeAutoBackup,
   parseAutoBackupFileName,
+  plaintextVersions,
+  preferredRestoreFile,
   runAutoBackup,
   setAutoBackupStatus,
   setBackupPassphrase,
+  setPlaintextVersionCount,
   subscribeAutoBackupStatus,
   subscribeBackupPassphrase,
+  trashPlaintextVersions,
   versionsToPrune,
   type AutoBackupRunOptions,
 } from './autoBackup'
@@ -51,6 +58,9 @@ const auto = (id: string, createdTime: string, name = `arvegeneraator-backup-${c
   automatic: true,
 })
 
+const issuedInvoice = (id: string) => ({ id, status: 'issued' }) as never
+const draftInvoice = (id: string) => ({ id, status: 'draft' }) as never
+
 describe('file names and settings', () => {
   it('names versions by local date and time', () => {
     const d = new Date(2026, 9, 15, 14, 23, 5)
@@ -66,24 +76,105 @@ describe('file names and settings', () => {
     expect(normalizeAutoBackup({ enabled: true, encrypt: true, keepVersions: 0, lastBackupAt: '2026-10-15T10:00:00Z' })).toEqual({
       enabled: true,
       encrypt: true,
-      keepVersions: 1,
+      keepVersions: 3,
       lastBackupAt: '2026-10-15T10:00:00Z',
     })
     expect(normalizeAutoBackup({ keepVersions: 5000 }).keepVersions).toBe(100)
     expect(normalizeAutoBackup({ keepVersions: Number.NaN }).keepVersions).toBe(10)
   })
 
-  it('prunes only automatic versions beyond the newest N', () => {
+  it('prunes only this browser’s automatic versions beyond the newest N, keeping at least 3', () => {
+    const mine = (id: string, time: string) => ({ ...auto(id, time), device: 'me', issued: 5 })
+    const current = mine('5', '2026-10-16T10:00:00Z')
     const files = [
-      auto('3', '2026-10-15T10:00:00Z'),
+      current,
+      mine('4', '2026-10-15T10:00:00Z'),
       { ...auto('m', '2020-01-01T00:00:00Z', 'invoice-generator-backup.json'), automatic: false },
-      auto('1', '2026-10-13T10:00:00Z'),
-      auto('2', '2026-10-14T10:00:00Z'),
-      { ...auto('x', '2019-01-01T00:00:00Z', 'other.json') },
+      mine('2', '2026-10-13T10:00:00Z'),
+      mine('3', '2026-10-14T10:00:00Z'),
+      { ...mine('x', '2019-01-01T00:00:00Z'), name: 'other.json' },
+      auto('legacy', '2018-01-01T00:00:00Z'),
+      { ...auto('other', '2017-01-01T00:00:00Z'), device: 'other', issued: 1 },
     ]
-    expect(versionsToPrune(files, 2).map((f) => f.id)).toEqual(['1'])
-    expect(versionsToPrune(files, 10)).toEqual([])
-    expect(versionsToPrune(files, 0).map((f) => f.id)).toEqual(['2', '1'])
+    expect(versionsToPrune(files, 3, 'me', current).map((f) => f.id)).toEqual(['2'])
+    expect(versionsToPrune(files, 10, 'me', current)).toEqual([])
+    expect(versionsToPrune(files, 0, 'me', current).map((f) => f.id)).toEqual(['2'])
+    expect(versionsToPrune(files, 1, 'someone-else', current)).toEqual([])
+  })
+
+  it('never trashes the backup of another computer or one with more issued documents', () => {
+    const good = { ...auto('good', '2026-10-14T10:00:00Z'), device: 'old-pc', issued: 40 }
+    const empty = { ...auto('empty', '2026-10-15T10:00:00Z'), device: 'new-pc', issued: 0 }
+    expect(versionsToPrune([good, empty], 1, 'new-pc', empty)).toEqual([])
+    expect(versionsToPrune([auto('legacy', '2026-10-14T10:00:00Z'), empty], 1, 'new-pc', empty)).toEqual([])
+
+    // An older file restored by mistake on the same computer: the larger versions survive any number of uploads.
+    const mine = (id: string, day: number, issued: number) => {
+      const date = `2026-10-${String(day).padStart(2, '0')}`
+      return { ...auto(id, `${date}T10:00:00Z`, `arvegeneraator-backup-${date}-100000.json`), device: 'pc', issued }
+    }
+    const before = [mine('a', 1, 40), mine('b', 2, 40), mine('c', 3, 40), mine('d', 4, 40)]
+    const small = mine('s1', 5, 3)
+    expect(versionsToPrune([small, ...before], 3, 'pc', small)).toEqual([])
+    const smaller = [mine('s4', 9, 3), mine('s3', 8, 3), mine('s2', 7, 3), mine('s1', 6, 3)]
+    expect(versionsToPrune([...smaller, ...before], 3, 'pc', smaller[0]).map((f) => f.id)).toEqual(['s1'])
+    const grown = mine('g', 10, 41)
+    expect(versionsToPrune([grown, ...smaller, ...before], 3, 'pc', grown).map((f) => f.id)).toEqual(['s2', 's1', 'd', 'c', 'b', 'a'])
+  })
+
+  it('holds a backup with less data than the newest one in Drive', () => {
+    const good = { ...auto('good', '2026-10-14T10:00:00Z'), device: 'old-pc', issued: 40 }
+    expect(backupHold([], 'new-pc', 0)).toBeNull()
+    expect(backupHold([good], 'new-pc', 0)).toEqual({ local: 0, existing: 40 })
+    expect(backupHold([good], 'new-pc', 39)).toEqual({ local: 39, existing: 40 })
+    expect(backupHold([good], 'new-pc', 40)).toBeNull()
+    expect(backupHold([{ ...good, device: 'new-pc' }], 'new-pc', 12)).toEqual({ local: 12, existing: 40 })
+    expect(backupHold([{ ...good, issued: 0 }], 'new-pc', 0)).toBeNull()
+    // Older versions and the manual file carry no count: only an empty database is held back.
+    const legacy = auto('legacy', '2026-10-14T10:00:00Z')
+    expect(backupHold([legacy], 'new-pc', 0)).toEqual({ local: 0 })
+    expect(backupHold([legacy], 'new-pc', 1)).toBeNull()
+    const manual = { ...auto('m', '2026-01-01T00:00:00Z', 'invoice-generator-backup.json'), automatic: false, modifiedTime: '2026-10-20T00:00:00Z' }
+    expect(backupHold([manual], 'new-pc', 0)).toEqual({ local: 0 })
+    // A newer empty backup of a third computer does not hide the larger one.
+    const empty = { ...auto('empty', '2026-10-15T10:00:00Z'), device: 'third-pc', issued: 0 }
+    expect(backupHold([empty, good], 'new-pc', 0)).toEqual({ local: 0, existing: 40 })
+    // After "Back up anyway" this browser's own newest version is the reference.
+    const mine = { ...empty, device: 'new-pc' }
+    expect(backupHold([mine, good, legacy], 'new-pc', 0)).toBeNull()
+    expect(backupHold([{ ...mine, issued: 5 }, good], 'new-pc', 4)).toEqual({ local: 4, existing: 5 })
+  })
+
+  it('preselects the newest restore candidate that is not smaller than the others', () => {
+    const good = { ...auto('good', '2026-10-14T10:00:00Z'), device: 'old-pc', issued: 40 }
+    const empty = { ...auto('empty', '2026-10-15T10:00:00Z'), device: 'new-pc', issued: 0 }
+    const legacy = auto('legacy', '2026-10-13T10:00:00Z')
+    expect(preferredRestoreFile([empty, good, legacy])?.id).toBe('good')
+    expect(preferredRestoreFile([empty, legacy])?.id).toBe('legacy')
+    expect(preferredRestoreFile([{ ...good, issued: 41, id: 'newer', createdTime: '2026-10-16T10:00:00Z' }, good])?.id).toBe('newer')
+    expect(preferredRestoreFile([empty])?.id).toBe('empty')
+    expect(preferredRestoreFile([])).toBeUndefined()
+  })
+
+  it('finds plaintext versions superseded by an encrypted one', () => {
+    const enc = { ...auto('enc', '2026-10-15T10:00:00Z'), encrypted: true, issued: 10 }
+    const files = [
+      enc,
+      { ...auto('later', '2026-10-16T10:00:00Z') },
+      auto('old', '2026-10-14T10:00:00Z'),
+      { ...auto('bigger', '2026-10-13T10:00:00Z'), issued: 11 },
+      { ...auto('m', '2026-10-01T10:00:00Z', 'invoice-generator-backup.json'), automatic: false },
+    ]
+    expect(plaintextVersions(files).map((f) => f.id)).toEqual(['old'])
+    expect(plaintextVersions(files.filter((f) => f.id !== 'enc'))).toEqual([])
+  })
+
+  it('keeps a per-browser device id', () => {
+    localStorage.clear()
+    const id = getBackupDeviceId()
+    expect(id).toMatch(/^[0-9a-f]{32}$/)
+    expect(getBackupDeviceId()).toBe(id)
+    expect(localStorage.getItem('invoice-generator:backupDeviceId')).toBe(id)
   })
 })
 
@@ -127,7 +218,7 @@ describe('runAutoBackup', () => {
   it('uploads a version, then skips until the data changes', async () => {
     const res = await run()
     expect(res).toMatchObject({ kind: 'uploaded', at: new Date(2026, 9, 15, 14, 23, 5).toISOString(), pruned: 0 })
-    expect(uploadBackupVersion).toHaveBeenCalledWith(CLIENT, 'Arved', 'arvegeneraator-backup-2026-10-15-142305.json', JSON.stringify(data), false, { interactive: false })
+    expect(uploadBackupVersion).toHaveBeenCalledWith(CLIENT, 'Arved', 'arvegeneraator-backup-2026-10-15-142305.json', JSON.stringify(data), false, { interactive: false }, { device: getBackupDeviceId(), issued: 0 })
     expect(await run()).toEqual({ kind: 'unchanged' })
     data = backup({ exportedAt: '2031-01-01T00:00:00Z' })
     expect(await run()).toEqual({ kind: 'unchanged' })
@@ -175,22 +266,77 @@ describe('runAutoBackup', () => {
     expect(JSON.parse(await decryptText(content, 'salajane parool'))).toEqual(data)
   })
 
-  it('moves automatic versions beyond keepVersions to the trash', async () => {
+  it('moves this browser’s automatic versions beyond keepVersions to the trash', async () => {
+    const mine = (id: string, time: string) => ({ ...auto(id, time), device: getBackupDeviceId(), issued: 0 })
     vi.mocked(listDriveBackups).mockResolvedValue([
-      auto('4', '2026-10-14T10:00:00Z'),
-      auto('2', '2026-10-12T10:00:00Z'),
-      auto('3', '2026-10-13T10:00:00Z'),
-      auto('1', '2026-10-11T10:00:00Z'),
+      mine('4', '2026-10-14T10:00:00Z'),
+      mine('2', '2026-10-12T10:00:00Z'),
+      mine('3', '2026-10-13T10:00:00Z'),
+      mine('1', '2026-10-11T10:00:00Z'),
+      auto('legacy', '2026-10-10T10:00:00Z'),
     ])
     const res = await run()
     expect(res).toMatchObject({ kind: 'uploaded', pruned: 2, pruneFailed: false })
     expect(vi.mocked(trashDriveFile).mock.calls.map((c) => c[1])).toEqual(['2', '1'])
     expect(trashDriveFile).toHaveBeenCalledWith(CLIENT, '2', { interactive: false })
+    expect(listDriveBackups).toHaveBeenCalledTimes(1)
   })
 
   it('still reports the upload when pruning fails', async () => {
-    vi.mocked(listDriveBackups).mockRejectedValue(new GoogleApiError('network'))
+    const mine = (id: string, time: string) => ({ ...auto(id, time), device: getBackupDeviceId(), issued: 0 })
+    vi.mocked(listDriveBackups).mockResolvedValue(['1', '2', '3', '4'].map((id) => mine(id, `2026-10-1${id}T10:00:00Z`)))
+    vi.mocked(trashDriveFile).mockRejectedValueOnce(new GoogleApiError('network'))
     expect(await run()).toMatchObject({ kind: 'uploaded', pruneFailed: true })
+  })
+
+  it('holds the first background backup of an empty browser when Drive has another computer’s backups', async () => {
+    const good = { ...auto('good', '2026-10-14T10:00:00Z'), device: 'old-pc', issued: 40 }
+    vi.mocked(listDriveBackups).mockResolvedValue([good])
+    data = backup({ invoices: [draftInvoice('d1')] })
+    expect(await run()).toEqual({ kind: 'held', hold: { local: 0, existing: 40 } })
+    expect(uploadBackupVersion).not.toHaveBeenCalled()
+    expect(trashDriveFile).not.toHaveBeenCalled()
+    // Not recorded as backed up: the next run checks again.
+    expect((await run()).kind).toBe('held')
+
+    // "Back up anyway" uploads, tagged, and trashes nothing.
+    const res = await run({ interactive: true, settings: { enabled: true, encrypt: false, keepVersions: 1 } })
+    expect(res).toMatchObject({ kind: 'uploaded', pruned: 0, file: { device: getBackupDeviceId(), issued: 0 } })
+    expect(trashDriveFile).not.toHaveBeenCalled()
+  })
+
+  it('holds a background backup after an older file was restored over newer data', async () => {
+    const mine = (id: string, time: string, issued: number) => ({ ...auto(id, time), device: getBackupDeviceId(), issued })
+    vi.mocked(listDriveBackups).mockResolvedValue([mine('a', '2026-10-14T10:00:00Z', 2)])
+    data = backup({ invoices: [issuedInvoice('i1')] })
+    expect(await run()).toEqual({ kind: 'held', hold: { local: 1, existing: 2 } })
+    data = backup({ invoices: [issuedInvoice('i1'), issuedInvoice('i2'), draftInvoice('d')] })
+    expect(await run()).toMatchObject({ kind: 'uploaded', file: { issued: 2 } })
+    expect(vi.mocked(uploadBackupVersion).mock.calls[0][6]).toEqual({ device: getBackupDeviceId(), issued: 2 })
+  })
+
+  it('uploads an encrypted version when encryption is switched on, and reports superseded plaintext versions', async () => {
+    vi.mocked(listDriveBackups).mockResolvedValue([auto('plain', '2026-10-14T10:00:00Z')])
+    vi.mocked(uploadBackupVersion).mockImplementation(async (_c, _f, name, _content, encrypted) => ({ id: 'new', name, encrypted, automatic: true, createdTime: '2026-10-15T11:23:05Z' }))
+    data = backup({ invoices: [issuedInvoice('i1')] })
+    expect((await run()).kind).toBe('uploaded')
+    expect(await run()).toEqual({ kind: 'unchanged' })
+    const settings = { enabled: true, encrypt: true, keepVersions: 10 }
+    const res = await run({ settings, passphrase: 'salajane parool' })
+    expect(res).toMatchObject({ kind: 'uploaded', file: { encrypted: true }, plaintextVersions: 1 })
+    expect(await run({ settings, passphrase: 'salajane parool' })).toEqual({ kind: 'unchanged' })
+  })
+
+  it('moves superseded plaintext versions to the trash on request', async () => {
+    vi.mocked(listDriveBackups).mockResolvedValue([
+      { ...auto('enc', '2026-10-15T10:00:00Z'), encrypted: true },
+      auto('p1', '2026-10-14T10:00:00Z'),
+      auto('p2', '2026-10-13T10:00:00Z'),
+    ])
+    setPlaintextVersionCount(2)
+    expect(await trashPlaintextVersions(CLIENT, 'Arved')).toBe(2)
+    expect(vi.mocked(trashDriveFile).mock.calls.map((c) => c[1])).toEqual(['p1', 'p2'])
+    expect(getPlaintextVersionCount()).toBe(0)
   })
 })
 

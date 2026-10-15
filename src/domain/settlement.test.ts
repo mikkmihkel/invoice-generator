@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { computeTotals } from './calc'
-import { creditedAmount, creditNotesFor, outstandingAmount, remainingCreditLines } from './settlement'
+import { creditedAmount, creditNotesFor, isVoided, outstandingAmount, remainingCreditLines } from './settlement'
 import type { Invoice } from './types'
 
 const inv = (p: Partial<Invoice> & { amount: number }): Invoice =>
@@ -56,6 +56,18 @@ describe('settlement', () => {
   })
 })
 
+describe('isVoided', () => {
+  it('only a document cancelled without an offsetting credit note counts as zero', () => {
+    const cancelled = { ...original, status: 'cancelled' as const }
+    const cn = inv({ id: 'b', number: '2026-0005', type: 'credit-note', creditedInvoiceNumber: '2026-0001', amount: -1180.18 })
+    expect(isVoided(original, [original])).toBe(false)
+    expect(isVoided(cancelled, [cancelled])).toBe(true)
+    expect(isVoided(cancelled, [cancelled, cn])).toBe(false)
+    expect(isVoided(cancelled, [cancelled, { ...cn, status: 'cancelled' }])).toBe(true)
+    expect(isVoided({ ...cn, status: 'cancelled' }, [cancelled, cn])).toBe(true)
+  })
+})
+
 describe('remainingCreditLines', () => {
   const label = (rate: number) => `Krediteerimata jääk (${rate}%)`
   const original2: Invoice = {
@@ -71,16 +83,16 @@ describe('remainingCreditLines', () => {
   }
   const cn = (id: string, lines: Invoice['lines']): Invoice => ({ ...original2, id, number: `CN-${id}`, type: 'credit-note', creditedInvoiceNumber: '2026-0010', lines })
   const settle = (lines: ReturnType<typeof remainingCreditLines>, all: Invoice[]) =>
-    outstandingAmount(original2, [...all, cn('final', lines.map((l, i) => ({ ...l, id: `n${i}` })))])
+    outstandingAmount(original2, [...all, cn('final', (lines ?? []).map((l, i) => ({ ...l, id: `n${i}` })))])
 
   it('reverses every line when nothing is credited yet', () => {
     const lines = remainingCreditLines(original2, [original2], label)
-    expect(lines.map((l) => [l.description, l.quantity])).toEqual([
+    expect(lines?.map((l) => [l.description, l.quantity])).toEqual([
       ['Arendus', -10],
       ['Domeen', -1],
       ['Raamat', -2],
     ])
-    expect(lines.every((l) => !('id' in l))).toBe(true)
+    expect(lines?.every((l) => !('id' in l))).toBe(true)
     expect(settle(lines, [original2])).toBe(0)
   })
 
@@ -88,7 +100,7 @@ describe('remainingCreditLines', () => {
     const partial = cn('p', [{ id: 'c1', description: 'Arendus', quantity: -4, unit: 'h', unitPrice: 65, vatRate: 24 }])
     const all = [original2, partial]
     const lines = remainingCreditLines(original2, all, label)
-    expect(lines.map((l) => [l.description, l.quantity])).toEqual([
+    expect(lines?.map((l) => [l.description, l.quantity])).toEqual([
       ['Arendus', -6],
       ['Domeen', -1],
       ['Raamat', -2],
@@ -104,8 +116,45 @@ describe('remainingCreditLines', () => {
       { description: 'Krediteerimata jääk (24%)', quantity: -1, unit: '', unitPrice: 574.9, vatRate: 24 },
       { description: 'Krediteerimata jääk (9%)', quantity: -1, unit: '', unitPrice: 30, vatRate: 9 },
     ])
-    expect(computeTotals({ ...original2, lines: lines.map((l, i) => ({ ...l, id: String(i) })) }).gross).toBe(-745.58)
+    expect(computeTotals({ ...original2, lines: (lines ?? []).map((l, i) => ({ ...l, id: String(i) })) }).gross).toBe(-745.58)
     expect(settle(lines, all)).toBe(0)
+  })
+
+  describe('with VAT rounded per rate', () => {
+    const base: Invoice = { ...original2, id: 'v', number: '2026-0020', lines: [{ id: 'l1', description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 100.03, vatRate: 24 }] }
+    const manual = (of: Invoice, lines: Invoice['lines']): Invoice => ({ ...of, id: 'm', number: 'CN-m', type: 'credit-note', creditedInvoiceNumber: of.number, lines })
+    const outstanding = (of: Invoice, all: Invoice[], lines: ReturnType<typeof remainingCreditLines>) =>
+      outstandingAmount(of, [...all, { ...manual(of, (lines ?? []).map((l, i) => ({ ...l, id: `n${i}` }))), id: 'final', number: 'CN-final' }])
+
+    it('gives up instead of leaving a cent open', () => {
+      // 124.04 € invoiced, 62.01 € credited: no single 24 % line comes to exactly 62.03 €.
+      const all = [base, manual(base, [{ id: 'c', description: 'Hinnaalandus', quantity: -1, unit: '', unitPrice: 50.01, vatRate: 24 }])]
+      expect(outstandingAmount(base, all)).toBe(62.03)
+      expect(remainingCreditLines(base, all, label)).toBeNull()
+    })
+
+    it('moves the last line by a cent when that closes the gap', () => {
+      const inv2: Invoice = { ...base, lines: [...base.lines, { id: 'l2', description: 'Raamat', quantity: 1, unit: 'tk', unitPrice: 10, vatRate: 9 }] }
+      const all = [inv2, manual(inv2, [{ id: 'c', description: 'Hinnaalandus', quantity: -1, unit: '', unitPrice: 50.01, vatRate: 24 }])]
+      const lines = remainingCreditLines(inv2, all, label)
+      expect(lines?.map((l) => [l.vatRate, l.unitPrice])).toEqual([
+        [24, 50.02],
+        [9, 10.01],
+      ])
+      expect(outstanding(inv2, all, lines)).toBe(0)
+    })
+
+    it('gives up when one rate was credited beyond its amount', () => {
+      const inv2: Invoice = {
+        ...base,
+        lines: [
+          { id: 'l1', description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 100, vatRate: 24 },
+          { id: 'l2', description: 'Raamat', quantity: 1, unit: 'tk', unitPrice: 100, vatRate: 9 },
+        ],
+      }
+      const all = [inv2, manual(inv2, [{ id: 'c', description: 'Hinnaalandus', quantity: -1, unit: '', unitPrice: 150, vatRate: 24 }])]
+      expect(remainingCreditLines(inv2, all, label)).toBeNull()
+    })
   })
 
   it('returns nothing when the invoice is already fully credited', () => {

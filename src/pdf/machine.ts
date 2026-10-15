@@ -184,6 +184,8 @@ const plainSpaces = (s: string) => s.replace(/[  ]/g, ' ')
 /** Machine-friendly facts shared by the keywords and the custom Info entries. */
 export function invoiceFacts(invoice: Invoice): Record<string, string> {
   const totals = computeTotals(invoice)
+  // Payment instructions only where the buyer pays: not on a credit note.
+  const payable = invoice.type !== 'credit-note'
   const facts: Record<string, string | undefined> = {
     InvoiceNumber: invoice.number || undefined,
     InvoiceType: invoice.type,
@@ -200,8 +202,8 @@ export function invoiceFacts(invoice: Invoice): Record<string, string> {
     VatAmount: totals.vat.toFixed(2),
     TotalAmount: totals.gross.toFixed(2),
     Currency: (invoice.currency || 'EUR').toUpperCase(),
-    ReferenceNumber: invoice.referenceNumber?.replace(/\s+/g, '') || undefined,
-    Iban: selectedBankAccounts(invoice).map((a) => normalizeIban(a.iban)).filter(Boolean).join(' ') || undefined,
+    ReferenceNumber: (payable && invoice.referenceNumber?.replace(/\s+/g, '')) || undefined,
+    Iban: (payable && selectedBankAccounts(invoice).map((a) => normalizeIban(a.iban)).filter(Boolean).join(' ')) || undefined,
   }
   return Object.fromEntries(Object.entries(facts).filter((e): e is [string, string] => !!e[1]))
 }

@@ -2,7 +2,7 @@ import { parse } from 'csv-parse/sync'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Invoice } from '../domain'
 import { creditNoteInvoice, line, sampleInvoice } from '../pdf/testFixtures'
-import { accountantCsv, accountantRows, accountantZip, isExportable, periodRange, selectForExport, totalInEur, vatRateColumns } from './accountant'
+import { accountantCsv, accountantRows, accountantZip, exportTotals, isExportable, periodRange, selectForExport, totalInEur, vatRateColumns } from './accountant'
 
 vi.mock('../pdf', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../pdf')>()
@@ -74,6 +74,7 @@ describe('accountantCsv', () => {
     // 12.5 h × 65 = 812.50 @ 24 %; 2 × 80.50 − 10 % = 144.90 @ 13 %; 1234.567 → 1234.57 @ 9 %
     expect(row).toMatchObject({
       Number: '2026-0007',
+      Viitenumber: '20260007',
       Liik: 'Arve',
       Kuupäev: '12.10.2026',
       'Käibe kuupäev': '10.10.2026',
@@ -130,6 +131,20 @@ describe('accountantCsv', () => {
     expect(row['Summa kokku'].startsWith('-')).toBe(true)
   })
 
+  it('zeroes an invoice cancelled without a credit note and keeps one cancelled with a credit note', () => {
+    const voided = sampleInvoice({ id: 'v', number: '2026-0005', status: 'cancelled' })
+    const credited = sampleInvoice({ id: 'c', number: '2026-0007', status: 'cancelled' })
+    const cn = creditNoteInvoice({ id: 'n', number: '2026-0008', status: 'issued', lines: credited.lines.map((l) => ({ ...l, quantity: -l.quantity })) })
+    // The credit note may fall outside the period: every document is passed to find it.
+    const all = [voided, credited, cn]
+    const [v, c] = csvRecords(accountantCsv([voided, credited], 'et', all))
+    expect(v).toMatchObject({ Staatus: 'Tühistatud', 'Summa km-ta': '0,00', 'Käive 24%': '', 'Käibemaks kokku': '0,00', 'Summa kokku': '0,00', 'Summa kokku EUR': '0,00' })
+    expect(c).toMatchObject({ Staatus: 'Tühistatud', 'Summa kokku': '2516,92' })
+    expect(exportTotals([voided, credited], all)).toEqual(new Map([['EUR', 2516.92]]))
+    expect(exportTotals([voided, credited, cn], all)).toEqual(new Map([['EUR', 0]]))
+    expect(exportTotals([voided], all)).toEqual(new Map([['EUR', 0]]))
+  })
+
   it('converts foreign-currency totals to EUR when the rate is known', () => {
     const usd = sampleInvoice({ currency: 'USD', eurExchangeRate: 1.25, lines: [line({ id: 'u', unitPrice: 100, vatRate: 24 })] })
     const [row] = csvRecords(accountantCsv([usd, { ...usd, number: 'X', eurExchangeRate: undefined }]))
@@ -148,7 +163,7 @@ describe('accountantCsv', () => {
   it('has English headers and neutralises formulas in buyer names', () => {
     const inv = sampleInvoice({ buyer: { ...sampleInvoice().buyer, name: '=cmd|calc' } })
     const rows = accountantRows([inv], 'en')
-    expect(rows[0].slice(0, 3)).toEqual(['Number', 'Type', 'Issue date'])
+    expect(rows[0].slice(0, 4)).toEqual(['Number', 'Reference number', 'Type', 'Issue date'])
     expect(accountantCsv([inv], 'en')).toContain(";'=cmd|calc;")
   })
 })

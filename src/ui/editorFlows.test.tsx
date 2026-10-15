@@ -94,6 +94,17 @@ describe('VAT note field', () => {
   })
 })
 
+describe('number preview', () => {
+  it('skips a number another document already has, as issuing does', async () => {
+    const year = localTodayISO().slice(0, 4)
+    const merged = validDraft({ number: `${year}-0001`, status: 'issued', issueDate: localTodayISO() })
+    const draft = validDraft()
+    const repo = createMemoryRepo({ profile, clients: [client], invoices: [merged, draft] })
+    renderAt(`#/invoices/${draft.id}`, repo)
+    expect(await screen.findByText(`Arve saab numbri ${year}-0002 ja lukustatakse.`)).toBeInTheDocument()
+  })
+})
+
 describe('issuing a stale draft', () => {
   it('offers to date it today (default), moving the due date by the same term', async () => {
     const old = addDaysISO(localTodayISO(), -20)

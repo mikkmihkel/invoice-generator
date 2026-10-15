@@ -1,7 +1,7 @@
 import { ArrowsClockwiseIcon, FileTextIcon, PlusIcon, ReceiptIcon, UserPlusIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { computeTotals, quoteStatus, type Invoice, type QuoteStatus } from '../../domain'
+import { computeTotals, isVoided, quoteStatus, type Invoice, type QuoteStatus } from '../../domain'
 import { useApp } from '../AppContext'
 import { EmptyState, SearchField, Segmented } from '../components/ui'
 import { formatDate, formatMoney } from '../format'
@@ -41,7 +41,7 @@ function matches(r: Row, status: StatusFilter): boolean {
 function quoteRowStatus(r: Row, t: ReturnType<typeof useApp>['t']): { text: string; tone: string } {
   switch (r.quote) {
     case 'sent':
-      return { text: r.inv.validUntil ? t('quote.validTill', { date: formatDate(r.inv.validUntil) }) : t('quote.status.sent'), tone: 'neutral' }
+      return { text: r.inv.validUntil ? t('quote.validTill', { date: formatDate(r.inv.validUntil) }) : t('quote.status.issued'), tone: 'neutral' }
     case 'accepted':
       return { text: t('quote.status.accepted'), tone: 'success' }
     case 'expired':
@@ -111,9 +111,11 @@ export default function InvoiceList() {
   const years = useMemo(() => [...new Set(kindRows.map((r) => r.inv.issueDate.slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse(), [kindRows])
 
   const summary = useMemo(() => {
-    // Receivables count what is still owed after credit notes; the year total is invoices and credit notes net.
+    // Receivables count what is still owed after credit notes; the year total is invoices and credit notes net
+    // (an invoice cancelled with a credit note counts, so the two make zero; one cancelled without does not).
     const owed = (rs: Row[]) => sumByCurrency(rs.map((r) => ({ amount: r.settle.outstanding, currency: r.inv.currency })))
-    const billed = invoiceRows.filter((r) => (r.status === 'issued' || r.status === 'overdue' || r.status === 'paid') && r.inv.issueDate.startsWith(thisYear))
+    const all = invoiceRows.map((r) => r.inv)
+    const billed = invoiceRows.filter((r) => r.status !== 'draft' && !isVoided(r.inv, all) && r.inv.issueDate.startsWith(thisYear))
     const openQuotes = rows.filter((r) => r.quote === 'sent')
     return {
       unpaid: owed(invoiceRows.filter((r) => r.unpaid)),

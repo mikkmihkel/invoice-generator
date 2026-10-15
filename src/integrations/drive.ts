@@ -156,6 +156,10 @@ export async function restoreFromDrive(clientId: string, folderName: string): Pr
 
 /** appProperties key that marks the versioned backups this app uploads (value 'auto'). */
 export const BACKUP_VERSION_PROPERTY = 'invoiceGeneratorBackup'
+/** appProperties key with the id of the browser that uploaded a version. */
+export const BACKUP_DEVICE_PROPERTY = 'device'
+/** appProperties key with the number of issued documents in a version. */
+export const BACKUP_ISSUED_PROPERTY = 'issued'
 
 export interface DriveBackupFile {
   id: string
@@ -167,20 +171,36 @@ export interface DriveBackupFile {
   encrypted: boolean
   /** True for versioned backups uploaded by the automatic backup; false for the single manual backup file. */
   automatic: boolean
+  /** Browser that uploaded the version (missing on older versions and the manual file). */
+  device?: string
+  /** Issued (non-draft) documents in the backup, when recorded at upload. */
+  issued?: number
+}
+
+/** What uploadBackupVersion records about a version besides encryption. */
+export interface BackupVersionTags {
+  device?: string
+  issued?: number
 }
 
 function toBackupFile(f: DriveFile): DriveBackupFile {
   const name = f.name ?? ''
   const size = f.size != null && /^\d+$/.test(f.size) ? Number(f.size) : undefined
-  return {
+  const props = f.appProperties ?? {}
+  const out: DriveBackupFile = {
     id: f.id,
     name,
     size,
     createdTime: f.createdTime,
     modifiedTime: f.modifiedTime,
-    encrypted: f.appProperties?.encrypted === '1' || name.endsWith('.enc'),
-    automatic: f.appProperties?.[BACKUP_VERSION_PROPERTY] === 'auto',
+    encrypted: props.encrypted === '1' || name.endsWith('.enc'),
+    automatic: props[BACKUP_VERSION_PROPERTY] === 'auto',
   }
+  const device = props[BACKUP_DEVICE_PROPERTY]
+  if (device) out.device = device
+  const issued = props[BACKUP_ISSUED_PROPERTY]
+  if (issued != null && /^\d{1,15}$/.test(issued)) out.issued = Number(issued)
+  return out
 }
 
 const BACKUP_FIELDS = 'id,name,size,createdTime,modifiedTime,appProperties'
@@ -193,9 +213,12 @@ export async function uploadBackupVersion(
   content: string,
   encrypted: boolean,
   options?: DriveCallOptions,
+  tags: BackupVersionTags = {},
 ): Promise<DriveBackupFile> {
   const folderId = (await findOrCreateFolder(clientId, folderName, true, options))!
-  const appProperties = { [BACKUP_VERSION_PROPERTY]: 'auto', encrypted: encrypted ? '1' : '0' }
+  const appProperties: Record<string, string> = { [BACKUP_VERSION_PROPERTY]: 'auto', encrypted: encrypted ? '1' : '0' }
+  if (tags.device) appProperties[BACKUP_DEVICE_PROPERTY] = tags.device
+  if (tags.issued !== undefined) appProperties[BACKUP_ISSUED_PROPERTY] = String(tags.issued)
   const file = await createFile(clientId, folderId, fileName, content, 'application/json', BACKUP_FIELDS, { appProperties }, options)
   return toBackupFile({ name: fileName, appProperties, ...file })
 }
