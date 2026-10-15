@@ -97,6 +97,8 @@ export interface InvoiceDefaults {
   /** English templates for invoices in English (and the English half of bilingual emails). Same placeholders. */
   emailSubjectEn?: string
   emailBodyEn?: string
+  /** Default for `Invoice.paymentQr` on new invoices. Optional; absent = off. */
+  paymentQr?: boolean
 }
 
 export interface NumberingSettings {
@@ -206,6 +208,11 @@ export interface Invoice {
   language: InvoiceLanguage
   templateId: TemplateId
   accentColor: string
+  /**
+   * Print an EPC069-12 "SEPA Credit Transfer" QR code (scan-to-pay) on the PDF. Optional, default off.
+   * Only effective for EUR invoices with a positive total and an IBAN (see `src/pdf/machine.ts`).
+   */
+  paymentQr?: boolean
 
   issuedAt?: ISODateTime
   paidAt?: ISODate

@@ -245,6 +245,7 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
   const ids = c.arr('bankAccountIds', { et: 'valitud pangakontod', en: 'selected bank accounts' })
   if (ids && !ids.every((x) => typeof x === 'string')) c.problem ??= invalid({ et: 'valitud pangakontod', en: 'selected bank accounts' })
   c.optStr('createdAt', { et: 'loomise aeg', en: 'creation time' })
+  c.optBool('paymentQr', { et: 'makse QR-kood', en: 'payment QR code' })
   for (const [k, et, en] of [
     ['supplyDate', 'käibe kuupäev', 'supply date'],
     ['periodStart', 'perioodi algus', 'period start'],
@@ -291,6 +292,7 @@ function checkProfile(r: Record<string, unknown>): Text | null {
     c.num('defaultVatRate', { et: 'vaikimisi käibemaksumäär', en: 'default VAT rate' }, d)
     c.str('defaultUnit', { et: 'vaikimisi ühik', en: 'default unit' }, true, d)
     c.optNum('lateInterestPercentPerDay', { et: 'viivis', en: 'late interest' }, d)
+    c.optBool('paymentQr', { et: 'makse QR-kood', en: 'payment QR code' }, d)
     c.str('emailSubject', { et: 'e-kirja teema', en: 'email subject' }, true, d)
     c.str('emailBody', { et: 'e-kirja sisu', en: 'email body' }, true, d)
     for (const [k, et, en] of [

@@ -182,5 +182,6 @@ export function createEmptyInvoice(profile: CompanyProfile, client?: Client): In
     invoice.lateInterestPercentPerDay = defaults.lateInterestPercentPerDay
   }
   if (defaults.footerNote) invoice.footerNote = defaults.footerNote
+  if (defaults.paymentQr) invoice.paymentQr = true
   return invoice
 }
