@@ -78,7 +78,7 @@ describe('automatic backup settings', () => {
 
   it('turns automatic backup on and connects Google from the click', async () => {
     const repo = setup()
-    expect(await screen.findByText(/Raamatupidamise seaduse järgi tuleb arveid säilitada 7 aastat/)).toBeInTheDocument()
+    expect(await screen.findByText(/Raamatupidamise seaduse järgi tuleb arveid säilitada seitse aastat/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox', { name: 'Varunda automaatselt pärast muudatusi' }))
     await waitFor(() => expect(savedAutoBackup(repo)).toEqual({ enabled: true, encrypt: false, keepVersions: 10 }))
     expect(googleSignIn).toHaveBeenCalledWith(CLIENT_ID, ['drive'])

@@ -86,7 +86,7 @@ describe('VatNumberCheck', () => {
     await act(async () => {
       fireEvent.click(button)
     })
-    expect(screen.getByText('VIES-i andmetel see käibemaksukohustuslase number ei kehti.')).toBeInTheDocument()
+    expect(screen.getByText('VIES-i andmetel ei ole see käibemaksukohustuslase number kehtiv.')).toBeInTheDocument()
     await act(async () => {
       fireEvent.click(button)
     })

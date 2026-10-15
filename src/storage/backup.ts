@@ -193,7 +193,7 @@ class RecordCheck {
     this.num('nextNumber', f('järgmine number', 'next number'), n)
     this.num('padding', f('numbri pikkus', 'number padding'), n)
     this.optStr('prefix', f('numbri eesliide', 'number prefix'), n)
-    this.optOneOf('reset', f('numeratsiooni algus', 'numbering reset'), NUMBERING_RESETS, n)
+    this.optOneOf('reset', f('numbri uuesti alustamine', 'numbering reset'), NUMBERING_RESETS, n)
     const counters = n.counters
     if (this.problem || absent(counters)) return !this.problem
     if (!isObject(counters)) return this.fail(invalid(f('perioodide loendurid', 'period counters')))
@@ -512,7 +512,7 @@ export function validateBackup(data: unknown): BackupFile {
   if (!absent(data.recurringRules)) {
     checkRecords(
       data.recurringRules,
-      { et: 'korduvarved', en: 'recurring rules', one: (n) => ({ et: `korduvarve reegel nr ${n}`, en: `recurring rule #${n}` }) },
+      { et: 'korduvarvete reeglid', en: 'recurring rules', one: (n) => ({ et: `korduvarve reegel nr ${n}`, en: `recurring rule #${n}` }) },
       checkRecurringRule,
     )
   }

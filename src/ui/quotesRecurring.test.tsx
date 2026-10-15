@@ -84,7 +84,7 @@ describe('invoice list: invoices and quotes', () => {
     expect(within(row('Nõus OÜ')).getByText('Aktsepteeritud')).toBeInTheDocument()
     expect(list().getByRole('link', { name: 'Uus hinnapakkumine' })).toHaveAttribute('href', '#/invoices/new?type=quote')
     // Open quotes are summed separately from receivables.
-    expect(screen.getByText(/Avatud pakkumisi kokku/)).toBeInTheDocument()
+    expect(screen.getByText(/Avatud pakkumiste summa kokku/)).toBeInTheDocument()
   })
 
   it('offers to create the first quote when there is none', async () => {
@@ -136,7 +136,7 @@ describe('recurring invoices', () => {
     const inv = doc({ issueDate: '2026-01-31' })
     const repo = createMemoryRepo({ profile, invoices: [inv] })
     renderAt(`#/invoices/${inv.id}`, repo)
-    const select = await screen.findByLabelText('Korda', {}, { timeout: 5000 })
+    const select = await screen.findByLabelText('Kordumine', {}, { timeout: 5000 })
     await act(async () => {
       fireEvent.change(select, { target: { value: 'monthly' } })
     })

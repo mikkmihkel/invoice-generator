@@ -110,7 +110,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     } else if (!isValidISODate(invoice.validUntil!)) {
       add('validUntil', 'error', 'Kehtivuse kuupäev on vigane.', 'The validity date is invalid.')
     } else if (issueOk && invoice.validUntil! < invoice.issueDate) {
-      add('validUntil', 'error', 'Pakkumine ei saa kehtida lühemalt kui selle kuupäevani.', 'The validity date cannot be before the quote date.')
+      add('validUntil', 'error', 'Kehtivusaeg ei saa lõppeda enne pakkumise kuupäeva.', 'The validity date cannot be before the quote date.')
     }
   } else if (!isValidISODate(invoice.dueDate)) {
     add('dueDate', 'error', 'Maksetähtaeg puudub või on vigane.', 'Due date is missing or invalid.')

@@ -115,10 +115,10 @@ describe('reminder interest', () => {
 
   it('fills the interest, rate and days in the invoice language', () => {
     const et = fillEmailText(reminderTemplates('et', { interest: true }).body, { ...inv, language: 'et' }, 'Näidis OÜ', 1240, interest).replace(/[\u00a0\u202f]/g, ' ')
-    expect(et).toContain('Arvel kokku lepitud viivis on 0,05% päevas. Tänaseks (16 päeva) on viivis 9,92 €.')
+    expect(et).toContain('Arvel kokku lepitud viivis on 0,05% päevas. Makse on hilinenud 16 päeva ja tänaseks on viivist kogunenud 9,92 €.')
     expect(et).toContain('summas 1 240,00 €')
     const en = fillEmailText(reminderTemplates('en', { interest: true }).body, { ...inv, language: 'en' }, 'Näidis OÜ', 1240, interest)
-    expect(en).toContain('0.05% per day. For 16 days it currently amounts to €9.92.')
+    expect(en).toContain('0.05% per day. Days overdue: 16; interest accrued to date: €9.92.')
   })
 })
 

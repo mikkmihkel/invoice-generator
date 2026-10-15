@@ -99,7 +99,7 @@ describe('line description suggestions', () => {
     expect(options).toHaveLength(2)
     expect(options[0]).toHaveTextContent('arve 2026-0003, 15.09.2026')
     expect(options[0]).toHaveTextContent('65,00')
-    expect(within(list).getByText('Sellele kliendile varem arveldatud')).toBeInTheDocument()
+    expect(within(list).getByText('Selle kliendi varasematelt arvetelt')).toBeInTheDocument()
     expect(within(list).getByText('Kataloogist')).toBeInTheDocument()
 
     fireEvent.click(options[1])

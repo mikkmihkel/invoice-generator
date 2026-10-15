@@ -163,7 +163,7 @@ const REMINDER_ET: ReminderText = {
     'Tere!\n\n' +
     'Tuletame meelde, et arve nr {number} summas {total} maksetähtaeg oli {dueDate}, kuid makset ei ole meile veel laekunud. ' +
     'Palume arve tasuda esimesel võimalusel. Arve on uuesti manuses ja makseandmed leiate arvelt.',
-  interest: 'Arvel kokku lepitud viivis on {interestRate}% päevas. Tänaseks ({overdueDays} päeva) on viivis {interest}.',
+  interest: 'Arvel kokku lepitud viivis on {interestRate}% päevas. Makse on hilinenud {overdueDays} päeva ja tänaseks on viivist kogunenud {interest}.',
   outro: 'Kui olete arve vahepeal juba tasunud, võite selle kirja tähelepanuta jätta.\n\nLugupidamisega\n{company}',
 }
 const REMINDER_EN: ReminderText = {
@@ -172,7 +172,7 @@ const REMINDER_EN: ReminderText = {
     'Hello,\n\n' +
     'This is a friendly reminder that invoice no. {number} for {total} was due on {dueDate} and we have not received the payment yet. ' +
     'The invoice is attached again.',
-  interest: 'The late payment interest agreed on the invoice is {interestRate}% per day. For {overdueDays} days it currently amounts to {interest}.',
+  interest: 'The late payment interest agreed on the invoice is {interestRate}% per day. Days overdue: {overdueDays}; interest accrued to date: {interest}.',
   outro: 'If you have already paid it, please ignore this message.\n\nBest regards,\n{company}',
 }
 const SECOND_ET: ReminderText = {
@@ -180,7 +180,7 @@ const SECOND_ET: ReminderText = {
   intro:
     'Tere!\n\n' +
     'Saatsime Teile varem meeldetuletuse, kuid arve nr {number} summas {total} on endiselt tasumata. Maksetähtaeg oli {dueDate}.\n\n' +
-    'Palume tasuda arve 7 päeva jooksul. Kui makset selleks ajaks ei laeku, oleme sunnitud alustama võla sissenõudmist.',
+    'Palume arve tasuda 7 päeva jooksul. Kui makset selleks ajaks ei laeku, oleme sunnitud alustama võla sissenõudmist.',
   interest: REMINDER_ET.interest,
   outro: 'Kui olete arve vahepeal tasunud, saatke meile palun maksekorralduse koopia.\n\nLugupidamisega\n{company}',
 }
