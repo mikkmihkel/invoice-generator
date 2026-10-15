@@ -25,7 +25,9 @@ import {
   newId,
   isValidReferenceNumber,
   numberingFor,
+  numberingPeriod,
   predictNumber,
+  sameNumberingPeriod,
   quoteStatus,
   stopRulesFor,
   upcomingNumbers,
@@ -70,7 +72,8 @@ import { PreviewPanel } from './editor/PdfPreview'
 import { useFixedBarHeight } from './editor/useFixedBarHeight'
 import { useMediaQuery } from './editor/useMediaQuery'
 import { DeleteInvoiceDialog, IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
-import { useCanReopen, useDeleteDocument } from './invoice-detail/useInvoiceActions'
+import { LockNote } from './invoice-detail/LockNote'
+import { reopenRuleKey, useCanReopen, useDeleteDocument } from './invoice-detail/useInvoiceActions'
 import { TextRows } from './editor/TextRows'
 import { useAutosave } from './editor/useAutosave'
 import { ValidationPanel } from './editor/ValidationPanel'
@@ -302,6 +305,13 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const usedNumbers = new Set(app.invoices.filter((i) => i.number && i.id !== invoice.id).map((i) => i.number))
   const numberFor = (date: string) => upcomingNumbers(series, date, usedNumbers, 1)[0] ?? predictNumber(series, date)
   const predicted = reopened ? invoice.number : numberFor(invoice.issueDate)
+  // A reopened document keeps its number, so its date stays within the numbering period of that number.
+  const reopenAnchor = reopened ? (invoice.reopenedIssueDate ?? invoice.issueDate) : ''
+  const reopenPeriod = reopened ? numberingPeriod(series, reopenAnchor) : null
+  const keepsPeriod = (date: string) => !reopened || sameNumberingPeriod(series, reopenAnchor, date)
+  const dateLimit = reopenPeriod
+    ? { min: reopenPeriod.start, max: reopenPeriod.end, hint: t('reopen.dateLimit', { start: formatDate(reopenPeriod.start), end: formatDate(reopenPeriod.end) }) }
+    : {}
   const term = daysBetween(invoice.issueDate, invoice.dueDate)
   const validity = invoice.validUntil ? daysBetween(invoice.issueDate, invoice.validUntil) : 0
   const note = vatSchemeNote(invoice.vatScheme, invoice.language, invoice.vatExemptionNote)
@@ -319,15 +329,15 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const selectedAccounts = selectedBankAccounts(effective)
   const xmlIssues = ro && supportsEInvoice(invoice) ? eInvoiceIssues(invoice) : []
   const today = localTodayISO()
-  // A reopened document keeps its number (and so the date it was numbered for): no "move to today" offer.
+  // A reopened document gets the "move to today" offer only while today is in the numbering period of its number.
   const stale: StaleIssueDate | null =
-    !ro && !reopened && /^\d{4}-\d{2}-\d{2}$/.test(invoice.issueDate) && invoice.issueDate < today
+    !ro && keepsPeriod(today) && /^\d{4}-\d{2}-\d{2}$/.test(invoice.issueDate) && invoice.issueDate < today
       ? {
           date: invoice.issueDate,
           today,
           newDueDate: redateInvoice(invoice, today).dueDate,
           supplyDateMoves: !!invoice.supplyDate && invoice.supplyDate === invoice.issueDate,
-          numberWithToday: numberFor(today),
+          numberWithToday: reopened ? invoice.number : numberFor(today),
         }
       : null
   const staleQuote: StaleQuoteDate | null = stale && quote ? { date: stale.date, today, validUntil: redateInvoice(invoice, today).validUntil ?? today, numberWithToday: stale.numberWithToday } : null
@@ -523,7 +533,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       message: (
         <>
           <p>{t('reopen.text', { doc, number: invoice.number })}</p>
-          <p className="muted small">{t('reopen.sentRule')}</p>
+          <p className="muted small">{t(reopenRuleKey(invoice.type))}</p>
         </>
       ),
       confirmLabel: t('reopen.action'),
@@ -569,13 +579,13 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void duplicate() },
     ...(invoice.type !== 'credit-note' && !quote && invoice.status !== 'cancelled' ? [{ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void creditNote() }] : []),
     ...(invoice.status === 'paid' ? [{ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void act('unpaid', () => changeStatus(app.markInvoiceUnpaid)) }] : []),
-    ...(invoice.status === 'issued' && !quote ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
+    ...(invoice.status === 'issued' && !quote && !credit ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
     {
       key: 'delete',
       label: t('delete.menu', { doc: docNoun(t, invoice) }),
       icon: <TrashIcon />,
       danger: true,
-      separatorBefore: !(invoice.status === 'issued' && !quote),
+      separatorBefore: !(invoice.status === 'issued' && !quote && !credit),
       onSelect: () => setDialog('delete'),
     },
   ]
@@ -688,7 +698,16 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             <div className={`ed-locked${invoice.status === 'cancelled' ? ' ed-locked-warn' : ''}`}>
               <LockSimpleIcon size={16} className="ed-locked-icon" />
               <div>
-                <p>{invoice.status === 'cancelled' ? t('editor.cancelledBanner') : quote ? t('quote.lockedBanner') : t('editor.lockedBanner')}</p>
+                <p>
+                  <LockNote
+                    invoice={invoice}
+                    creditLink={
+                      <button type="button" className="link-btn" onClick={() => void creditNote()} disabled={busyAny}>
+                        {t('detail.lockedLink')}
+                      </button>
+                    }
+                  />
+                </p>
                 {canReopen && (
                   <p>
                     <button type="button" className="link-btn" onClick={() => void reopen()} disabled={busyAny}>
@@ -749,8 +768,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                     type="date"
                     path="issueDate"
                     value={invoice.issueDate}
-                    onChange={(v) => v && set({ issueDate: v, validUntil: addDaysISO(v, Math.max(0, validity)), dueDate: addDaysISO(v, Math.max(0, validity)) })}
+                    onChange={(v) => v && keepsPeriod(v) && set({ issueDate: v, validUntil: addDaysISO(v, Math.max(0, validity)), dueDate: addDaysISO(v, Math.max(0, validity)) })}
                     required
+                    {...dateLimit}
                   />
                   <TextField label={t('quote.validUntil')} type="date" path="validUntil" value={invoice.validUntil} onChange={(v) => v && setValidUntil(v)} min={invoice.issueDate} required />
                   {!ro && (
@@ -797,8 +817,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   type="date"
                   path="issueDate"
                   value={invoice.issueDate}
-                  onChange={(v) => v && set({ issueDate: v, dueDate: addDaysISO(v, Math.max(0, term)) })}
+                  onChange={(v) => v && keepsPeriod(v) && set({ issueDate: v, dueDate: addDaysISO(v, Math.max(0, term)) })}
                   required
+                  {...dateLimit}
                 />
                 <TextField label={t('field.dueDate')} type="date" path="dueDate" value={invoice.dueDate} onChange={(v) => v && set({ dueDate: v })} min={invoice.issueDate} required />
                 <FieldShell id={fieldId('paymentTerm')} label={t('field.paymentTerm')} className="span-2">

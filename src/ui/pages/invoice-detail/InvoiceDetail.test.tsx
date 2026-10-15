@@ -90,7 +90,7 @@ describe('selected invoice', () => {
     // 18 × 65 + 24,90 = 1194,90 net, 24% VAT 286,78, total 1481,68.
     expect(within(article).getByText('Tasumisele kuulub').nextElementSibling).toHaveTextContent('1 481,68')
     expect(within(article).getByText('sh käibemaks 286,78 €')).toBeInTheDocument()
-    expect(within(article).getByText(/Väljastatud arve on lukustatud/)).toBeInTheDocument()
+    expect(within(article).getByText(/Arve on väljastatud ja lukustatud\. Kuni dokumenti pole kliendile saadetud/)).toBeInTheDocument()
   })
 
   it('offers "Continue editing" as the one action of a draft, and deleting it under "More"', async () => {
@@ -368,7 +368,9 @@ describe('deleting and reopening', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta arve' }))
     const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0004?' })
     expect(within(dialog).getByText(/Arve on kliendile juba saadetud/)).toBeInTheDocument()
-    expect(within(dialog).getByText(/säilitada 7 aastat \(RPS § 12\)/)).toHaveTextContent('Numeratsiooni jääb lünk (2026-0004).')
+    expect(within(dialog).getByText(/säilitada 7 aastat \(RPS § 12\)/)).toHaveTextContent(
+      'Numeratsiooni jääb lünk (2026-0004). Kui dokument on juba kliendile saadetud, tasutud, krediteeritud või tühistatud, selle numbrit uuesti ei kasutata.',
+    )
     expect(within(dialog).getByRole('button', { name: 'Koosta kreeditarve' })).toHaveClass('btn-primary')
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Kustuta' }))
@@ -394,13 +396,129 @@ describe('deleting and reopening', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta arve' }))
     const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0004?' })
     expect(within(dialog).getByText('Koos arvega kustutatakse ka selle kreeditarve 2026-0005.')).toBeInTheDocument()
-    expect(within(dialog).getByText(/tühista see kustutamise asemel kreeditarvega/)).toBeInTheDocument()
+    const [y, m, d] = today.split('-')
+    expect(within(dialog).getByText(`Arve on märgitud tasutuks (${d}.${m}.${y}). Sel juhul tuleks see tühistada kreeditarvega, mitte kustutada.`)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/Kui arve on kliendile juba saadetud/)).not.toBeInTheDocument()
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Koosta kreeditarve' }))
     })
     expect(repo.deleteInvoice).not.toHaveBeenCalled()
     const draft = repo.saveInvoice.mock.calls[0][0] as Invoice
     expect(draft).toMatchObject({ type: 'credit-note', status: 'draft', creditedInvoiceNumber: '2026-0004' })
+  })
+
+  it('says that undoing restores the credit notes deleted with the invoice too', async () => {
+    const inv = invoice()
+    const cn = invoice({ id: 'cn', number: '2026-0005', type: 'credit-note', creditedInvoiceNumber: '2026-0004', lines: [{ id: 'l', description: 'Allahindlus', quantity: -1, unit: 'tk', unitPrice: 10, vatRate: 24 }] })
+    const repo = createMemoryRepo({ profile, invoices: [inv, cn] })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const article = await doc()
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta arve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0004?' })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Kustuta' }))
+    })
+    expect(await screen.findByText('Arve 2026-0004 on kustutatud koos seotud kreeditarvetega.')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Võta tagasi' }))
+    })
+    expect(await screen.findByText('Arve 2026-0004 on taastatud koos seotud kreeditarvetega.')).toBeInTheDocument()
+  })
+
+  it('warns about a paid invoice with nothing left to credit and offers no credit note', async () => {
+    const inv = invoice({ status: 'paid', paidAt: today })
+    const lines = inv.lines.map((l) => ({ ...l, id: newId(), quantity: -l.quantity }))
+    const cn = invoice({ id: 'cn', number: '2026-0005', type: 'credit-note', creditedInvoiceNumber: '2026-0004', lines })
+    renderAt(`#/?id=${inv.id}`, createMemoryRepo({ profile, invoices: [inv, cn] }))
+    const article = await doc()
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta arve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0004?' })
+    expect(within(dialog).getByText(/Arve on märgitud tasutuks .* Kliendile saadetud või tasutud dokument peaks raamatupidamises alles jääma\./)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Koosta kreeditarve' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/vabaneb/)).not.toBeInTheDocument()
+  })
+
+  it('says that deleting the only credit note of a cancelled invoice restores the invoice', async () => {
+    const inv = invoice({ status: 'cancelled' })
+    const cn = invoice({ id: 'cn', number: '2026-0005', type: 'credit-note', creditedInvoiceNumber: '2026-0004', lines: [{ id: 'l', description: 'Tagasi', quantity: -1, unit: 'tk', unitPrice: 10, vatRate: 24 }] })
+    const repo = createMemoryRepo({ profile, invoices: [inv, cn] })
+    renderAt('#/?id=cn', repo)
+    await screen.findByRole('heading', { level: 2, name: 'Kreeditarve 2026-0005' })
+    fireEvent.click(screen.getByRole('button', { name: 'Rohkem' }))
+    // A credit note is not cancelled like an invoice.
+    expect(within(screen.getByRole('menu')).queryByRole('menuitem', { name: 'Tühista arve' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta kreeditarve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada kreeditarve 2026-0005?' })
+    expect(within(dialog).getByText('Arve 2026-0004 jääb alles ega ole enam tühistatud, sest ükski teine kreeditarve seda ei krediteeri. Arve on jälle tasumata.')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Kustuta' }))
+    })
+    expect((await repo.getInvoice(inv.id))?.status).toBe('issued')
+  })
+
+  it('records the deleted documents for the automatic backup before deleting, and takes them back on failure', async () => {
+    const key = 'invoice-generator:deletedSinceBackup'
+    localStorage.removeItem(key)
+    const inv = invoice()
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    let seen: string | null = null
+    const remove = repo.deleteInvoice.getMockImplementation()!
+    repo.deleteInvoice.mockImplementationOnce(async () => {
+      seen = localStorage.getItem(key)
+      throw new Error('Andmebaas ei vasta')
+    })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const article = await doc()
+    const openDialog = async () => {
+      fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Kustuta arve' }))
+      return screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0004?' })
+    }
+    let dialog = await openDialog()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Kustuta' }))
+    })
+    expect(JSON.parse(seen!)).toMatchObject({ count: 1 })
+    expect(localStorage.getItem(key)).toBeNull()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Loobu' }))
+    repo.deleteInvoice.mockImplementation(remove)
+    dialog = await openDialog()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Kustuta' }))
+    })
+    expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ count: 1 })
+    localStorage.removeItem(key)
+  })
+
+  it('says why a sent invoice, credit note or quote cannot be reopened, in words for its type', async () => {
+    const inv = invoice()
+    const cn = invoice({ id: 'cn', number: '2026-0005', type: 'credit-note', creditedInvoiceNumber: '2026-0004', lines: [{ id: 'l', description: 'Tagasi', quantity: -1, unit: 'tk', unitPrice: 10, vatRate: 24 }] })
+    const q = invoice({ id: 'q', type: 'quote', number: 'HP-2026-001', referenceNumber: undefined, validUntil: addDaysISO(today, 10), dueDate: addDaysISO(today, 10) })
+    const events = [sent(inv.id), { ...sent(cn.id), id: 'e2' }, { ...sent(q.id), id: 'e3' }]
+    const [y, m, d] = addDaysISO(today, -9).split('-')
+    const view = renderAt(`#/?id=${inv.id}`, createMemoryRepo({ profile, invoices: [inv, cn, q], events }))
+    let article = await doc()
+    expect(article.querySelector('.doc-lock')).toHaveTextContent(`Arve on väljastatud ja lukustatud. Saadetud ${d}.${m}.${y} – vea parandamiseks koosta kreeditarve.`)
+    expect(within(article).getByRole('button', { name: 'koosta kreeditarve' })).toBeInTheDocument()
+    view.unmount()
+    renderAt('#/?id=cn', createMemoryRepo({ profile, invoices: [inv, cn, q], events }))
+    article = (await screen.findByRole('heading', { level: 2, name: 'Kreeditarve 2026-0005' })).closest('article')!
+    expect(within(article).getByText(`Kreeditarve on väljastatud ja lukustatud. Saadetud ${d}.${m}.${y}, seega seda enam muuta ei saa.`)).toBeInTheDocument()
+    cleanup()
+    renderAt('#/?id=q', createMemoryRepo({ profile, invoices: [inv, cn, q], events }))
+    article = (await screen.findByRole('heading', { level: 2, name: 'Hinnapakkumine HP-2026-001' })).closest('article')!
+    expect(within(article).getByText(`Hinnapakkumine on väljastatud ja lukustatud. Saadetud ${d}.${m}.${y} – muutmiseks tee sellest koopia.`)).toBeInTheDocument()
+  })
+
+  it('explains reopening a quote in words for quotes', async () => {
+    const q = invoice({ type: 'quote', number: 'HP-2026-001', referenceNumber: undefined, validUntil: addDaysISO(today, 10), dueDate: addDaysISO(today, 10) })
+    renderAt(`#/?id=${q.id}`, createMemoryRepo({ profile, invoices: [q] }))
+    const article = (await screen.findByRole('heading', { level: 2, name: 'Hinnapakkumine HP-2026-001' })).closest('article')!
+    fireEvent.click(within(article).getByRole('button', { name: 'muutmiseks avada' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas avada hinnapakkumine HP-2026-001 muutmiseks?' })
+    expect(within(dialog).getByText('Nii saab parandada ainult hinnapakkumist, mida pole veel kliendile saadetud. Saadetud pakkumise muutmiseks tee sellest koopia.')).toBeInTheDocument()
   })
 
   it('reopens an unsent invoice for editing; it keeps its number', async () => {

@@ -170,6 +170,8 @@ export const BACKUP_VERSION_PROPERTY = 'invoiceGeneratorBackup'
 export const BACKUP_DEVICE_PROPERTY = 'device'
 /** appProperties key with the number of issued documents in a version. */
 export const BACKUP_ISSUED_PROPERTY = 'issued'
+/** appProperties key with the number of deletion records (documents deleted on purpose) in a version. */
+export const BACKUP_DELETED_PROPERTY = 'deleted'
 
 export interface DriveBackupFile {
   id: string
@@ -185,12 +187,15 @@ export interface DriveBackupFile {
   device?: string
   /** Issued (non-draft) documents in the backup, when recorded at upload. */
   issued?: number
+  /** Documents deleted on purpose before the backup (its deletion records), when recorded at upload. */
+  deleted?: number
 }
 
 /** What uploadBackupVersion records about a version besides encryption. */
 export interface BackupVersionTags {
   device?: string
   issued?: number
+  deleted?: number
 }
 
 function toBackupFile(f: DriveFile): DriveBackupFile {
@@ -210,6 +215,8 @@ function toBackupFile(f: DriveFile): DriveBackupFile {
   if (device) out.device = device
   const issued = props[BACKUP_ISSUED_PROPERTY]
   if (issued != null && /^\d{1,15}$/.test(issued)) out.issued = Number(issued)
+  const deleted = props[BACKUP_DELETED_PROPERTY]
+  if (deleted != null && /^\d{1,15}$/.test(deleted)) out.deleted = Number(deleted)
   return out
 }
 
@@ -229,6 +236,7 @@ export async function uploadBackupVersion(
   const appProperties: Record<string, string> = { [BACKUP_VERSION_PROPERTY]: 'auto', encrypted: encrypted ? '1' : '0' }
   if (tags.device) appProperties[BACKUP_DEVICE_PROPERTY] = tags.device
   if (tags.issued !== undefined) appProperties[BACKUP_ISSUED_PROPERTY] = String(tags.issued)
+  if (tags.deleted !== undefined) appProperties[BACKUP_DELETED_PROPERTY] = String(tags.deleted)
   const file = await createFile(clientId, folderId, fileName, content, 'application/json', BACKUP_FIELDS, { appProperties }, options)
   return toBackupFile({ name: fileName, appProperties, ...file })
 }

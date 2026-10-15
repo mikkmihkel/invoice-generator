@@ -1,5 +1,5 @@
 import { BuildingsIcon, FileTextIcon, GearSixIcon, PackageIcon, PlusIcon, ReceiptIcon, UsersIcon } from '@phosphor-icons/react'
-import { useEffect, useSyncExternalStore, type ReactNode } from 'react'
+import { useLayoutEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import type { CompanyProfile } from '../domain'
 import { getAutoBackupStatus, subscribeAutoBackupStatus } from '../integrations/autoBackup'
@@ -48,7 +48,8 @@ function isTyping(el: Element | null): boolean {
 /** "N" opens a new invoice, "/" focuses the list search, unless the user is typing or a dialog is open. */
 function useShortcuts() {
   const { go } = useGuardedNavigation()
-  useEffect(() => {
+  // Layout effect, so the keys work as soon as the shell is on screen.
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
       if (isTyping(document.activeElement) || document.querySelector('[role="dialog"], [role="menu"]')) return

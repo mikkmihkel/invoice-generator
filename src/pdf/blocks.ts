@@ -530,55 +530,78 @@ export interface FooterStyle {
   top?: number
 }
 
-/** Two letterhead lines: "Lumi Arendus OÜ · Tartu mnt 18-4, 10115 Tallinn · Registrikood 16234571 · KMKR nr …" and contacts. */
-export function sellerSummary(ctx: DocContext): string[] {
+/** Letterhead parts in two groups: name, registry code and VAT number; address and contacts (see packSummary). */
+export function sellerSummary(ctx: DocContext): string[][] {
   const s = ctx.invoice.seller
-  // Lines may break between parts, never inside one ("KMKR nr EE102345678").
-  const join = (parts: (string | undefined)[]) => parts.filter(Boolean).map((p) => p!.replace(/ /g, NBSP)).join('  ·  ')
+  // Parts never break inside ("KMKR nr EE102345678").
+  const parts = (list: (string | undefined)[]) => list.filter((p): p is string => !!p).map((p) => p.replace(/ /g, NBSP))
   return [
-    join([
-      s.name,
-      addressLines(s.address, ctx).join(', '),
-      s.registryCode ? `${ctx.t('registryCode')} ${s.registryCode}` : '',
-      s.vatNumber ? `${ctx.t('vatNumber')} ${s.vatNumber}` : '',
-    ]),
-    join([s.email, s.phone, s.website]),
-  ].filter(Boolean)
+    parts([s.name, s.registryCode ? `${ctx.t('registryCode')} ${s.registryCode}` : '', s.vatNumber ? `${ctx.t('vatNumber')} ${s.vatNumber}` : '']),
+    parts([addressLines(s.address, ctx).join(', '), s.email, s.phone, s.website]),
+  ].filter((g) => g.length > 0)
 }
+
+const SUMMARY_SEPARATOR = '  ·  '
+
+/**
+ * Lines of parts joined with " · ", line i at most `budgets[i]` characters (the last budget holds for the rest). A
+ * line breaks only between parts, so a separator never ends or starts a line. The groups (name and numbers;
+ * address and contacts) get a line each when they fit; otherwise all parts are packed into as few lines as possible.
+ */
+export function packSummary(groups: string[][], budgets: number | number[]): string[] {
+  const limits = Array.isArray(budgets) ? budgets : [budgets]
+  const limit = (i: number) => limits[Math.min(i, limits.length - 1)]
+  const pack = (list: string[][]) => {
+    const lines: string[] = []
+    for (const group of list) {
+      let line = ''
+      for (const part of group) {
+        const next = line ? line + SUMMARY_SEPARATOR + part : part
+        if (line && next.length > limit(lines.length)) {
+          lines.push(line)
+          line = part
+        } else line = next
+      }
+      if (line) lines.push(line)
+    }
+    return lines
+  }
+  const byGroup = pack(groups)
+  return byGroup.length <= groups.length ? byGroup : pack([groups.flat()])
+}
+
+/** Rough width of footer text in points (IBM Plex Sans averages about half an em per character). */
+const textWidth = (text: string, fontSize: number) => text.length * fontSize * 0.53
 
 /** Page footer: footer note (+ seller summary) left; "Arve nr 2026-0007 · Lk 1/2" right. */
 export function footer(ctx: DocContext, o: FooterStyle): DynamicContent {
   const note = ctx.invoice.footerNote?.trim()
-  const summary = o.sellerSummary ? sellerSummary(ctx) : []
+  const groups = o.sellerSummary ? sellerSummary(ctx) : []
   const number = ctx.invoice.number?.trim()
-  return (currentPage, pageCount, pageSize) => ({
-    margin: [o.marginX, o.top ?? 16, o.marginX, 0],
-    stack: [
-      ...(o.ruleColor
-        ? [{ canvas: [{ type: 'line' as const, x1: 0, y1: 0, x2: pageSize.width - 2 * o.marginX, y2: 0, lineWidth: 0.5, lineColor: o.ruleColor }], margin: [0, 0, 0, 5] as Margins }]
-        : []),
-      {
-        columns: [
-          {
-            width: '*',
-            stack: [
-              ...(note ? [{ text: note, fontSize: o.fontSize, color: o.color }] : []),
-              ...summary.map((text, i) => ({ text, fontSize: o.fontSize, color: o.color, margin: [0, i === 0 && note ? 1.5 : 0, 0, 0] as Margins })),
-            ],
-          },
-          {
-            width: 'auto',
-            text: [...(number ? [`${ctx.t(ctx.numberKey)} ${number}  ·  `] : []), `${ctx.t('page')} ${currentPage}/${pageCount}`],
-            fontSize: o.fontSize,
-            color: o.color,
-            alignment: 'right',
-            noWrap: true,
-          },
-        ],
-        columnGap: 16,
-      },
-    ],
-  })
+  return (currentPage, pageCount, pageSize) => {
+    const pageText = `${number ? `${ctx.t(ctx.numberKey)} ${number}  ·  ` : ''}${ctx.t('page')} ${currentPage}/${pageCount}`
+    const full = pageSize.width - 2 * o.marginX
+    const left = full - 16 - textWidth(pageText, o.fontSize)
+    const chars = (width: number) => Math.floor(width / (o.fontSize * 0.53))
+    // The first line shares its row with the page number; the lines below use the full width.
+    const summary = groups.length ? packSummary(groups, note ? [chars(full)] : [chars(left), chars(full)]) : []
+    const [first, ...rest] = [...(note ? [note] : []), ...summary]
+    const line = (text: string, i: number) => ({ text, fontSize: o.fontSize, color: o.color, margin: [0, i === 1 && note ? 1.5 : 0, 0, 0] as Margins })
+    return {
+      margin: [o.marginX, o.top ?? 16, o.marginX, 0],
+      stack: [
+        ...(o.ruleColor ? [{ canvas: [{ type: 'line' as const, x1: 0, y1: 0, x2: full, y2: 0, lineWidth: 0.5, lineColor: o.ruleColor }], margin: [0, 0, 0, 5] as Margins }] : []),
+        {
+          columns: [
+            { width: '*', text: first ?? '', fontSize: o.fontSize, color: o.color },
+            { width: 'auto', text: pageText, fontSize: o.fontSize, color: o.color, alignment: 'right', noWrap: true },
+          ],
+          columnGap: 16,
+        },
+        ...rest.map((text, i) => line(text, i + 1)),
+      ],
+    }
+  }
 }
 
 /** Running header on continuation pages: "Lumi Arendus OÜ" left, "Arve nr 2026-0007" right. Nothing on page 1. */

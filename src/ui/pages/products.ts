@@ -99,10 +99,13 @@ export function lineSuggestions(query: string, history: readonly LineSuggestion[
   return [...fromHistory, ...fromCatalogue].slice(0, limit)
 }
 
+/** Estonian alphabetical order with numbers by value: "Teenus 2" before "Teenus 10". */
+const NAME_ORDER = new Intl.Collator('et', { numeric: true })
+
 /** Catalogue items matching the query (best matches first), alphabetical when the query is empty. */
 export function searchProducts(products: readonly Product[], query: string): Product[] {
   const q = normalizeText(query)
-  const byName = (a: Product, b: Product) => a.description.localeCompare(b.description, 'et')
+  const byName = (a: Product, b: Product) => NAME_ORDER.compare(a.description, b.description)
   if (!q) return [...products].sort(byName)
   return products
     .map((p) => ({ p, score: Math.max(score(p.description, q), score(`${p.description} ${p.unit}`, q)) }))

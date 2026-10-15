@@ -189,6 +189,10 @@ class RecordCheck {
   optDate(key: string, field: Text, from: Record<string, unknown> = this.r) {
     return this.check(from[key], field, isValidDate, false)
   }
+  /** Required timestamp that Date.parse understands. */
+  time(key: string, field: Text, from: Record<string, unknown> = this.r) {
+    return this.check(from[key], field, (x) => typeof x === 'string' && !Number.isNaN(Date.parse(x)), true)
+  }
 
   /** A number series (`CompanyProfile.numbering` / `quoteNumbering`). */
   numbering(n: Record<string, unknown>, label: Text) {
@@ -322,6 +326,7 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
     c.optStr(k, { et, en })
   }
   c.optDate('validUntil', { et: 'pakkumise kehtivus', en: 'quote validity date' })
+  c.optDate('reopenedIssueDate', { et: 'algne arve kuupäev', en: 'original issue date' })
   c.optMatch('accentColor', { et: 'värv', en: 'accent colour' }, HEX_COLOR)
   c.optMatch('secondaryColor', { et: 'lisavärv', en: 'secondary colour' }, HEX_COLOR)
   c.optOneOf('colorMode', { et: 'värvilahendus', en: 'colour mode' }, COLOR_MODES)
@@ -441,6 +446,14 @@ function checkEvent(r: Record<string, unknown>): Text | null {
   return c.problem
 }
 
+function checkDeletionRecord(r: Record<string, unknown>): Text | null {
+  const c = new RecordCheck(r)
+  c.str('number', { et: 'number', en: 'number' }, true)
+  c.oneOf('type', { et: 'dokumendi liik', en: 'document type' }, INVOICE_TYPES)
+  c.time('deletedAt', { et: 'kustutamise aeg', en: 'deletion time' })
+  return c.problem
+}
+
 function checkRecords(
   list: unknown,
   what: { et: string; en: string; one: (n: number, r: unknown) => Text },
@@ -528,6 +541,14 @@ export function validateBackup(data: unknown): BackupFile {
       false,
     )
   }
+  if (!absent(data.deleted)) {
+    checkRecords(
+      data.deleted,
+      { et: 'kustutatud dokumendid', en: 'deleted documents', one: (n) => ({ et: `kustutatud dokumendi kirje nr ${n}`, en: `deleted document record #${n}` }) },
+      checkDeletionRecord,
+      false,
+    )
+  }
   if (!absent(data.profile)) {
     const problem = isObject(data.profile) ? checkProfile(data.profile) : { et: 'kirje ei ole objekt', en: 'the record is not an object' }
     if (problem) {
@@ -545,7 +566,7 @@ export function validateBackup(data: unknown): BackupFile {
     profile: (data.profile ?? null) as BackupFile['profile'],
     settings: (data.settings ?? null) as BackupFile['settings'],
   }
-  for (const k of ['products', 'recurringRules', 'events'] as const) if (data[k] === null) delete out[k]
+  for (const k of ['products', 'recurringRules', 'events', 'deleted'] as const) if (data[k] === null) delete out[k]
   return out
 }
 

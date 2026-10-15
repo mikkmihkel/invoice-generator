@@ -1,4 +1,5 @@
 import { isValidEstonianRegistryCode, isValidVatNumber, normalizeVatNumber, type Address, type Party } from '../../domain'
+import type { ReactNode } from 'react'
 import { useApp } from '../AppContext'
 import { TextField } from './fields'
 
@@ -45,6 +46,8 @@ export function PartyFields<T extends Party>({
   disabled,
   showContacts = true,
   nameError,
+  codeAsWarning,
+  vatExtra,
 }: {
   value: T
   onChange: (p: T) => void
@@ -54,10 +57,26 @@ export function PartyFields<T extends Party>({
   showContacts?: boolean
   /** Shown below the name field (e.g. after a submit with an empty name). */
   nameError?: string
+  /** A doubtful registry code is a warning, not an error (on an invoice it does not block issuing). */
+  codeAsWarning?: boolean
+  /** Shown directly below the VAT number field (e.g. the VIES check). */
+  vatExtra?: ReactNode
 }) {
   const { t } = useApp()
   const set = (patch: Partial<Party>) => onChange({ ...value, ...patch })
   const p = pathPrefix ? pathPrefix + '.' : ''
+  const codeProblem = registryCodeError(value.registryCode, value.address?.country, t('field.registryCodeInvalid'))
+  const vatField = (
+    <TextField
+      label={t('field.vatNumber')}
+      path={`${p}vatNumber`}
+      value={value.vatNumber}
+      onChange={(v) => set({ vatNumber: v.replace(/\s+/g, '').toUpperCase() || undefined })}
+      placeholder="EE123456789"
+      error={vatNumberError(value.vatNumber, t('field.vatNumberInvalid'), t('field.vatNumberChecksum'))}
+      disabled={disabled}
+    />
+  )
   return (
     <>
       <div className="grid">
@@ -71,19 +90,19 @@ export function PartyFields<T extends Party>({
             value={value.registryCode}
             onChange={(v) => set({ registryCode: v.trim() || undefined })}
             inputMode="numeric"
-            error={registryCodeError(value.registryCode, value.address?.country, t('field.registryCodeInvalid'))}
+            error={codeAsWarning ? undefined : codeProblem}
+            hint={codeAsWarning && codeProblem ? <span className="tone-warn">{codeProblem}</span> : undefined}
             disabled={disabled}
           />
         )}
-        <TextField
-          label={t('field.vatNumber')}
-          path={`${p}vatNumber`}
-          value={value.vatNumber}
-          onChange={(v) => set({ vatNumber: v.replace(/\s+/g, '').toUpperCase() || undefined })}
-          placeholder="EE123456789"
-          error={vatNumberError(value.vatNumber, t('field.vatNumberInvalid'), t('field.vatNumberChecksum'))}
-          disabled={disabled}
-        />
+        {vatExtra ? (
+          <div className="field-with-extra">
+            {vatField}
+            {vatExtra}
+          </div>
+        ) : (
+          vatField
+        )}
       </div>
       <AddressFields value={value.address} onChange={(a) => set({ address: a })} pathPrefix={`${p}address`} disabled={disabled} />
       {showContacts && (

@@ -352,25 +352,26 @@
 
 /* ---------- Lines ---------- */
 
+/* Quantity fits "1234,5" and unit "komplekt"; the description column gives up the width. */
 .lines {
-  --cols: minmax(160px, 1fr) 64px 72px 96px 100px 56px;
+  --cols: minmax(160px, 1fr) 80px 96px 96px 100px 56px;
 }
 .lines.with-vat,
 .lines.with-discount {
-  --cols: minmax(160px, 1fr) 64px 72px 96px 64px 100px 56px;
+  --cols: minmax(160px, 1fr) 80px 96px 96px 64px 100px 56px;
 }
 .lines.with-vat.with-discount {
-  --cols: minmax(120px, 1fr) 60px 68px 92px 60px 60px 96px 56px;
+  --cols: minmax(120px, 1fr) 80px 96px 92px 60px 60px 96px 56px;
 }
 .lines.lines-readonly {
-  --cols: minmax(160px, 1fr) 64px 72px 96px 112px;
+  --cols: minmax(160px, 1fr) 80px 96px 96px 112px;
 }
 .lines.lines-readonly.with-vat,
 .lines.lines-readonly.with-discount {
-  --cols: minmax(160px, 1fr) 64px 72px 96px 64px 112px;
+  --cols: minmax(160px, 1fr) 80px 96px 96px 64px 112px;
 }
 .lines.lines-readonly.with-vat.with-discount {
-  --cols: minmax(120px, 1fr) 60px 68px 92px 60px 60px 104px;
+  --cols: minmax(120px, 1fr) 80px 96px 92px 60px 60px 104px;
 }
 .line {
   display: grid;
@@ -396,6 +397,18 @@
 .line-header .c-vat,
 .line-header .c-total {
   text-align: right;
+}
+/* Headers line up with the text inside the inputs, so "Kogus" (right) and "Ühik" (left) stay apart. */
+.line-header .c-desc,
+.line-header .c-unit {
+  padding-left: 10px;
+}
+.line-header .c-qty,
+.line-header .c-price {
+  padding-right: 10px;
+}
+.lines-readonly .line-header .c-price {
+  padding-right: 0;
 }
 .line-list {
   margin: 0;
@@ -1257,7 +1270,7 @@ html.ed-sheet-open {
 
 /* ---------- Narrow editor column (under the 680 px the line table needs): lines become cards ---------- */
 
-@container ed-main (max-width: 679px) {
+@container ed-main (max-width: 799px) {
   .line-header {
     display: none;
   }

@@ -35,6 +35,7 @@ import { useInvoiceEvents } from './events'
 import { PdfPage } from './PdfPage'
 import { detailStatus, docNoun, quoteDetailStatus, settlementOf } from './status'
 import { interpolate } from './text'
+import { LockNote } from './LockNote'
 import { useCanReopen, useInvoiceActions } from './useInvoiceActions'
 
 const PAGE_KEY = 'invoice-generator:detailPage'
@@ -129,7 +130,8 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   if (!draft && !credit && !quote && invoice.status !== 'cancelled' && !settle.settled) items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
   if (unpaid) items.push({ key: 'paidOn', label: t('payment.otherDate'), icon: <CalendarCheckIcon />, onSelect: () => setDialog('paid') })
   if (invoice.status === 'paid') items.push({ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void actions.markUnpaid() })
-  if (invoice.status === 'issued')
+  // A credit note is not cancelled: one not yet sent is reopened or deleted, a sent one is answered with a new invoice.
+  if (invoice.status === 'issued' && !credit)
     items.push({
       key: 'cancel',
       label: t(quote ? 'payment.cancelQuote' : 'actions.cancelInvoice'),
@@ -144,7 +146,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
       label: t('delete.menu', { doc: docNoun(t, invoice) }),
       icon: <TrashIcon />,
       danger: true,
-      separatorBefore: invoice.status !== 'issued',
+      separatorBefore: invoice.status !== 'issued' || credit,
       onSelect: () => setDialog('delete'),
     })
   else if (draft) items.push({ key: 'delete', label: t('actions.deleteDraft'), icon: <TrashIcon />, danger: true, separatorBefore: true, onSelect: () => void actions.deleteDraft() })
@@ -403,19 +405,14 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
             <p className="doc-lock">
               <LockSimpleIcon />
               <span>
-                {invoice.status === 'cancelled'
-                  ? t('editor.cancelledBanner')
-                  : quote
-                    ? t('detail.quoteLocked')
-                    : credit
-                    ? t('editor.lockedBanner')
-                    : interpolate(t('detail.locked'), {
-                        link: (
-                          <button type="button" className="link-btn" onClick={() => void actions.creditNote()} disabled={busy}>
-                            {t('detail.lockedLink')}
-                          </button>
-                        ),
-                      })}
+                <LockNote
+                  invoice={invoice}
+                  creditLink={
+                    <button type="button" className="link-btn" onClick={() => void actions.creditNote()} disabled={busy}>
+                      {t('detail.lockedLink')}
+                    </button>
+                  }
+                />
                 {canReopen && (
                   <>
                     {' '}

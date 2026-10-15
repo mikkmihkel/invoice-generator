@@ -5,7 +5,9 @@ import {
   backupFingerprint,
   backupHold,
   BackupScheduler,
+  clearDeletedDocuments,
   deletedSinceBackup,
+  issuedCount,
   noteDeletedDocuments,
   getAutoBackupStatus,
   getBackupDeviceId,
@@ -60,7 +62,7 @@ const auto = (id: string, createdTime: string, name = `arvegeneraator-backup-${c
   automatic: true,
 })
 
-const issuedInvoice = (id: string) => ({ id, status: 'issued' }) as never
+const issuedInvoice = (id: string) => ({ id, status: 'issued', number: id }) as never
 const draftInvoice = (id: string) => ({ id, status: 'draft' }) as never
 
 describe('file names and settings', () => {
@@ -167,6 +169,21 @@ describe('file names and settings', () => {
     expect(preferredRestoreFile([])).toBeUndefined()
   })
 
+  it('counts deleted documents too, so a newer version after a deletion is not passed over for an older one', () => {
+    const before = { ...auto('before', '2026-10-14T10:00:00Z'), device: 'pc', issued: 10 }
+    const after = { ...auto('9', '2026-10-15T10:00:00Z'), device: 'pc', issued: 9, deleted: 1 }
+    expect(preferredRestoreFile([after, before])?.id).toBe('9')
+    expect(preferredRestoreFile([{ ...after, deleted: undefined }, before])?.id).toBe('before')
+    // Pruning treats it the same way: the older, larger-looking version may go.
+    const own = ['1', '2', '3'].map((id) => ({ ...auto(id, `2026-10-1${id}T09:00:00Z`), device: 'pc', issued: 10 }))
+    expect(versionsToPrune([after, ...own], 3, 'pc', after).map((f) => f.id)).toEqual(['1'])
+  })
+
+  it('counts reopened drafts and issued documents, not plain drafts', () => {
+    const reopened = { id: 'r', status: 'draft', number: 'A-1', reopenedAt: '2026-10-15T10:00:00Z' } as never
+    expect(issuedCount(backup({ invoices: [issuedInvoice('a'), draftInvoice('d'), reopened] }))).toBe(2)
+  })
+
   it('finds plaintext versions superseded by an encrypted one', () => {
     const enc = { ...auto('enc', '2026-10-15T10:00:00Z'), encrypted: true, issued: 10 }
     const files = [
@@ -229,7 +246,7 @@ describe('runAutoBackup', () => {
   it('uploads a version, then skips until the data changes', async () => {
     const res = await run()
     expect(res).toMatchObject({ kind: 'uploaded', at: new Date(2026, 9, 15, 14, 23, 5).toISOString(), pruned: 0 })
-    expect(uploadBackupVersion).toHaveBeenCalledWith(CLIENT, 'Arved', 'arveldaja-backup-2026-10-15-142305.json', JSON.stringify(data), false, { interactive: false }, { device: getBackupDeviceId(), issued: 0 })
+    expect(uploadBackupVersion).toHaveBeenCalledWith(CLIENT, 'Arved', 'arveldaja-backup-2026-10-15-142305.json', JSON.stringify(data), false, { interactive: false }, { device: getBackupDeviceId(), issued: 0, deleted: 0 })
     expect(await run()).toEqual({ kind: 'unchanged' })
     data = backup({ exportedAt: '2031-01-01T00:00:00Z' })
     expect(await run()).toEqual({ kind: 'unchanged' })
@@ -305,14 +322,49 @@ describe('runAutoBackup', () => {
     vi.mocked(listDriveBackups).mockResolvedValue([mine])
     data = backup({ invoices: [issuedInvoice('a'), issuedInvoice('b')] })
     expect(await run()).toEqual({ kind: 'held', hold: { local: 2, existing: 3 } })
-    noteDeletedDocuments(1)
-    expect(deletedSinceBackup()).toBe(1)
+    noteDeletedDocuments(1, CLIENT, 'Arved')
+    expect(deletedSinceBackup(CLIENT, 'Arved')).toBe(1)
     expect((await run()).kind).toBe('uploaded')
     // Counted from the new version on.
-    expect(deletedSinceBackup()).toBe(0)
-    noteDeletedDocuments(2)
-    noteDeletedDocuments(-5)
-    expect(deletedSinceBackup()).toBe(0)
+    expect(deletedSinceBackup(CLIENT, 'Arved')).toBe(0)
+    noteDeletedDocuments(2, CLIENT, 'Arved')
+    noteDeletedDocuments(-5, CLIENT, 'Arved')
+    expect(deletedSinceBackup(CLIENT, 'Arved')).toBe(0)
+  })
+
+  it('keeps deletions made while a backup runs for the next one', async () => {
+    const mine = { ...auto('mine', '2026-10-14T10:00:00Z'), device: getBackupDeviceId(), issued: 2 }
+    vi.mocked(listDriveBackups).mockResolvedValue([mine])
+    data = backup({ invoices: [issuedInvoice('a'), issuedInvoice('b')] })
+    // Deleted after the data was read: the uploaded version still has the document.
+    const exportBackup = async () => {
+      const exported = data
+      noteDeletedDocuments(1, CLIENT, 'Arved')
+      return exported
+    }
+    expect((await run({ exportBackup })).kind).toBe('uploaded')
+    expect(deletedSinceBackup(CLIENT, 'Arved')).toBe(1)
+    vi.mocked(listDriveBackups).mockResolvedValue([{ ...mine, id: 'v2', createdTime: '2026-10-15T11:23:05Z' }])
+    data = backup({ invoices: [issuedInvoice('a')] })
+    expect((await run()).kind).toBe('uploaded')
+    expect(deletedSinceBackup(CLIENT, 'Arved')).toBe(0)
+  })
+
+  it('keeps the deletion count per destination and clears it on request', () => {
+    noteDeletedDocuments(2, CLIENT, 'Arved')
+    expect(deletedSinceBackup(CLIENT, 'Muu kaust')).toBe(0)
+    expect(deletedSinceBackup('other-client', 'Arved')).toBe(0)
+    noteDeletedDocuments(1, CLIENT, 'Muu kaust')
+    expect(deletedSinceBackup(CLIENT, 'Muu kaust')).toBe(1)
+    expect(deletedSinceBackup(CLIENT, 'Arved')).toBe(0)
+    clearDeletedDocuments()
+    expect(deletedSinceBackup(CLIENT, 'Muu kaust')).toBe(0)
+  })
+
+  it('records the deletion records of a version in Drive', async () => {
+    data = backup({ invoices: [issuedInvoice('a')], deleted: [{ id: 'b', number: 'b', type: 'invoice', deletedAt: '2026-10-15T09:00:00Z' }] })
+    expect(await run()).toMatchObject({ kind: 'uploaded', file: { issued: 1, deleted: 1 } })
+    expect(vi.mocked(uploadBackupVersion).mock.calls[0][6]).toMatchObject({ issued: 1, deleted: 1 })
   })
 
   it('holds the first background backup of an empty browser when Drive has another computer’s backups', async () => {
@@ -338,7 +390,7 @@ describe('runAutoBackup', () => {
     expect(await run()).toEqual({ kind: 'held', hold: { local: 1, existing: 2 } })
     data = backup({ invoices: [issuedInvoice('i1'), issuedInvoice('i2'), draftInvoice('d')] })
     expect(await run()).toMatchObject({ kind: 'uploaded', file: { issued: 2 } })
-    expect(vi.mocked(uploadBackupVersion).mock.calls[0][6]).toEqual({ device: getBackupDeviceId(), issued: 2 })
+    expect(vi.mocked(uploadBackupVersion).mock.calls[0][6]).toEqual({ device: getBackupDeviceId(), issued: 2, deleted: 0 })
   })
 
   it('uploads an encrypted version when encryption is switched on, and reports superseded plaintext versions', async () => {

@@ -294,6 +294,17 @@ describe('validateBackup – version 2 data', () => {
     expect(errorOf({ ...v2(), events: [{ invoiceId: 'x', kind: 'sent', at: '' }] }).messages.et).toMatch(/sündmus nr 1 on vigane: puudub ID/)
   })
 
+  it('accepts deletion records and checks them like the other lists', () => {
+    const record = { id: 'gone', number: 'A-001', type: 'invoice', deletedAt: '2026-10-15T10:00:00.000Z' }
+    expect(validateBackup({ ...v2(), deleted: [record] }).deleted).toEqual([record])
+    expect(validateBackup({ ...v2(), deleted: null }).deleted).toBeUndefined()
+    expect(errorOf({ ...v2(), deleted: [{ ...record, type: 'receipt' }] }).message).toMatch(/deleted document record #1 is invalid: invalid document type/)
+    expect(errorOf({ ...v2(), deleted: [{ ...record, deletedAt: 'eile' }] }).message).toMatch(/invalid deletion time/)
+    expect(errorOf({ ...v2(), deleted: [record, record] }).message).toMatch(/duplicate id gone/)
+    expect(errorOf({ ...v2(), deleted: [{ ...record, id: '' }] }).messages.et).toMatch(/kustutatud dokumendi kirje nr 1 on vigane: puudub ID/)
+    expect(errorOf(withInvoice((inv) => (inv.reopenedIssueDate = '31.12.2026'))).message).toMatch(/invalid original issue date/)
+  })
+
   it('accepts quotes and the new invoice fields, and checks them', () => {
     const ok = withInvoice((inv) => Object.assign(inv, { type: 'quote', validUntil: '2026-10-29', quoteAcceptedAt: '2026-10-20T10:00:00.000Z', convertedToInvoiceId: 'x' }))
     expect(() => validateBackup(ok)).not.toThrow()

@@ -203,6 +203,32 @@ function seriesPattern(prefix: string): RegExp {
 
 type NumberedDoc = Pick<Invoice, 'number' | 'status' | 'issueDate'> & Partial<Pick<Invoice, 'type' | 'reopenedAt'>>
 
+/**
+ * Whether a number issued on `a` stays valid on `b`: same reset period and the same date tokens in the prefix.
+ * A reopened document keeps its number, so its date may only move within this period.
+ */
+export function sameNumberingPeriod(settings: NumberingSettings, a: ISODate, b: ISODate): boolean {
+  const reset = resetOf(settings)
+  return periodKey(reset, a) === periodKey(reset, b) && formatPrefix(settings.prefix, a) === formatPrefix(settings.prefix, b)
+}
+
+/**
+ * First and last day of the numbering period containing `date` (see sameNumberingPeriod), or null when the series
+ * has no periods (no reset and no date in the prefix).
+ */
+export function numberingPeriod(settings: NumberingSettings, date: ISODate): { start: ISODate; end: ISODate } | null {
+  const reset = resetOf(settings)
+  const p = settings.prefix ?? ''
+  const { yyyy, mm, dd } = dateParts(date)
+  if (reset === 'daily' || p.includes('{DD}') || p.includes('{YYYYMMDD}')) return { start: `${yyyy}-${mm}-${dd}`, end: `${yyyy}-${mm}-${dd}` }
+  if (reset === 'monthly' || p.includes('{MM}')) {
+    const last = new Date(Date.UTC(Number(yyyy), Number(mm), 0)).getUTCDate()
+    return { start: `${yyyy}-${mm}-01`, end: `${yyyy}-${mm}-${String(last).padStart(2, '0')}` }
+  }
+  if (reset === 'yearly' || p.includes('{YYYY}') || p.includes('{YY}')) return { start: `${yyyy}-01-01`, end: `${yyyy}-12-31` }
+  return null
+}
+
 /** Whether the document holds its number: issued, paid or cancelled, or reopened for editing (a draft that keeps it). */
 export function holdsNumber(doc: Pick<Invoice, 'number' | 'status'> & Partial<Pick<Invoice, 'reopenedAt'>>): boolean {
   return !!doc.number && (doc.status !== 'draft' || !!doc.reopenedAt)

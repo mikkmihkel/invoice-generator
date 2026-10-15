@@ -1,4 +1,4 @@
-import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createElement, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { AppSettings } from '../domain'
 // Submodules rather than the integrations barrel: UI tests replace the barrel with a small mock.
 import {
@@ -87,7 +87,7 @@ export function useAutoBackup(timing: SchedulerOptions & { tokenPollMs?: number 
   const active = ready && cfg.enabled && !!clientId
   const settingsRef = useRef(settings)
   const latest = useRef<BackupContext>({ repo, getSettings: () => settingsRef.current, saveSettings })
-  useEffect(() => {
+  useLayoutEffect(() => {
     settingsRef.current = settings
     latest.current = { repo, getSettings: () => settingsRef.current, saveSettings }
   }, [repo, settings, saveSettings])

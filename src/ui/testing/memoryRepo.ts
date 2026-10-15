@@ -71,7 +71,8 @@ export function createMemoryRepo(
       const target = invoices.get(id)
       if (!target) return null
       const all = [...invoices.values()]
-      const plan = planDeletion(target, all, profile)
+      const allEvents = [...events.values()]
+      const plan = planDeletion(target, all, profile, allEvents)
       const ids = new Set(plan.documents.map((d) => d.id))
       const removedEvents = [...events.values()].filter((e) => ids.has(e.invoiceId))
       const removedRules = [...rules.values()].filter((r) => ids.has(r.sourceInvoiceId))
@@ -89,18 +90,24 @@ export function createMemoryRepo(
         unlinked.push(clone(other))
         invoices.set(other.id, next)
       }
+      const reinstated: Invoice[] = []
+      if (plan.reinstated) {
+        reinstated.push(clone(plan.reinstated.invoice))
+        invoices.set(plan.reinstated.invoice.id, { ...plan.reinstated.invoice, status: plan.reinstated.status })
+      }
       for (const d of plan.documents) invoices.delete(d.id)
       let released: string[] = []
       if (profile) {
-        const result = releaseNumbers(profile, plan.documents, [...invoices.values()])
+        const result = releaseNumbers(profile, plan.documents, [...invoices.values()], allEvents)
         profile = result.profile
         released = result.released
       }
-      return clone({ invoices: plan.documents, events: removedEvents, recurringRules: removedRules, unlinked, released, deletedAt: new Date().toISOString() })
+      return clone({ invoices: plan.documents, events: removedEvents, recurringRules: removedRules, unlinked, ...(reinstated.length ? { reinstated } : {}), released, deletedAt: new Date().toISOString() })
     }),
     restoreDeleted: vi.fn(async (deleted: DeletedDocuments) => {
       for (const d of deleted.invoices) invoices.set(d.id, clone(d))
       for (const d of deleted.unlinked) invoices.set(d.id, clone(d))
+      for (const d of deleted.reinstated ?? []) invoices.set(d.id, clone(d))
       for (const e of deleted.events) events.set(e.id, clone(e))
       for (const r of deleted.recurringRules) rules.set(r.id, clone(r))
       if (profile) {
@@ -116,7 +123,7 @@ export function createMemoryRepo(
       if (!inv) throw new Error('not found')
       const block = reopenBlocker(inv, [...invoices.values()], [...events.values()])
       if (block) throw new Error(`cannot reopen: ${block}`)
-      const reopened: Invoice = { ...inv, status: 'draft', reopenedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      const reopened: Invoice = { ...inv, status: 'draft', reopenedAt: new Date().toISOString(), reopenedIssueDate: inv.issueDate, updatedAt: new Date().toISOString() }
       invoices.set(id, reopened)
       return clone(reopened)
     }),
@@ -132,6 +139,7 @@ export function createMemoryRepo(
       }
       const issued: Invoice = { ...inv, number, status: 'issued', issuedAt: new Date().toISOString() }
       delete issued.reopenedAt
+      delete issued.reopenedIssueDate
       invoices.set(id, issued)
       return clone(issued)
     }),

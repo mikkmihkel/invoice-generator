@@ -355,6 +355,11 @@ fieldset > legend.label {
   gap: var(--s-1);
   margin-top: var(--s-2);
 }
+.vies-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
 .rate-fetch p:empty,
 .vies-check [role='status']:empty {
   display: none;
@@ -818,4 +823,7 @@ fieldset {
     transform: translateY(12px);
     opacity: 0;
   }
+}
+.field-with-extra {
+  min-width: 0;
 }

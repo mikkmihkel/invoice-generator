@@ -1,5 +1,5 @@
 import { CheckCircleIcon, CircleIcon, CloudArrowDownIcon, CloudArrowUpIcon, KeyIcon } from '@phosphor-icons/react'
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import type { AutoBackupSettings, BackupFile } from '../../../domain'
 import {
   getAutoBackupStatus,
@@ -204,7 +204,8 @@ export function BackupSection() {
   const [pendingImport, setPendingImport] = useState<BackupFile | null>(null)
 
   const settingsRef = useRef(settings)
-  useEffect(() => {
+  // Layout effect: a click right after the settings change must already see them.
+  useLayoutEffect(() => {
     settingsRef.current = settings
   }, [settings])
   const ctx: BackupContext = { repo, getSettings: () => settingsRef.current, saveSettings }

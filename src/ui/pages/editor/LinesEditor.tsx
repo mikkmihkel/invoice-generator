@@ -1,5 +1,5 @@
 import { ArrowDownIcon, ArrowsClockwiseIcon, ArrowUpIcon, BookmarkSimpleIcon, CopyIcon, PackageIcon, PercentIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { newId, vatSchemeAllowsRates, type InvoiceLine, type InvoiceTotals, type Product, type VatScheme } from '../../../domain'
 import { formatUnitMoney } from '../../../pdf/format'
 import { useApp } from '../../AppContext'
@@ -347,15 +347,44 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
 /** Filled enough to be worth keeping in the catalogue (credit note lines are negative and never qualify). */
 const isSaveable = (l: InvoiceLine) => !!l.description.trim() && l.unitPrice > 0 && l.quantity > 0
 
-/** Inside the description field: the line is in the catalogue (the catalogue's values in the tooltip). */
+/**
+ * Inside the description field: the line is in the catalogue, with a visible "differs" when its details are not the
+ * catalogue's. A toggletip: focusing or tapping it shows the catalogue's values, Escape or leaving it hides them.
+ */
 function CatalogueMarker({ line, product, details, defaultVatRate }: { line: InvoiceLine; product: Product; details: string; defaultVatRate: number | null }) {
   const { t } = useApp()
+  const [open, setOpen] = useState(false)
+  const tipId = useId()
   const differs = !productMatchesLine(product, line, defaultVatRate)
   const label = differs ? t('catalogue.inCatalogueDiffers') : t('catalogue.inCatalogue')
   return (
-    <span className={`line-cat-mark${differs ? ' differs' : ''}`} title={`${label}. ${t('catalogue.catalogueValues', { details })}`}>
-      <PackageIcon size={14} />
-      <span className="visually-hidden">{label}</span>
+    <span className={`line-cat-mark${differs ? ' differs' : ''}`}>
+      <button
+        type="button"
+        className="line-cat-btn"
+        aria-expanded={open}
+        aria-controls={tipId}
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && open) {
+            e.stopPropagation()
+            setOpen(false)
+          }
+        }}
+      >
+        <PackageIcon size={14} aria-hidden="true" />
+        <span className="visually-hidden">{label}</span>
+        {differs && (
+          <span className="line-cat-differs" aria-hidden="true">
+            {t('catalogue.differsShort')}
+          </span>
+        )}
+      </button>
+      <span id={tipId} role="status" className="line-cat-tip" hidden={!open}>
+        {open && t('catalogue.catalogueValues', { details })}
+      </span>
     </span>
   )
 }

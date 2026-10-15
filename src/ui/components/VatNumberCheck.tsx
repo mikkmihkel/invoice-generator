@@ -1,4 +1,4 @@
-import { ArrowSquareOutIcon, CheckCircleIcon, CopyIcon, SealCheckIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { ArrowClockwiseIcon, ArrowSquareOutIcon, CheckCircleIcon, CopyIcon, SealCheckIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
 import { checkVatNumber, splitVatNumber, viesBlockedInSession, viesWebUrl, type ViesResult } from '../../integrations/vies'
 import { useApp } from '../AppContext'
@@ -6,7 +6,8 @@ import { useApp } from '../AppContext'
 /**
  * Checks an EU VAT number in VIES and shows valid / invalid / service unavailable, with the registered name when
  * the member state discloses it. When the browser cannot read VIES, it says so and offers to copy the number and
- * open the official VIES page; later checks in the same session offer that page straight away.
+ * open the official VIES page; later checks in the same session offer that page straight away, with a retry next to
+ * it. A result that arrives after the number was changed is ignored.
  * Renders nothing for numbers without an EU prefix.
  */
 export function VatNumberCheck({ vatNumber, onResult }: { vatNumber: string | undefined; onResult?: (result: ViesResult) => void }) {
@@ -16,6 +17,10 @@ export function VatNumberCheck({ vatNumber, onResult }: { vatNumber: string | un
   const [copied, setCopied] = useState(false)
   const [checkedFor, setCheckedFor] = useState(vatNumber)
   const alive = useRef(true)
+  const current = useRef(vatNumber)
+  useEffect(() => {
+    current.current = vatNumber
+  })
   useEffect(() => {
     alive.current = true
     return () => {
@@ -32,12 +37,16 @@ export function VatNumberCheck({ vatNumber, onResult }: { vatNumber: string | un
   if (!parts) return null
 
   const run = async () => {
+    const asked = vatNumber
     setBusy(true)
     setResult(null)
     setCopied(false)
-    const r = await checkVatNumber(parts.countryCode, parts.number)
+    // The full number: checkVatNumber removes the country prefix itself.
+    const r = await checkVatNumber(parts.countryCode, parts.countryCode + parts.number)
     if (!alive.current) return
     setBusy(false)
+    // The number was changed while VIES was being asked: this answer is about the old one.
+    if (current.current !== asked) return
     setResult(r)
     onResult?.(r)
   }
@@ -64,7 +73,13 @@ export function VatNumberCheck({ vatNumber, onResult }: { vatNumber: string | un
   return (
     <div className="vies-check">
       {manualOnly ? (
-        openLink('btn btn-sm', t('vies.open'))
+        <div className="vies-actions">
+          {openLink('btn btn-sm', t('vies.open'))}
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => void run()} disabled={busy}>
+            <ArrowClockwiseIcon aria-hidden="true" />
+            {busy ? t('vies.checking') : t('vies.retry')}
+          </button>
+        </div>
       ) : (
         <button type="button" className="btn btn-sm" onClick={() => void run()} disabled={busy}>
           <SealCheckIcon />

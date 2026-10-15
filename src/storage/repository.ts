@@ -13,6 +13,7 @@ import {
   raiseNumbering,
   releaseNumbers,
   reopenBlocker,
+  sameNumberingPeriod,
   sameSeries,
   sequenceOf,
   sellerSnapshot,
@@ -25,6 +26,7 @@ import type {
   BackupFile,
   Client,
   CompanyProfile,
+  DeletionRecord,
   ISODate,
   ISODateTime,
   Invoice,
@@ -38,7 +40,7 @@ import type {
 } from '../domain/types'
 import type { ReopenBlock } from '../domain'
 import { BACKUP_APP, BACKUP_VERSION, isNewer, validateBackup } from './backup'
-import { DB_NAME, getDb, PROFILE_KEY, SETTINGS_KEY } from './db'
+import { DB_NAME, DELETED_KEY, getDb, MAX_DELETION_RECORDS, PROFILE_KEY, SETTINGS_KEY } from './db'
 import { notifyChange } from './events'
 
 export interface ImportCount {
@@ -74,6 +76,11 @@ export interface DeletedDocuments {
   recurringRules: RecurringRule[]
   /** Other documents as they were before their link to a deleted one was cleared. */
   unlinked: Invoice[]
+  /**
+   * Cancelled invoices whose only credit note was deleted, as they were before they went back to 'issued' or
+   * 'paid' (undo cancels them again).
+   */
+  reinstated?: Invoice[]
   /** Numbers given back to their series. */
   released: string[]
   deletedAt: ISODateTime
@@ -110,14 +117,16 @@ export interface Repository {
    */
   deleteInvoice(id: string): Promise<DeletedDocuments | null>
   /**
-   * Undo deleteInvoice: put the records back as they were and move the number series past the restored numbers.
-   * Throws 'numbering' (and changes nothing) when one of the numbers was given to another document meanwhile.
+   * Undo deleteInvoice: put the records back as they were (a reinstated invoice is cancelled again), drop their
+   * deletion records and move the number series past the restored numbers. Throws 'numbering' (and changes
+   * nothing) when one of the numbers was given to another document meanwhile.
    */
   restoreDeleted(deleted: DeletedDocuments): Promise<void>
   /**
    * Open an issued document for editing again while it has not been sent, paid, cancelled or credited (see
    * reopenBlocker): it becomes a draft that keeps its number (`reopenedAt` is set), and issueInvoice issues it
-   * again under the same number with a fresh seller snapshot. Throws 'invalid-transition' otherwise.
+   * again under the same number with a fresh seller snapshot. Until then its issue date may only move within the
+   * numbering period of its number. Throws 'invalid-transition' otherwise.
    */
   reopenInvoice(id: string): Promise<Invoice>
 
@@ -126,7 +135,8 @@ export interface Repository {
    * Invoices, credit notes and prepayment invoices are numbered from profile.numbering, quotes from
    * profile.quoteNumbering (their own series, no viitenumber). The period of a resetting series is taken from
    * the document's issueDate; a number already used by any document is skipped. A reopened document keeps its
-   * number. Throws if validation has errors or the document was already issued.
+   * number. Throws if validation has errors or the document was already issued, and for a credit note whose
+   * invoice is open for editing.
    */
   issueInvoice(id: string): Promise<Invoice>
 
@@ -163,7 +173,8 @@ export interface Repository {
   exportBackup(): Promise<BackupFile>
   /**
    * 'replace' wipes existing data; 'merge' upserts by id (newer updatedAt wins, but an issued invoice is never
-   * reverted to a draft). The numbering counter never moves backwards — see importBackup for details.
+   * reverted to a draft; a document deleted here after the backup's copy was last changed stays deleted, and the
+   * deletion records of both are kept). The numbering counter never moves backwards — see importBackup for details.
    */
   importBackup(backup: BackupFile, mode: 'replace' | 'merge'): Promise<ImportResult>
 }
@@ -295,6 +306,45 @@ function mergeInvoice(existing: Invoice | undefined, incoming: Invoice): Invoice
   return existingDraft ? incoming : { ...incoming, number: existing.number }
 }
 
+/** Deletion records stored under DELETED_KEY (anything else reads as none). */
+function asDeletionRecords(v: unknown): DeletionRecord[] {
+  return Array.isArray(v) ? (v as DeletionRecord[]) : []
+}
+
+/** One record per id (the newest deletion), oldest first, at most MAX_DELETION_RECORDS (the newest are kept). */
+function mergeDeletionRecords(...lists: readonly (readonly DeletionRecord[] | undefined)[]): DeletionRecord[] {
+  const byId = new Map<string, DeletionRecord>()
+  for (const list of lists) {
+    for (const r of list ?? []) {
+      const prev = byId.get(r.id)
+      if (!prev || isNewer(r.deletedAt, prev.deletedAt)) byId.set(r.id, r)
+    }
+  }
+  return [...byId.values()].sort((a, b) => (a.deletedAt < b.deletedAt ? -1 : a.deletedAt > b.deletedAt ? 1 : 0)).slice(-MAX_DELETION_RECORDS)
+}
+
+/**
+ * Why a reopened document cannot change like this: it keeps its number, so it stays in its number series and its
+ * issue date stays in the numbering period of that number (the date it had when it was reopened).
+ */
+function reopenedChangeError(original: Pick<Invoice, 'type' | 'issueDate' | 'reopenedIssueDate'>, next: Pick<Invoice, 'type' | 'issueDate'>, profile: CompanyProfile | undefined): RepositoryError | null {
+  if (!sameSeries(original.type)(next)) {
+    return new RepositoryError(
+      'immutable',
+      'Muutmiseks avatud dokumendi liiki ei saa muuta nii, et see läheks teise numbriseeriasse, sest number jääb samaks.',
+      'A reopened document cannot change to a type of another number series, because it keeps its number.',
+    )
+  }
+  const anchor = original.reopenedIssueDate ?? original.issueDate
+  if (!profile || !isValidIsoDate(anchor) || !isValidIsoDate(next.issueDate)) return null
+  if (sameNumberingPeriod(numberingFor(profile, original.type), anchor, next.issueDate)) return null
+  return new RepositoryError(
+    'immutable',
+    'Muutmiseks avatud dokumendi kuupäev peab jääma samasse numeratsiooniperioodi, sest number jääb samaks.',
+    'The date of a reopened document must stay in the same numbering period, because its number stays the same.',
+  )
+}
+
 /** Why reopenInvoice refused, in both languages. */
 const REOPEN_BLOCKED: Record<ReopenBlock, [string, string]> = {
   'not-issued': ['Muutmiseks saab avada ainult väljastatud dokumendi.', 'Only an issued document can be reopened for editing.'],
@@ -404,26 +454,30 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
     },
 
     async saveInvoice(invoice) {
-      const tx = (await db()).transaction('invoices', 'readwrite')
-      const existing = await tx.store.get(invoice.id)
+      const tx = (await db()).transaction(['invoices', 'profile'], 'readwrite')
+      const store = tx.objectStore('invoices')
+      const existing = await store.get(invoice.id)
+      const fail = async (err: Error): Promise<never> => {
+        tx.abort()
+        await tx.done.catch(() => {})
+        throw err
+      }
       if (existing && existing.status === 'draft' && invoice.status !== 'draft') {
         // Issuing allocates the number and snapshots the seller — it must go through issueInvoice.
-        tx.abort()
-        await tx.done.catch(() => {})
-        throw new RepositoryError(
-          'invalid-transition',
-          'Mustandi olekut ei saa salvestamisega muuta – kasuta arve väljastamist.',
-          'A draft cannot change status by saving it – issue it instead.',
+        return fail(
+          new RepositoryError(
+            'invalid-transition',
+            'Mustandi olekut ei saa salvestamisega muuta – kasuta arve väljastamist.',
+            'A draft cannot change status by saving it – issue it instead.',
+          ),
         )
       }
-      if (existing?.reopenedAt && existing.status === 'draft' && (invoice.number !== existing.number || !invoice.reopenedAt)) {
-        tx.abort()
-        await tx.done.catch(() => {})
-        throw new RepositoryError(
-          'immutable',
-          'Muutmiseks avatud arve number jääb samaks.',
-          'A reopened invoice keeps its number.',
-        )
+      if (existing?.reopenedAt && existing.status === 'draft') {
+        if (invoice.number !== existing.number || !invoice.reopenedAt || invoice.reopenedIssueDate !== existing.reopenedIssueDate) {
+          return fail(new RepositoryError('immutable', 'Muutmiseks avatud arve number jääb samaks.', 'A reopened invoice keeps its number.'))
+        }
+        const error = reopenedChangeError(existing, invoice, await tx.objectStore('profile').get(PROFILE_KEY))
+        if (error) return fail(error)
       }
       if (existing && existing.status !== 'draft') {
         let error = quoteStatusError(existing, invoice.status)
@@ -447,20 +501,16 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
             'An issued invoice cannot be edited – only its payment status can change. To correct it, cancel it or issue a credit note.',
           )
         }
-        if (error) {
-          tx.abort()
-          await tx.done.catch(() => {})
-          throw error
-        }
+        if (error) return fail(error)
       }
       const ts = clock()
-      await tx.store.put({ ...invoice, createdAt: invoice.createdAt || ts, updatedAt: ts })
+      await store.put({ ...invoice, createdAt: invoice.createdAt || ts, updatedAt: ts })
       await tx.done
       notifyChange('invoices', invoice.id)
     },
 
     async deleteInvoice(id) {
-      const tx = (await db()).transaction(['profile', 'invoices', 'invoiceEvents', 'recurringRules'], 'readwrite')
+      const tx = (await db()).transaction(['profile', 'invoices', 'invoiceEvents', 'recurringRules', 'meta'], 'readwrite')
       const invoices = tx.objectStore('invoices')
       const target = await invoices.get(id)
       if (!target) {
@@ -469,13 +519,13 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       }
       const all = await invoices.getAll()
       const profile = await tx.objectStore('profile').get(PROFILE_KEY)
-      const plan = planDeletion(target, all, profile ?? null)
+      const allEvents = await tx.objectStore('invoiceEvents').getAll()
+      const plan = planDeletion(target, all, profile ?? null, allEvents)
       const ids = new Set(plan.documents.map((d) => d.id))
       const remaining = all.filter((i) => !ids.has(i.id))
       const ts = clock()
 
-      const events: InvoiceEvent[] = []
-      for (const d of plan.documents) events.push(...(await tx.objectStore('invoiceEvents').index('invoiceId').getAll(d.id)))
+      const events = allEvents.filter((e) => ids.has(e.invoiceId))
       for (const e of events) await tx.objectStore('invoiceEvents').delete(e.id)
       const rules: RecurringRule[] = []
       for (const d of plan.documents) rules.push(...(await tx.objectStore('recurringRules').index('sourceInvoiceId').getAll(d.id)))
@@ -492,24 +542,34 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         unlinked.push(other)
         await invoices.put(next)
       }
+      const reinstated: Invoice[] = []
+      if (plan.reinstated) {
+        const current = (await invoices.get(plan.reinstated.invoice.id))!
+        reinstated.push(current)
+        await invoices.put({ ...current, status: plan.reinstated.status, updatedAt: ts })
+      }
       for (const d of plan.documents) await invoices.delete(d.id)
+
+      const records = plan.documents.map((d): DeletionRecord => ({ id: d.id, number: d.number, type: d.type, deletedAt: ts }))
+      await tx.objectStore('meta').put(mergeDeletionRecords(asDeletionRecords(await tx.objectStore('meta').get(DELETED_KEY)), records), DELETED_KEY)
 
       let released: string[] = []
       if (profile) {
-        const result = releaseNumbers(profile, plan.documents, remaining)
+        const result = releaseNumbers(profile, plan.documents, remaining, allEvents)
         released = result.released
         if (released.length) await tx.objectStore('profile').put({ ...result.profile, updatedAt: ts }, PROFILE_KEY)
       }
       await tx.done
       for (const d of plan.documents) notifyChange('invoices', d.id)
+      for (const d of reinstated) notifyChange('invoices', d.id)
       if (events.length) notifyChange('invoiceEvents')
       if (rules.length) notifyChange('recurringRules')
       if (released.length) notifyChange('profile')
-      return { invoices: plan.documents, events, recurringRules: rules, unlinked, released, deletedAt: ts }
+      return { invoices: plan.documents, events, recurringRules: rules, unlinked, ...(reinstated.length ? { reinstated } : {}), released, deletedAt: ts }
     },
 
     async restoreDeleted(deleted) {
-      const tx = (await db()).transaction(['profile', 'invoices', 'invoiceEvents', 'recurringRules'], 'readwrite')
+      const tx = (await db()).transaction(['profile', 'invoices', 'invoiceEvents', 'recurringRules', 'meta'], 'readwrite')
       const invoices = tx.objectStore('invoices')
       const fail = async (err: Error): Promise<never> => {
         try {
@@ -534,6 +594,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
           )
         }
       }
+      const ts = clock()
       for (const d of deleted.invoices) await invoices.put(d)
       for (const other of deleted.unlinked) {
         const current = await invoices.get(other.id)
@@ -543,8 +604,14 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         if (other.convertedFromQuoteId && !current.convertedFromQuoteId) next.convertedFromQuoteId = other.convertedFromQuoteId
         await invoices.put(next)
       }
+      for (const before of deleted.reinstated ?? []) {
+        const current = await invoices.get(before.id)
+        if (current && current.status !== 'draft' && current.status !== before.status) await invoices.put({ ...current, status: before.status, updatedAt: ts })
+      }
       for (const e of deleted.events) await tx.objectStore('invoiceEvents').put(e)
       for (const r of deleted.recurringRules) await tx.objectStore('recurringRules').put(r)
+      const records = asDeletionRecords(await tx.objectStore('meta').get(DELETED_KEY))
+      if (records.some((r) => ids.has(r.id))) await tx.objectStore('meta').put(records.filter((r) => !ids.has(r.id)), DELETED_KEY)
 
       const profile = await tx.objectStore('profile').get(PROFILE_KEY)
       let profileChanged = false
@@ -557,12 +624,13 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
           if (!deepEqual(raised, series)) next = withNumberingFor(next, type, raised)
         }
         if (next !== profile) {
-          await tx.objectStore('profile').put({ ...next, updatedAt: clock() }, PROFILE_KEY)
+          await tx.objectStore('profile').put({ ...next, updatedAt: ts }, PROFILE_KEY)
           profileChanged = true
         }
       }
       await tx.done
       for (const d of deleted.invoices) notifyChange('invoices', d.id)
+      for (const d of deleted.reinstated ?? []) notifyChange('invoices', d.id)
       if (deleted.events.length) notifyChange('invoiceEvents')
       if (deleted.recurringRules.length) notifyChange('recurringRules')
       if (profileChanged) notifyChange('profile')
@@ -589,7 +657,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         return fail(new RepositoryError('invalid-transition', et, en))
       }
       const ts = clock()
-      const reopened: Invoice = { ...stored, status: 'draft', reopenedAt: ts, updatedAt: ts }
+      const reopened: Invoice = { ...stored, status: 'draft', reopenedAt: ts, reopenedIssueDate: stored.issueDate, updatedAt: ts }
       await invoices.put(reopened)
       await tx.done
       notifyChange('invoices', id)
@@ -622,6 +690,20 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         )
       }
 
+      if (invoice.type === 'credit-note' && invoice.creditedInvoiceNumber?.trim()) {
+        const credited = await invoices.index('number').getAll(invoice.creditedInvoiceNumber.trim())
+        const open = credited.find((i) => i.id !== id && i.type !== 'credit-note' && i.type !== 'quote' && i.status === 'draft' && i.reopenedAt)
+        if (open) {
+          return fail(
+            new RepositoryError(
+              'invalid-transition',
+              `Arve ${open.number} on muutmiseks avatud. Väljasta see enne uuesti, siis saab sellele kreeditarve väljastada.`,
+              `Invoice ${open.number} is open for editing. Issue it again first, then the credit note can be issued.`,
+            ),
+          )
+        }
+      }
+
       const isQuote = invoice.type === 'quote'
       const series = numberingFor(profile, invoice.type)
       const date = numberingDate(invoice)
@@ -631,6 +713,8 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       if (invoice.reopenedAt && invoice.number) {
         // Issued again after reopening: the same number (the series already moved past it).
         number = invoice.number
+        const periodError = invoice.reopenedIssueDate ? reopenedChangeError(invoice, invoice, profile) : null
+        if (periodError) return fail(periodError)
         const holders = await invoices.index('number').getAllKeys(number)
         if (holders.some((k) => k !== id)) {
           return fail(new RepositoryError('numbering', `Number ${number} on juba teisel dokumendil.`, `Number ${number} is already used by another document.`))
@@ -660,6 +744,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         updatedAt: ts,
       }
       delete issued.reopenedAt
+      delete issued.reopenedIssueDate
       if (isQuote) delete issued.referenceNumber
       else if (!invoice.referenceNumber?.trim()) issued.referenceNumber = generateReferenceNumber(referenceBase(number, n))
 
@@ -735,7 +820,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
 
     async listProducts() {
       const products = await (await db()).getAll('products')
-      return products.sort((a, b) => a.description.localeCompare(b.description, 'et'))
+      return products.sort((a, b) => a.description.localeCompare(b.description, 'et', { numeric: true }))
     },
 
     async saveProduct(product) {
@@ -790,8 +875,8 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
     },
 
     async exportBackup() {
-      const tx = (await db()).transaction(DATA_STORES, 'readonly')
-      const [profile, clients, invoices, settings, products, recurringRules, events] = await Promise.all([
+      const tx = (await db()).transaction([...DATA_STORES, 'meta'], 'readonly')
+      const [profile, clients, invoices, settings, products, recurringRules, events, deleted] = await Promise.all([
         tx.objectStore('profile').get(PROFILE_KEY),
         tx.objectStore('clients').getAll(),
         tx.objectStore('invoices').getAll(),
@@ -799,8 +884,10 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         tx.objectStore('products').getAll(),
         tx.objectStore('recurringRules').getAll(),
         tx.objectStore('invoiceEvents').getAll(),
+        tx.objectStore('meta').get(DELETED_KEY),
       ])
       await tx.done
+      const records = asDeletionRecords(deleted)
       return {
         app: BACKUP_APP,
         version: BACKUP_VERSION,
@@ -812,6 +899,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         products,
         recurringRules,
         events,
+        ...(records.length ? { deleted: records } : {}),
       }
     },
 
@@ -821,6 +909,9 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       const products = backup.products ?? []
       const recurringRules = backup.recurringRules ?? []
       const events = backup.events ?? []
+      const meta = tx.objectStore('meta')
+      const deleted = mode === 'replace' ? mergeDeletionRecords(backup.deleted) : mergeDeletionRecords(asDeletionRecords(await meta.get(DELETED_KEY)), backup.deleted)
+      const deletedAt = new Map(deleted.map((r) => [r.id, r.deletedAt]))
       const result: ImportResult = {
         clients: { written: 0, skipped: 0 },
         invoices: { written: 0, skipped: 0 },
@@ -857,6 +948,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
           result.settings = 'written'
         }
       } else {
+        const removed = new Set<string>()
         for (const c of backup.clients) {
           const existing = await tx.objectStore('clients').get(c.id)
           if (!existing || isNewer(c.updatedAt, existing.updatedAt)) {
@@ -865,6 +957,13 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
           } else result.clients.skipped++
         }
         for (const i of backup.invoices) {
+          // Deleted here after this copy was last changed: the backup predates the deletion.
+          const removedAt = deletedAt.get(i.id)
+          if (removedAt && !isNewer(i.updatedAt, removedAt)) {
+            removed.add(i.id)
+            result.invoices.skipped++
+            continue
+          }
           const chosen = mergeInvoice(await tx.objectStore('invoices').get(i.id), i)
           if (chosen) {
             await tx.objectStore('invoices').put(chosen)
@@ -879,6 +978,10 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
           } else result.products.skipped++
         }
         for (const r of recurringRules) {
+          if (removed.has(r.sourceInvoiceId)) {
+            result.recurringRules.skipped++
+            continue
+          }
           const existing = await tx.objectStore('recurringRules').get(r.id)
           if (!existing || isNewer(r.updatedAt, existing.updatedAt)) {
             await tx.objectStore('recurringRules').put(r)
@@ -887,7 +990,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         }
         // Events never change once recorded: add the ones not known yet.
         for (const e of events) {
-          if (await tx.objectStore('invoiceEvents').getKey(e.id)) result.events.skipped++
+          if (removed.has(e.invoiceId) || (await tx.objectStore('invoiceEvents').getKey(e.id))) result.events.skipped++
           else {
             await tx.objectStore('invoiceEvents').put(e)
             result.events.written++
@@ -944,7 +1047,9 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       for (const i of all) if (i.number) counts.set(i.number, (counts.get(i.number) ?? 0) + 1)
       result.duplicateNumbers = [...counts].filter(([, c]) => c > 1).map(([n]) => n)
 
-      await tx.objectStore('meta').put(clock(), 'lastImportAt')
+      if (deleted.length) await meta.put(deleted, DELETED_KEY)
+      else await meta.delete(DELETED_KEY)
+      await meta.put(clock(), 'lastImportAt')
       await tx.done
       notifyChange('all')
       return result

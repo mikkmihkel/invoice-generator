@@ -133,8 +133,8 @@ export function CancelInvoiceDialog({
 
 /**
  * Deleting a numbered document (issued, paid, cancelled or reopened): what the deletion means for the accounting
- * records and the numbering, which linked documents go with it, and the credit note as the alternative for an
- * invoice that may already be with the client.
+ * records and the numbering, which linked documents go with it, a warning when the document was already sent,
+ * reminded or paid, and the credit note as the alternative for an invoice that still has something to credit.
  */
 export function DeleteInvoiceDialog({
   invoice,
@@ -155,10 +155,13 @@ export function DeleteInvoiceDialog({
   const { t, invoices, profile, invoiceEvents, recurringRules } = useApp()
   const deleteDocument = useDeleteDocument()
   const [busy, setBusy] = useState(false)
-  const plan = planDeletion(invoice, invoices, profile)
+  const plan = planDeletion(invoice, invoices, profile, invoiceEvents)
   const ids = new Set(plan.documents.map((d) => d.id))
   const quote = invoice.type === 'quote'
-  const sent = invoiceEvents.filter((e) => e.invoiceId === invoice.id && e.kind === 'sent').at(-1)
+  // Sent or reminded: the document is with the client.
+  const sent = invoiceEvents.filter((e) => e.invoiceId === invoice.id).at(-1)
+  const paidAt = quote ? undefined : invoice.paidAt
+  const leftApp = !!sent || !!paidAt
   const recurring = recurringRules.some((r) => ids.has(r.sourceInvoiceId))
   const fromQuote = quote ? invoiceFromQuote(invoice, invoices) : undefined
   const canCredit =
@@ -193,7 +196,7 @@ export function DeleteInvoiceDialog({
           {canCredit && (
             <button
               type="button"
-              className={`btn${sent ? ' btn-primary' : ''}`}
+              className={`btn${leftApp ? ' btn-primary' : ''}`}
               disabled={busy}
               onClick={() => {
                 onClose()
@@ -209,18 +212,35 @@ export function DeleteInvoiceDialog({
         </>
       }
     >
-      {sent && canCredit && <p className="notice notice-warn">{t('delete.sent', { date: formatDate(eventDate(sent.at)) })}</p>}
+      {leftApp && (
+        <p className="notice notice-warn">
+          {[
+            sent && t('delete.sent', { doc: t(`invoice.type.${invoice.type}`), noun: docNoun(t, invoice), date: formatDate(eventDate(sent.at)) }),
+            paidAt && t('delete.paid', { date: formatDate(paidAt) }),
+            canCredit ? t('delete.creditInstead') : !quote && t('delete.keepRecord'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        </p>
+      )}
       <p>
-        {quote ? t('delete.quoteText') : t('delete.sourceDocument')}{' '}
-        {plan.released.length > 0 && t(plan.released.length > 1 ? 'delete.releasedMany' : 'delete.releasedOne', { numbers: numbers(plan.released) })}
-        {plan.released.length > 0 && plan.gaps.length > 0 && ' '}
-        {plan.gaps.length > 0 && t('delete.gap', { numbers: numbers(plan.gaps) })}
+        {[
+          quote ? t('delete.quoteText') : t('delete.sourceDocument'),
+          plan.released.length > 0 && t(plan.released.length > 1 ? 'delete.releasedMany' : 'delete.releasedOne', { numbers: numbers(plan.released) }),
+          plan.gaps.length > 0 && t('delete.gap', { numbers: numbers(plan.gaps) }),
+          plan.kept.length > 0 && t('delete.gapKept'),
+        ]
+          .filter(Boolean)
+          .join(' ')}
       </p>
       {(plan.creditNotes.length > 0 || plan.creditedInvoice || recurring || fromQuote) && (
         <p>
           {[
             plan.creditNotes.length > 0 && t(plan.creditNotes.length > 1 ? 'delete.withCreditMany' : 'delete.withCreditOne', { numbers: list(plan.creditNotes) }),
-            plan.creditedInvoice && t('delete.creditOf', { number: plan.creditedInvoice.number }),
+            plan.creditedInvoice &&
+              (plan.reinstated
+                ? t(plan.reinstated.status === 'paid' ? 'delete.creditOfCancelledPaid' : 'delete.creditOfCancelled', { number: plan.creditedInvoice.number })
+                : t('delete.creditOf', { number: plan.creditedInvoice.number })),
             fromQuote && t('delete.quoteInvoiceStays', { number: fromQuote.number || t('list.draftNumber').toLocaleLowerCase() }),
             recurring && t('delete.recurring'),
           ]
@@ -228,7 +248,7 @@ export function DeleteInvoiceDialog({
             .join(' ')}
         </p>
       )}
-      {!sent && canCredit && <p className="muted small">{t('delete.ifSent')}</p>}
+      {!leftApp && canCredit && <p className="muted small">{t('delete.ifSent')}</p>}
     </Dialog>
   )
 }

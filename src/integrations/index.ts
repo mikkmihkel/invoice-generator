@@ -60,5 +60,7 @@ export {
   subscribeAutoBackupStatus,
   noteDeletedDocuments,
   deletedSinceBackup,
+  clearDeletedDocuments,
+  deletedCount,
 } from './autoBackup'
 export type { AutoBackupRunOptions, AutoBackupResult, AutoBackupStatus, AutoBackupPhase, ScheduledRunResult, SchedulerOptions } from './autoBackup'

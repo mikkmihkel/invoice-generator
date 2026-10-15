@@ -107,6 +107,12 @@ describe('searchProducts', () => {
     expect(searchProducts(list, '  ').map((p) => p.id)).toEqual(['b', 'a', 'c'])
   })
 
+  it('orders numbers in names by value', () => {
+    const numbered = [product('t10', 'Teenus 10'), product('t2', 'Teenus 2'), product('t1', 'Teenus 1')]
+    expect(searchProducts(numbered, '').map((p) => p.id)).toEqual(['t1', 't2', 't10'])
+    expect(searchProducts(numbered, 'teenus').map((p) => p.id)).toEqual(['t1', 't2', 't10'])
+  })
+
   it('ranks prefix matches first and also matches the unit', () => {
     expect(searchProducts(list, 'hool').map((p) => p.id)).toEqual(['b', 'a'])
     expect(searchProducts(list, 'kuu').map((p) => p.id)).toEqual(['b'])

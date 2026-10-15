@@ -1,5 +1,5 @@
-import { PackageIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
-import { useId, useState } from 'react'
+import { CheckCircleIcon, PackageIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { newId, type Product } from '../../domain'
 import { useApp } from '../AppContext'
 import { useConfirm } from '../components/Dialog'
@@ -33,6 +33,14 @@ function ProductForm({ initial, onDone, showVat }: { initial?: Product; onDone?:
   // Quick add: the new row shows up in the list; screen readers hear it here (no toast for every item).
   const [announce, setAnnounce] = useState('')
   const descId = useId()
+  // The confirmation under the quick-add row fades after a few seconds.
+  useEffect(() => {
+    if (!announce) return
+    const timer = setTimeout(() => setAnnounce(''), 4000)
+    return () => clearTimeout(timer)
+  }, [announce])
+  // The unit field's suggestion list may be open: its first Escape only closes the list, not the whole edit.
+  const unitSuggesting = useRef(false)
   const focusDescription = () => document.getElementById(descId)?.focus()
   const withVat = showVat || product.vatRate != null
 
@@ -76,10 +84,13 @@ function ProductForm({ initial, onDone, showVat }: { initial?: Product; onDone?:
       noValidate
       aria-label={editing ? t('products.editNamed', { name: initial.description }) : t('products.addTitle')}
       onKeyDown={(e) => {
-        if (editing && e.key === 'Escape') {
-          e.preventDefault()
-          onDone?.()
+        if (!editing || e.key !== 'Escape') return
+        if (e.target instanceof HTMLInputElement && e.target.list && unitSuggesting.current) {
+          unitSuggesting.current = false
+          return
         }
+        e.preventDefault()
+        onDone?.()
       }}
     >
       <TextField
@@ -87,12 +98,38 @@ function ProductForm({ initial, onDone, showVat }: { initial?: Product; onDone?:
         className="pf-desc"
         label={t('products.description')}
         value={product.description}
-        onChange={(description) => setProduct({ ...product, description })}
+        onChange={(description) => {
+          // A shown error is about what was submitted: it goes once the text changes.
+          setSubmitted(false)
+          setProduct({ ...product, description })
+        }}
+        onBlur={() => {
+          if (!product.description.trim()) setSubmitted(false)
+        }}
         error={descriptionError}
         autoComplete="off"
         autoFocus={editing}
       />
-      <TextField className="pf-unit" label={t('products.unit')} value={product.unit} onChange={(unit) => setProduct({ ...product, unit })} list="unit-suggestions-products" autoComplete="off" />
+      <TextField
+        className="pf-unit"
+        label={t('products.unit')}
+        value={product.unit}
+        onChange={(unit) => {
+          unitSuggesting.current = true
+          setProduct({ ...product, unit })
+        }}
+        onMouseDown={() => {
+          unitSuggesting.current = true
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') unitSuggesting.current = true
+        }}
+        onBlur={() => {
+          unitSuggesting.current = false
+        }}
+        list="unit-suggestions-products"
+        autoComplete="off"
+      />
       <NumberField className="pf-price" label={t('products.unitPrice')} value={product.unitPrice} onChange={(v) => setProduct({ ...product, unitPrice: roundTo(v ?? 0, 4) })} />
       {withVat && (
         <SelectField<string>
@@ -131,6 +168,12 @@ function ProductForm({ initial, onDone, showVat }: { initial?: Product; onDone?:
           )}
         </div>
       </div>
+      {!editing && announce && (
+        <p className="pf-added small tone-success" aria-hidden="true">
+          <CheckCircleIcon />
+          {announce}
+        </p>
+      )}
     </form>
   )
 }

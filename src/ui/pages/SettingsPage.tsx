@@ -2,7 +2,7 @@ import { ArrowSquareOutIcon, CheckCircleIcon, CircleIcon, CloudArrowDownIcon, Cl
 import { useEffect, useRef, useState } from 'react'
 import type { BackupFile } from '../../domain'
 import { RegistryAttribution } from '../components/CompanySearch'
-import { backupToDrive, downloadBlob, getGoogleStatus, googleSignIn, googleSignOut, restoreFromDrive, type GoogleStatus } from '../../integrations'
+import { backupToDrive, clearDeletedDocuments, downloadBlob, getGoogleStatus, googleSignIn, googleSignOut, restoreFromDrive, type GoogleStatus } from '../../integrations'
 import { getIndexInfo, type RegistryIndexInfo } from '../../registry'
 import { backupFileName, requestPersistentStorage, serializeBackup } from '../../storage'
 import { useApp } from '../AppContext'
@@ -43,6 +43,8 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
     setBusy(true)
     try {
       const res = await repo.importBackup(importClientId ? backup : keepClientId(backup, settings.googleClientId), mode)
+      // The deletions recorded here belong to the data that was just replaced.
+      if (mode === 'replace') clearDeletedDocuments()
       await reload()
       toast.success(t('backup.imported'))
       if (res?.duplicateNumbers?.length) toast.error(t('backup.duplicates', { numbers: res.duplicateNumbers.join(', ') }))

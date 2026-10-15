@@ -80,8 +80,8 @@ export function parseViesResponse(body: unknown, countryCode: string, vatNumber:
   }
 }
 
-// Set after the first request that the browser could not read, so later checks in this session go straight
-// to the official page instead of waiting for another failure.
+// Set after a request that the browser could not read, so later checks in this session offer the official page
+// first (with a retry next to it) instead of waiting for another failure. Cleared when VIES answers again.
 let blockedInSession = false
 
 export function viesBlockedInSession(): boolean {
@@ -96,7 +96,9 @@ export function resetViesSession(): void {
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false
 
 /**
- * Ask VIES whether `number` is a valid VAT number of `countryCode` (VIES code, e.g. 'EE', 'EL'). Never throws.
+ * Ask VIES whether `number` is a valid VAT number of `countryCode` (VIES code, e.g. 'EE', 'EL'). A country prefix
+ * on `number` is removed once, so pass either the full number or the national part, never a stripped number that
+ * still starts with the country letters. Never throws.
  * The request is a plain GET without credentials or non-safelisted headers, so the browser sends no preflight.
  */
 export async function checkVatNumber(countryCode: string, number: string, fetchImpl: typeof fetch = (...a) => fetch(...a)): Promise<ViesResult> {
@@ -123,6 +125,8 @@ export async function checkVatNumber(countryCode: string, number: string, fetchI
   } finally {
     clearTimeout(timer)
   }
+  // VIES answered: a later check need not go straight to the official page.
+  blockedInSession = false
   let body: unknown = null
   try {
     body = await res.json()

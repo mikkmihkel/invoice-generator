@@ -268,6 +268,11 @@ export interface Invoice {
    * number, and issuing it again keeps that number. Removed when it is issued.
    */
   reopenedAt?: ISODateTime
+  /**
+   * Issue date the document had when it was reopened. Its number belongs to that date's numbering period, so the
+   * date may only move within that period until it is issued again. Removed when it is issued.
+   */
+  reopenedIssueDate?: ISODate
   paidAt?: ISODate
   createdAt: ISODateTime
   updatedAt: ISODateTime
@@ -388,7 +393,7 @@ export interface InvoiceEvent {
 
 export interface BackupFile {
   app: 'invoice-generator'
-  /** 2 adds products, recurringRules and events (all optional when reading). */
+  /** 2 adds products, recurringRules, events and deleted (all optional when reading). */
   version: 1 | 2
   exportedAt: ISODateTime
   profile: CompanyProfile | null
@@ -398,4 +403,15 @@ export interface BackupFile {
   products?: Product[]
   recurringRules?: RecurringRule[]
   events?: InvoiceEvent[]
+  /** Documents deleted on purpose, so that merging an older backup does not bring them back. */
+  deleted?: DeletionRecord[]
+}
+
+/** Kept for a deleted document so that a backup taken before the deletion does not bring it back. */
+export interface DeletionRecord {
+  /** Id of the deleted document. */
+  id: string
+  number: string
+  type: InvoiceType
+  deletedAt: ISODateTime
 }

@@ -298,8 +298,14 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
       {!picking && showFields && (
         <div className="buyer-edit">
           <p className="field-hint">{t('buyer.snapshotHint')}</p>
-          <PartyFields value={buyer} onChange={onChange} pathPrefix="buyer" person={buyer.kind === 'person'} />
-          {buyer.vatNumber && <VatNumberCheck vatNumber={buyer.vatNumber} />}
+          <PartyFields
+            value={buyer}
+            onChange={onChange}
+            pathPrefix="buyer"
+            person={buyer.kind === 'person'}
+            codeAsWarning
+            vatExtra={buyer.vatNumber && <VatNumberCheck vatNumber={buyer.vatNumber} />}
+          />
           <div className="grid">
             <TextField label={t('field.contactPerson')} path="buyer.contactPerson" value={buyer.contactPerson} onChange={(v) => onChange({ ...buyer, contactPerson: v || undefined })} />
           </div>

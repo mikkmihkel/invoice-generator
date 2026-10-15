@@ -84,6 +84,15 @@ describe('checkVatNumber', () => {
     })
     await expect(checkVatNumber('EE', '101234567', f)).resolves.toEqual({ status: 'blocked', countryCode: 'EE', vatNumber: '101234567', reason: 'Failed to fetch' })
     expect(viesBlockedInSession()).toBe(true)
+    // A retry that gets an answer clears it.
+    await checkVatNumber('EE', '101234567', json({ isValid: true }))
+    expect(viesBlockedInSession()).toBe(false)
+  })
+
+  it('removes the country prefix only once', async () => {
+    const f = json({ isValid: true })
+    await checkVatNumber('FR', 'FRFR123456789', f)
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe('https://ec.europa.eu/taxation_customs/vies/rest-api/ms/FR/vat/FR123456789')
   })
 
   it('reports a timeout as blocked without remembering it', async () => {

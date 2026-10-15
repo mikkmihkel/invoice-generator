@@ -17,7 +17,44 @@
   pointer-events: auto;
 }
 .line-cat-mark.differs {
-  color: var(--text-3);
+  color: var(--text-2);
+}
+.lines:not(.lines-readonly) .line-desc:has(.line-cat-mark.differs) textarea.cell {
+  padding-right: 76px;
+}
+.line-cat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 2px;
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+}
+.line-cat-differs {
+  font-weight: 500;
+}
+.line-cat-tip {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: -4px;
+  width: max-content;
+  max-width: min(280px, 70vw);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-xs);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: 0 6px 16px rgb(20 24 30 / 0.12);
+}
+.line-cat-tip[hidden] {
+  display: none;
 }
 .line-cat-save {
   display: inline-flex;
@@ -243,6 +280,13 @@
 }
 .product-form .pf-actions .btn-row {
   flex-wrap: nowrap;
+}
+.product-form .pf-added {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  margin: 0;
 }
 .product-table tr.product-editing td {
   padding: var(--s-3) var(--s-4) var(--s-4);

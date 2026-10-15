@@ -1,6 +1,6 @@
 import { createElement, Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { computeTotals, holdsNumber, newId, outstandingAmount, reopenBlocker, stopRulesFor, type Invoice, type InvoiceLanguage } from '../../../domain'
+import { computeTotals, holdsNumber, newId, outstandingAmount, planDeletion, reopenBlocker, stopRulesFor, type Invoice, type InvoiceLanguage } from '../../../domain'
 import { remainingCreditLines } from '../../../domain/settlement'
 import { buildUblXml } from '../../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../../integrations'
@@ -20,17 +20,26 @@ export type ActionKey = 'pdf' | 'print' | 'xml' | 'drive' | 'copy' | 'cancel' | 
  * Errors are shown as a toast and rethrown.
  */
 export function useDeleteDocument() {
-  const { t, deleteInvoice, restoreDeletedInvoice } = useApp()
+  const { t, invoices, invoiceEvents, settings, deleteInvoice, restoreDeletedInvoice } = useApp()
   const toast = useToast()
   return useCallback(
     async (invoice: Invoice): Promise<void> => {
+      // Issued documents deleted on purpose: the next automatic backup may have fewer of them. Recorded before the
+      // deletion, so a backup that runs meanwhile already knows, and taken back if the deletion fails.
+      const clientId = settings.googleClientId ?? ''
+      const folder = settings.driveFolderName
+      const expected = planDeletion(invoice, invoices, null, invoiceEvents).documents.filter(holdsNumber).length
+      if (expected) noteDeletedDocuments(expected, clientId, folder)
       let deleted
       try {
         deleted = await deleteInvoice(invoice.id)
       } catch (e) {
+        if (expected) noteDeletedDocuments(-expected, clientId, folder)
         toast.error(e)
         throw e
       }
+      const issued = deleted ? deleted.invoices.filter(holdsNumber).length : 0
+      if (issued !== expected) noteDeletedDocuments(issued - expected, clientId, folder)
       const numbered = holdsNumber(invoice)
       const doc = t(`invoice.type.${invoice.type}`)
       const params = { doc, number: invoice.number }
@@ -38,25 +47,27 @@ export function useDeleteDocument() {
         toast.success(t('actions.draftDeleted'))
         return
       }
-      // Issued documents deleted on purpose: the next automatic backup may have fewer of them.
-      const issued = deleted.invoices.filter((d) => d.status !== 'draft' || d.reopenedAt).length
-      if (issued) noteDeletedDocuments(issued)
       const restore = deleted
       toast.success(numbered ? t(deleted.invoices.length > 1 ? 'delete.doneWithCredit' : 'delete.done', params) : t('actions.draftDeleted'), {
         label: t('payment.undo'),
         onClick: () => {
           restoreDeletedInvoice(restore).then(
             () => {
-              if (issued) noteDeletedDocuments(-issued)
-              toast.info(numbered ? t('delete.undone', params) : t('delete.draftUndone'))
+              if (issued) noteDeletedDocuments(-issued, clientId, folder)
+              toast.info(numbered ? t(restore.invoices.length > 1 ? 'delete.undoneWithCredit' : 'delete.undone', params) : t('delete.draftUndone'))
             },
             (e: unknown) => toast.error(e),
           )
         },
       })
     },
-    [t, toast, deleteInvoice, restoreDeletedInvoice],
+    [t, toast, invoices, invoiceEvents, settings.googleClientId, settings.driveFolderName, deleteInvoice, restoreDeletedInvoice],
   )
+}
+
+/** The rule shown when reopening: until it is sent, and what to do with a sent document of this type. */
+export function reopenRuleKey(type: Invoice['type']): 'reopen.sentRule' | 'reopen.sentRuleCredit' | 'reopen.sentRuleQuote' {
+  return type === 'quote' ? 'reopen.sentRuleQuote' : type === 'credit-note' ? 'reopen.sentRuleCredit' : 'reopen.sentRule'
 }
 
 /** Whether the document can be reopened for editing now (issued, not sent, paid, cancelled or credited). */
@@ -305,7 +316,7 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
         Fragment,
         null,
         createElement('p', null, t('reopen.text', { doc, number: invoice.number })),
-        createElement('p', { className: 'muted small' }, t('reopen.sentRule')),
+        createElement('p', { className: 'muted small' }, t(reopenRuleKey(invoice.type))),
       ),
       confirmLabel: t('reopen.action'),
       cancelLabel: t('common.cancel'),

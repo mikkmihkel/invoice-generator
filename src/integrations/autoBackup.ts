@@ -1,6 +1,6 @@
 // Automatic, versioned backups to Google Drive: file naming, change detection, upload + pruning, rate limiting,
 // and the session-only passphrase. UI-independent; the React side lives in src/ui/useAutoBackup.ts.
-import type { AutoBackupSettings, BackupFile } from '../domain'
+import { holdsNumber, type AutoBackupSettings, type BackupFile } from '../domain'
 import { encryptText } from './backupCrypto'
 import { listDriveBackups, trashDriveFile, uploadBackupVersion, type DriveBackupFile, type DriveCallOptions } from './drive'
 import { GoogleApiError } from './errors'
@@ -63,49 +63,80 @@ const newestFirst = (files: DriveBackupFile[]) =>
  * purpose in this browser are accounted for with noteDeletedDocuments.
  */
 export function issuedCount(backup: BackupFile): number {
-  return backup.invoices.filter((i) => i.status !== 'draft' || !!i.reopenedAt).length
+  return backup.invoices.filter(holdsNumber).length
+}
+
+/** Deletion records in a backup: documents deleted on purpose before it was taken. */
+export function deletedCount(backup: BackupFile): number {
+  return backup.deleted?.length ?? 0
+}
+
+/** Issued plus deleted documents of a version: grows with the data even when documents are deleted. */
+function versionSize(f: DriveBackupFile): number | undefined {
+  return f.issued === undefined ? undefined : f.issued + (f.deleted ?? 0)
 }
 
 const DELETED_KEY = 'invoice-generator:deletedSinceBackup'
-let sessionDeleted = 0
+let sessionDeleted: { dest: string; count: number } | null = null
 
-/** Issued documents deleted in this browser since its last uploaded backup. */
-export function deletedSinceBackup(): number {
+function readDeleted(): { dest: string; count: number } | null {
   try {
-    const v = Number(localStorage.getItem(DELETED_KEY))
-    return Number.isSafeInteger(v) && v > 0 ? v : 0
+    const v = JSON.parse(localStorage.getItem(DELETED_KEY) ?? 'null') as { dest?: unknown; count?: unknown } | null
+    return v && typeof v.dest === 'string' && Number.isSafeInteger(v.count) && (v.count as number) > 0 ? { dest: v.dest, count: v.count as number } : null
   } catch {
     return sessionDeleted
   }
 }
 
+/** Issued documents deleted in this browser since its last backup uploaded to this destination. */
+export function deletedSinceBackup(clientId: string, folderName: string): number {
+  const v = readDeleted()
+  return v && v.dest === destination(clientId, folderName) ? v.count : 0
+}
+
 /**
- * Record issued documents deleted on purpose (negative after an undo), so the next background backup is not held
- * back for having fewer documents than the previous one. Reset after each uploaded backup.
+ * Record issued documents deleted on purpose (negative after an undo or a failed deletion), so the next background
+ * backup to this destination is not held back for having fewer documents than the previous one. The uploaded
+ * backup subtracts what it accounted for.
  */
-export function noteDeletedDocuments(delta: number): void {
-  const next = Math.max(0, deletedSinceBackup() + Math.trunc(delta))
-  sessionDeleted = next
+export function noteDeletedDocuments(delta: number, clientId: string, folderName: string): void {
+  const dest = destination(clientId, folderName)
+  const count = Math.max(0, deletedSinceBackup(clientId, folderName) + Math.trunc(delta))
+  sessionDeleted = count ? { dest, count } : null
   try {
-    if (next) localStorage.setItem(DELETED_KEY, String(next))
+    if (count) localStorage.setItem(DELETED_KEY, JSON.stringify({ dest, count }))
     else localStorage.removeItem(DELETED_KEY)
   } catch {
     // storage unavailable: kept for this session
   }
 }
 
+/** Forget recorded deletions (after the data was replaced from a backup). */
+export function clearDeletedDocuments(): void {
+  sessionDeleted = null
+  try {
+    localStorage.removeItem(DELETED_KEY)
+  } catch {
+    // storage unavailable
+  }
+}
+
 /**
  * This browser's automatic versions to move to the trash after uploading `current`: those beyond the newest
  * `keep` (at least KEEP_VERSIONS_MIN). Versions of other browsers, older untagged versions and the manual file are
- * never touched, nor is a version with more issued documents than `current`. Nothing is pruned when `current` has
- * fewer issued documents than the newest other backup in the folder.
+ * never touched, nor is a version with more issued and deleted documents than `current`. Nothing is pruned when
+ * `current` has fewer of them than the newest other backup in the folder.
  */
 export function versionsToPrune(files: DriveBackupFile[], keep: number, device: string, current: DriveBackupFile): DriveBackupFile[] {
-  const floor = current.issued
+  const floor = versionSize(current)
   const newestOther = newestFirst(files.filter((f) => f.id !== current.id))[0]
-  if (floor !== undefined && newestOther?.issued !== undefined && floor < newestOther.issued) return []
+  const otherSize = newestOther && versionSize(newestOther)
+  if (floor !== undefined && otherSize !== undefined && floor < otherSize) return []
   const own = newestFirst(files.filter((f) => f.automatic && f.device === device && parseAutoBackupFileName(f.name)))
-  return own.slice(Math.max(KEEP_VERSIONS_MIN, keep)).filter((f) => f.id !== current.id && (floor === undefined || (f.issued !== undefined && f.issued <= floor)))
+  return own.slice(Math.max(KEEP_VERSIONS_MIN, keep)).filter((f) => {
+    const size = versionSize(f)
+    return f.id !== current.id && (floor === undefined || (size !== undefined && size <= floor))
+  })
 }
 
 /** Why a background backup is held back instead of uploaded. */
@@ -148,14 +179,15 @@ export function plaintextVersions(files: DriveBackupFile[]): DriveBackupFile[] {
 }
 
 /**
- * The backup to preselect for a restore: the newest one that has at least as many issued documents as any other
- * (an unknown count counts as large), and never an empty one while another backup may hold documents.
+ * The backup to preselect for a restore: the newest one that has at least as many issued plus deleted documents as
+ * any other (an unknown count counts as large; a deletion does not make a newer version look smaller), and never
+ * an empty one while another backup may hold documents.
  */
 export function preferredRestoreFile(files: DriveBackupFile[]): DriveBackupFile | undefined {
   const sorted = newestFirst(files)
-  const most = Math.max(0, ...sorted.map((f) => f.issued ?? 0))
+  const most = Math.max(0, ...sorted.map((f) => versionSize(f) ?? 0))
   const hasData = sorted.some((f) => f.issued !== 0)
-  return sorted.find((f) => (f.issued ?? Infinity) >= most && !(f.issued === 0 && hasData)) ?? sorted[0]
+  return sorted.find((f) => (versionSize(f) ?? Infinity) >= most && !(f.issued === 0 && hasData)) ?? sorted[0]
 }
 
 const DEVICE_KEY = 'invoice-generator:backupDeviceId'
@@ -367,6 +399,8 @@ export function runAutoBackup(opts: AutoBackupRunOptions): Promise<AutoBackupRes
   const call: DriveCallOptions | undefined = interactive ? undefined : { interactive: false }
   const { clientId, folderName, settings } = opts
   return withBackupLock(async (): Promise<AutoBackupResult> => {
+    // Deletions recorded from here on are not in this backup's count: only these are settled by its upload.
+    const deletedBefore = deletedSinceBackup(clientId, folderName)
     const backup = await opts.exportBackup()
     // Switching encryption on must produce an encrypted version even when the data did not change.
     const hash = `${await backupFingerprint(backup)}${settings.encrypt ? ':enc' : ''}`
@@ -377,26 +411,27 @@ export function runAutoBackup(opts: AutoBackupRunOptions): Promise<AutoBackupRes
 
     const device = getBackupDeviceId()
     const issued = issuedCount(backup)
+    const deleted = deletedCount(backup)
     const now = opts.now?.() ?? new Date()
     let existing: DriveBackupFile[] | null = null
     let file: DriveBackupFile
     try {
       if (!interactive) {
         existing = await listDriveBackups(clientId, folderName, call)
-        const hold = backupHold(existing, device, issued + deletedSinceBackup())
+        const hold = backupHold(existing, device, issued + deletedBefore)
         if (hold) return { kind: 'held', hold }
       }
       const json = opts.serialize(backup)
       const content = secret ? await encryptText(json, secret) : json
       const name = autoBackupFileName(now, !!secret)
-      file = await uploadBackupVersion(clientId, folderName, name, content, !!secret, call, { device, issued })
-      file = { ...file, device, issued }
+      file = await uploadBackupVersion(clientId, folderName, name, content, !!secret, call, { device, issued, deleted })
+      file = { ...file, device, issued, deleted }
     } catch (e) {
       if (!interactive && e instanceof GoogleApiError && e.code === 'unauthorized') return { kind: 'needs-signin' }
       throw e
     }
     writeLastFingerprint(clientId, folderName, hash)
-    noteDeletedDocuments(-deletedSinceBackup())
+    noteDeletedDocuments(-deletedBefore, clientId, folderName)
 
     let pruned = 0
     let pruneFailed = false

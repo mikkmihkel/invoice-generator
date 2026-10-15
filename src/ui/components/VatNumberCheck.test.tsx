@@ -38,7 +38,7 @@ describe('VatNumberCheck', () => {
     const onResult = vi.fn()
     wrap(<VatNumberCheck vatNumber="EE 101 234 567" onResult={onResult} />)
     await check()
-    expect(checkVatNumber).toHaveBeenCalledWith('EE', '101234567')
+    expect(checkVatNumber).toHaveBeenCalledWith('EE', 'EE101234567')
     expect(screen.getByRole('status')).toHaveTextContent('Kehtiv: NÄIDIS OÜ · Narva mnt 5, Tallinn')
     expect(onResult).toHaveBeenCalledWith(expect.objectContaining({ status: 'valid' }))
   })
@@ -90,6 +90,47 @@ describe('VatNumberCheck', () => {
     expect(screen.queryByRole('button', { name: 'Kontrolli VIES-is' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Kopeeri number ja ava VIES' })).toHaveAttribute('href', PAGE)
     expect(checkVatNumber).not.toHaveBeenCalled()
+  })
+
+  it('keeps a retry next to the official page and shows its answer', async () => {
+    vi.mocked(viesBlockedInSession).mockReturnValue(true)
+    vi.mocked(checkVatNumber).mockResolvedValue({ status: 'valid', countryCode: 'EE', vatNumber: '101234567', name: 'NÄIDIS OÜ' })
+    wrap(<VatNumberCheck vatNumber="EE101234567" />)
+    expect(screen.getByRole('link', { name: 'Kopeeri number ja ava VIES' })).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Proovi uuesti' }))
+    })
+    expect(checkVatNumber).toHaveBeenCalledWith('EE', 'EE101234567')
+    expect(screen.getByRole('status')).toHaveTextContent('Kehtiv: NÄIDIS OÜ')
+  })
+
+  it('passes a national part that starts with the country letters on unchanged', async () => {
+    vi.mocked(checkVatNumber).mockResolvedValue({ status: 'valid', countryCode: 'FR', vatNumber: 'FR123456789' })
+    wrap(<VatNumberCheck vatNumber="FRFR123456789" />)
+    await check()
+    expect(checkVatNumber).toHaveBeenCalledWith('FR', 'FRFR123456789')
+  })
+
+  it('ignores an answer about a number that was changed meanwhile', async () => {
+    let answer: (r: Awaited<ReturnType<typeof checkVatNumber>>) => void = () => undefined
+    vi.mocked(checkVatNumber).mockImplementation(() => new Promise((resolve) => (answer = resolve)))
+    const onResult = vi.fn()
+    const repo = createMemoryRepo()
+    const { rerender } = render(
+      <AppProvider repository={repo}>
+        <VatNumberCheck vatNumber="EE100000000" onResult={onResult} />
+      </AppProvider>,
+    )
+    await check()
+    rerender(
+      <AppProvider repository={repo}>
+        <VatNumberCheck vatNumber="EE101234567" onResult={onResult} />
+      </AppProvider>,
+    )
+    await act(async () => answer({ status: 'invalid', countryCode: 'EE', vatNumber: '100000000' }))
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+    expect(onResult).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Kontrolli VIES-is' })).toBeEnabled()
   })
 
   it('clears the result when the number changes and ignores non-EU numbers', async () => {

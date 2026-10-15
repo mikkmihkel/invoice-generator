@@ -5,6 +5,7 @@ import type { Invoice, InvoiceLanguage, TemplateId } from '../domain/types'
 import { buildDocDefinition } from './docDefinition'
 import { FONT, FONT_FAMILIES } from './fonts'
 import { formatMoney } from './format'
+import { packSummary } from './blocks'
 import { TEMPLATES } from './templates'
 import { creditNoteInvoice, line, notRegisteredInvoice, sampleInvoice, TINY_PNG } from './testFixtures'
 
@@ -415,6 +416,28 @@ describe('templates — design system', () => {
     const footerText = (templateId: TemplateId) => JSON.stringify((buildDocDefinition(sampleInvoice({ templateId })).footer as (p: number, c: number, s: typeof PAGE) => unknown)(1, 1, PAGE))
     expect(footerText('classic')).toContain('Registrikood 12345678')
     expect(footerText('standard')).not.toContain('12345678')
+  })
+
+  it('keeps the classic letterhead to two lines that never end or start with a separator', () => {
+    const inv = sampleInvoice({ templateId: 'classic', footerNote: undefined })
+    const letterhead = (doc: typeof inv) => {
+      const footer = buildDocDefinition(doc).footer as (p: number, c: number, s: typeof PAGE) => { stack: { text?: string; columns?: { text: string }[] }[] }
+      return footer(1, 2, PAGE).stack.map((n) => n.columns?.[0].text ?? n.text).filter((t): t is string => !!t)
+    }
+    const contacts = { ...inv, seller: { ...inv.seller, email: 'raamatupidamine@example.ee', phone: '+372 5555 5555', website: 'www.example.ee' } }
+    expect(letterhead(contacts)).toHaveLength(2)
+    expect(letterhead(contacts)[0]).toContain('Registrikood\u00a012345678')
+    // Even a seller with very long details only breaks between parts.
+    const long = { ...contacts, seller: { ...contacts.seller, name: 'Väga Pika Nimega Rahvusvaheline Konsultatsioonibüroo OÜ', email: 'raamatupidamine@pikk-domeeninimi.ee' } }
+    for (const l of letterhead(long)) expect(l).not.toMatch(/^\s*·|·\s*$/)
+  })
+
+  it('packs letterhead parts only between parts', () => {
+    expect(packSummary([['A', 'B'], ['C', 'D']], 20)).toEqual(['A  ·  B', 'C  ·  D'])
+    expect(packSummary([['Aaaa', 'Bbbb'], ['Cccc', 'Dddd', 'Eeee', 'Ffff']], 16)).toEqual(['Aaaa  ·  Bbbb', 'Cccc  ·  Dddd', 'Eeee  ·  Ffff'])
+    expect(packSummary([['Aa'], ['Bbbb', 'Cccc', 'Dddd']], 24)).toEqual(['Aa', 'Bbbb  ·  Cccc  ·  Dddd'])
+    // A narrower first line (it shares the row with the page number).
+    expect(packSummary([['Aaaa', 'Bbbb', 'Cccc']], [10, 30])).toEqual(['Aaaa', 'Bbbb  ·  Cccc'])
   })
 
   it('falls back to classic for unknown template ids', () => {

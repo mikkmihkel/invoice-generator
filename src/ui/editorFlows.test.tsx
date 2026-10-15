@@ -284,8 +284,8 @@ describe('reopening and deleting in the editor', () => {
     fireEvent.change(screen.getByLabelText('Kirjeldus 1'), { target: { value: 'Arendus, parandatud' } })
     fireEvent.click(screen.getByRole('button', { name: 'Väljasta arve' }))
     const issue = await screen.findByRole('dialog', { name: 'Väljasta arve' })
-    // No offer to move the date: the number belongs to it.
-    expect(within(issue).queryByText(/Arve kuupäev on/)).not.toBeInTheDocument()
+    // Moving the date to today is offered only while today is in the numbering period of the number.
+    expect(within(issue).queryByText(/Arve kuupäev on/) !== null).toBe(old.slice(0, 4) === year)
     expect(within(issue).getByText(`Dokument väljastatakse uuesti sama numbriga ${year}-0007.`)).toBeInTheDocument()
     await act(async () => {
       fireEvent.click(within(issue).getByRole('button', { name: 'Väljasta' }))
@@ -294,6 +294,38 @@ describe('reopening and deleting in the editor', () => {
     const stored = await repo.getInvoice(issued.id)
     expect(stored).toMatchObject({ status: 'issued', number: `${year}-0007`, lines: [expect.objectContaining({ description: 'Arendus, parandatud' })] })
     expect(stored?.reopenedAt).toBeUndefined()
+  })
+
+  it('keeps the date of a reopened invoice in the numbering period of its number', async () => {
+    const year = Number(localTodayISO().slice(0, 4)) - 1
+    const reopened = validDraft({ number: `${year}-0007`, issueDate: `${year}-12-20`, dueDate: `${year + 1}-01-03`, reopenedAt: `${year}-12-21T10:00:00.000Z`, reopenedIssueDate: `${year}-12-20` })
+    const repo = createMemoryRepo({ profile, clients: [client], invoices: [reopened] })
+    renderAt(`#/invoices/${reopened.id}`, repo)
+    const date = await screen.findByLabelText(/^Arve kuupäev/)
+    expect(date).toHaveAttribute('min', `${year}-01-01`)
+    expect(date).toHaveAttribute('max', `${year}-12-31`)
+    expect(screen.getByText(`Muutmiseks avatud dokumendi kuupäev peab jääma samasse numeratsiooniperioodi (01.01.${year}–31.12.${year}), sest number jääb samaks.`)).toBeInTheDocument()
+    fireEvent.change(date, { target: { value: `${year + 1}-01-02` } })
+    expect(date).toHaveValue(`${year}-12-20`)
+    fireEvent.change(date, { target: { value: `${year}-12-28` } })
+    expect(date).toHaveValue(`${year}-12-28`)
+    fireEvent.click(screen.getByRole('button', { name: 'Väljasta arve' }))
+    const issue = await screen.findByRole('dialog', { name: 'Väljasta arve' })
+    // Today is in another year: no offer to move the date there.
+    expect(within(issue).queryByText(/Arve kuupäev on/)).not.toBeInTheDocument()
+    expect(within(issue).queryByLabelText('Muuda arve kuupäevaks tänane päev')).not.toBeInTheDocument()
+  })
+
+  it('shows a doubtful buyer registry code of a reopened invoice as a warning, with the VIES check under the VAT number', async () => {
+    const year = localTodayISO().slice(0, 4)
+    const buyer = { kind: 'company' as const, name: 'Käsitsi Sisestatud OÜ', registryCode: '12345', vatNumber: 'EE101234568', address: { street: 'Pikk 1', city: 'Tartu', postalCode: '51004', country: 'EE' } }
+    const reopened = validDraft({ number: `${year}-0007`, buyer, reopenedAt: `${year}-01-02T10:00:00.000Z` })
+    renderAt(`#/invoices/${reopened.id}`, createMemoryRepo({ profile, clients: [client], invoices: [reopened] }))
+    const code = await screen.findByLabelText('Registrikood')
+    expect(code).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByText('Registrikood peab olema 8-kohaline ja selle kontrollnumber peab klappima.').closest('.field-error')).toBeNull()
+    const vat = screen.getByLabelText('KMKR number')
+    expect(vat.closest('.field-with-extra')?.querySelector('.vies-check')).not.toBeNull()
   })
 
   it('deletes an issued invoice from the menu after explaining the consequences', async () => {

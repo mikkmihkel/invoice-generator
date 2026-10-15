@@ -7,6 +7,10 @@ export const DB_VERSION = 2
 /** Keys used in the singleton stores. */
 export const PROFILE_KEY = 'profile'
 export const SETTINGS_KEY = 'settings'
+/** Meta key with the deletion records of deleted documents (DeletionRecord[], newest last). */
+export const DELETED_KEY = 'deletedDocuments'
+/** Deletion records kept; the oldest go first. */
+export const MAX_DELETION_RECORDS = 1000
 
 export interface InvoiceDbSchema extends DBSchema {
   profile: { key: string; value: CompanyProfile }

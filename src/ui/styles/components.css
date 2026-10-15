@@ -492,13 +492,23 @@
   }
 }
 @media (max-width: 767px) {
-  /* On phones dialogs open as bottom sheets, so messages appear at the top where they cover nothing. */
+  /* On phones messages sit above the tab bar, clear of the top bar and the list controls. */
   .toasts {
     left: var(--s-4);
     right: var(--s-4);
     width: auto;
+  }
+  /* Dialogs open as bottom sheets: while one is open, messages move to the top… */
+  body:has([aria-modal='true']) .toasts {
     top: calc(var(--s-3) + env(safe-area-inset-top));
     bottom: auto;
+  }
+  /* …and the dialog leaves room for them instead of being covered. */
+  body:has(.toast) .dialog-backdrop {
+    padding-top: calc(88px + env(safe-area-inset-top));
+  }
+  body:has(.toast) .dialog {
+    max-height: calc(100svh - 88px - env(safe-area-inset-top));
   }
 }
 

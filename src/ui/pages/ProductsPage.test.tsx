@@ -45,7 +45,9 @@ describe('products page', () => {
 
     await waitFor(() => expect(repo.saveProduct).toHaveBeenCalledTimes(1))
     expect(repo.saveProduct.mock.calls[0][0]).toMatchObject({ description: 'Veebilehe hooldus', unit: 'kuu', unitPrice: 120.5, vatRate: 13 })
-    expect(await screen.findByText('Lisatud kataloogi: Veebilehe hooldus')).toBeInTheDocument()
+    // Announced to screen readers and shown under the row.
+    expect(await screen.findAllByText('Lisatud kataloogi: Veebilehe hooldus')).toHaveLength(2)
+    expect(document.querySelector('.pf-added')).toHaveTextContent('Lisatud kataloogi: Veebilehe hooldus')
     const row = (await screen.findByText('Veebilehe hooldus')).closest('tr')!
     expect(within(row).getByText('13%')).toBeInTheDocument()
     expect(within(row).getByText(/120,50/)).toBeInTheDocument()
@@ -74,11 +76,26 @@ describe('products page', () => {
     fireEvent.keyDown(form.getByLabelText('Kirjeldus'), { key: 'Escape' })
     expect(screen.queryByRole('form', { name: 'Muuda: Konsultatsioon' })).not.toBeInTheDocument()
 
+    // Escape in the unit field first closes its suggestion list; the next one cancels the edit.
+    fireEvent.click(screen.getByRole('button', { name: 'Muuda: Konsultatsioon' }))
+    form = within(await screen.findByRole('form', { name: 'Muuda: Konsultatsioon' }))
+    fireEvent.change(form.getByLabelText('Ühik'), { target: { value: 'kom' } })
+    fireEvent.keyDown(form.getByLabelText('Ühik'), { key: 'Escape' })
+    expect(screen.getByRole('form', { name: 'Muuda: Konsultatsioon' })).toBeInTheDocument()
+    expect(form.getByLabelText('Ühik')).toHaveValue('kom')
+    fireEvent.keyDown(form.getByLabelText('Ühik'), { key: 'Escape' })
+    expect(screen.queryByRole('form', { name: 'Muuda: Konsultatsioon' })).not.toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: 'Muuda: Konsultatsioon' }))
     form = within(await screen.findByRole('form', { name: 'Muuda: Konsultatsioon' }))
     fireEvent.change(form.getByLabelText('Kirjeldus'), { target: { value: 'serveri MAJUTUS' } })
     fireEvent.click(form.getByRole('button', { name: 'Salvesta' }))
     expect(await form.findByText('Sama kirjeldusega toode on kataloogis juba olemas.')).toBeInTheDocument()
+    // Emptying the field clears the error instead of turning it into another one.
+    fireEvent.change(form.getByLabelText('Kirjeldus'), { target: { value: '' } })
+    fireEvent.blur(form.getByLabelText('Kirjeldus'))
+    expect(form.queryByText('Sisesta kirjeldus.')).not.toBeInTheDocument()
+    expect(form.queryByText('Sama kirjeldusega toode on kataloogis juba olemas.')).not.toBeInTheDocument()
     fireEvent.change(form.getByLabelText('Kirjeldus'), { target: { value: 'Konsultatsioon (kaugtöö)' } })
     fireEvent.click(form.getByRole('button', { name: 'Salvesta' }))
     await waitFor(() => expect(repo.saveProduct).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', description: 'Konsultatsioon (kaugtöö)' })))

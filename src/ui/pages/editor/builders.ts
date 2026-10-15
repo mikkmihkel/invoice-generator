@@ -14,13 +14,15 @@ export function newDraft(profile: CompanyProfile, client?: Client, type: 'invoic
   return type === 'quote' ? asQuote(inv) : inv
 }
 
-/** Links that belong to the original document only (conversion, recurrence, acceptance). */
+/** Links and state that belong to the original document only (conversion, recurrence, acceptance, reopening). */
 function withoutLinks(inv: Invoice): Invoice {
   const out = { ...inv }
   delete out.convertedFromQuoteId
   delete out.convertedToInvoiceId
   delete out.quoteAcceptedAt
   delete out.recurringRuleId
+  delete out.reopenedAt
+  delete out.reopenedIssueDate
   return out
 }
 
