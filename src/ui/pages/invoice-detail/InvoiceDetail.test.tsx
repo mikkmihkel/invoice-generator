@@ -153,7 +153,7 @@ describe('selected invoice', () => {
     const inv = invoice({ issueDate: addDaysISO(today, -30), dueDate: addDaysISO(today, -16) })
     renderAt('#/', createMemoryRepo({ profile, invoices: [inv] }))
     const article = await doc()
-    expect(within(article).getByText('Tasumata, tähtaeg ületatud 16 päeva')).toHaveClass('tone-danger')
+    expect(within(article).getByText('Tasumata, 16 päeva üle tähtaja')).toHaveClass('tone-danger')
     fireEvent.click(within(actions(article)).getByRole('button', { name: 'Saada meeldetuletus' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByLabelText('Teema')).toHaveValue('Meeldetuletus: arve 2026-0004 on tasumata')

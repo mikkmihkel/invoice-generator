@@ -255,7 +255,7 @@ describe('invoice list', () => {
     renderAt('#/', repo2)
     expect(await screen.findByText('2026-0001')).toBeInTheDocument()
     const row = screen.getByText('2026-0001').closest('li')!
-    expect(within(row).getByText(/^Tähtaeg ületatud \d+ päeva$/)).toBeInTheDocument()
+    expect(within(row).getByText(/^\d+ päeva üle tähtaja$/)).toBeInTheDocument()
     expect(within(row).getByText(/124,00/)).toBeInTheDocument()
     // One sentence sums up what is owed, with the overdue part called out.
     expect(screen.getByText(/^Tasumata/, { selector: 'p' })).toHaveTextContent(/^Tasumata 124,00 €, neist üle tähtaja 124,00 €$/)
@@ -300,7 +300,7 @@ describe('credit notes', () => {
     renderAt('#/', repo)
     const row = (await screen.findByText('2026-0002')).closest('li')!
     expect(within(row).getByText('Kreeditarve arvele 2026-0001')).toBeInTheDocument()
-    expect(screen.queryByText(/^Tähtaeg ületatud \d/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^\d+ päeva? üle tähtaja$/)).not.toBeInTheDocument()
     // Nothing is owed: the credit note is not counted as unpaid.
     expect(screen.getByText('Kõik väljastatud arved on tasutud.')).toBeInTheDocument()
     fireEvent.click(within(row).getByRole('link'))
@@ -373,6 +373,6 @@ describe('issue button summary', () => {
     expect(summary).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(summary)
     expect(summary).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByText('Saab numbri 2026-0001 ja lukustatakse.')).toBeInTheDocument()
+    expect(screen.getByText('Arve saab numbri 2026-0001 ja lukustatakse.')).toBeInTheDocument()
   })
 })

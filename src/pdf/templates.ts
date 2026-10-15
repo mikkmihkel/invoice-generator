@@ -52,7 +52,7 @@ export const TEMPLATES: TemplateInfo[] = [
     id: 'classic',
     name: { et: 'Klassikaline', en: 'Classic' },
     description: {
-      et: 'Traditsiooniline Eesti arve: raamitud päiseandmed, müüja ja ostja kastis, ruudustikuga tabel.',
+      et: 'Traditsiooniline Eesti arve: raamitud päiseandmed, müüja ja ostja andmed kastides, ruudustikuga tabel.',
       en: 'Traditional Estonian invoice: boxed header details, seller and buyer boxes, fully gridded table.',
     },
   },
@@ -76,7 +76,7 @@ export const TEMPLATES: TemplateInfo[] = [
     id: 'bold',
     name: { et: 'Julge', en: 'Bold' },
     description: {
-      et: 'Suur kiri ja värviline summaplokk — brändidele, kes tahavad silma paista.',
+      et: 'Suur kiri ja värviline summaplokk. Sobib, kui tahad silma paista.',
       en: 'Big type and a strong accent block for the total — for brands that want presence.',
     },
   },

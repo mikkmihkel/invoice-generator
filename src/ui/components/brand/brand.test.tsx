@@ -82,7 +82,7 @@ const state = () => JSON.parse(screen.getByTestId('state').textContent!) as Bran
 describe('BrandColors', () => {
   it('switches between mono, accent and duo', () => {
     wrap(<Harness initial={{ accentColor: '#0b5d7a' }} />)
-    expect(screen.getByRole('radio', { name: 'Põhivärv' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Ühevärviline' })).toBeChecked()
     expect(screen.getByLabelText('Põhivärv', { selector: 'input.color-hex' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Lisavärv')).toBeNull()
 
@@ -90,17 +90,17 @@ describe('BrandColors', () => {
     expect(state()).toMatchObject({ colorMode: 'duo', secondaryColor: '#c2410c' })
     expect(screen.getByLabelText('Lisavärv')).toHaveValue('#C2410C')
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Ühevärviline' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Mustvalge' }))
     expect(state().colorMode).toBe('mono')
     expect(screen.queryByLabelText('Lisavärv')).toBeNull()
-    expect(screen.getByText(/Värv jääb ainult logole/)).toBeInTheDocument()
+    expect(screen.getByText(/Värviline on vaid logo/)).toBeInTheDocument()
     // The colours are kept for when the user switches back.
     expect(state().secondaryColor).toBe('#c2410c')
   })
 
   it('warns quietly about a primary colour too light for text', () => {
     wrap(<Harness initial={{ accentColor: '#f5c542' }} />)
-    expect(screen.getByText(/tumendatakse arvel tekst automaatselt/)).toBeInTheDocument()
+    expect(screen.getByText(/tehakse tekst arvel automaatselt tumedamaks/)).toBeInTheDocument()
   })
 
   it('offers logo colours only when there is a logo', () => {

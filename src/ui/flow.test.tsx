@@ -78,7 +78,7 @@ describe('invoice list filters', () => {
     const draft = issued('', { status: 'draft', issueDate: '2025-12-01', dueDate: '2025-12-15' })
     renderAt('#/', createMemoryRepo({ profile, invoices: [paid, overdue, draft] }))
     const row = (await screen.findByText('2026-0002')).closest('li')!
-    expect(within(row).getByText(/^Tähtaeg ületatud \d+ päeva$/)).toBeInTheDocument()
+    expect(within(row).getByText(/^\d+ päeva üle tähtaja$/)).toBeInTheDocument()
     // Rows are grouped by month.
     expect(screen.getByRole('heading', { name: 'Jaanuar 2026', level: 2 })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Detsember 2025', level: 2 })).toBeInTheDocument()

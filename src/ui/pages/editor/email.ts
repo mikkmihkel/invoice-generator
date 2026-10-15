@@ -94,8 +94,9 @@ const REMINDER_ET = {
   subject: 'Meeldetuletus: arve {number} on tasumata',
   body:
     'Tere!\n\n' +
-    'Tuletame meelde, et arve nr {number} summas {total} maksetähtaeg oli {dueDate} ja meile ei ole makset veel laekunud. ' +
-    'Arve on uuesti manuses. Kui olete arve juba tasunud, pole selle kirjaga vaja midagi teha.\n\n' +
+    'Tuletame meelde, et arve nr {number} summas {total} maksetähtaeg oli {dueDate}, kuid makset ei ole meile veel laekunud. ' +
+    'Palume arve tasuda esimesel võimalusel. Arve on uuesti manuses ja makseandmed leiate arvelt.\n\n' +
+    'Kui olete arve vahepeal juba tasunud, võite selle kirja tähelepanuta jätta.\n\n' +
     'Lugupidamisega\n{company}',
 }
 const REMINDER_EN = {
