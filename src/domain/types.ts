@@ -279,8 +279,13 @@ export interface ValidationIssue {
   legalBasis?: string
 }
 
+/** Colour theme of the app: follow the operating system, or force light/dark. */
+export type UiTheme = 'auto' | 'light' | 'dark'
+
 export interface AppSettings {
   uiLanguage: UiLanguage
+  /** Missing means 'auto'. */
+  theme?: UiTheme
   /** Google OAuth 2.0 Web client ID; enables Drive + Gmail features. */
   googleClientId?: string
   /** Drive folder name for exported PDFs. */

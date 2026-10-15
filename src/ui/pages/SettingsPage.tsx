@@ -265,6 +265,22 @@ export default function SettingsPage() {
             </div>
             <div className="field-hint">{t('settings.languageHint')}</div>
           </div>
+          <div className="field">
+            <span className="label">{t('settings.theme')}</span>
+            <div>
+              <Segmented
+                label={t('settings.theme')}
+                value={settings.theme ?? 'auto'}
+                onChange={(theme) => void saveSettings({ theme })}
+                options={[
+                  { value: 'auto', label: t('settings.theme.auto') },
+                  { value: 'light', label: t('settings.theme.light') },
+                  { value: 'dark', label: t('settings.theme.dark') },
+                ]}
+              />
+            </div>
+            <div className="field-hint">{t('settings.themeHint')}</div>
+          </div>
         </Section>
 
         <Section id="set-google" title={t('google.title')} description={t('google.intro')}>

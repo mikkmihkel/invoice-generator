@@ -3,6 +3,7 @@ import { createDefaultSettings, type AppSettings, type Client, type CompanyProfi
 import { getRepository, subscribe, type Repository, type StorageArea } from '../storage'
 import { makeT, type Translate } from './i18n'
 import { errorMessage, nowISO, reconcileList, setErrorLanguage, sortInvoices } from './util'
+import { applyTheme, normalizeTheme, readStoredTheme } from './theme'
 
 export interface AppData {
   ready: boolean
@@ -114,6 +115,12 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
     document.documentElement.lang = lang
     setErrorLanguage(lang)
   }, [lang])
+
+  // Until the stored settings are loaded, keep the theme main.tsx applied from localStorage (no flash).
+  const theme = ready ? normalizeTheme(settings.theme) : readStoredTheme()
+  useEffect(() => {
+    applyTheme(theme)
+  }, [theme])
 
   const t = useMemo(() => makeT(lang), [lang])
 

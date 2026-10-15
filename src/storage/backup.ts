@@ -336,6 +336,7 @@ function checkProfile(r: Record<string, unknown>): Text | null {
 function checkSettings(r: Record<string, unknown>): Text | null {
   const c = new RecordCheck(r)
   c.optOneOf('uiLanguage', { et: 'kasutajaliidese keel', en: 'interface language' }, UI_LANGUAGES)
+  c.optOneOf('theme', { et: 'välimus', en: 'theme' }, ['auto', 'light', 'dark'])
   c.optMatch('googleClientId', { et: 'Google’i kliendi ID', en: 'Google client ID' }, GOOGLE_CLIENT_ID)
   c.optStr('driveFolderName', { et: 'Drive’i kausta nimi', en: 'Drive folder name' })
   c.optBool('registryLiveLookup', { et: 'registri otsingu seade', en: 'registry lookup setting' })

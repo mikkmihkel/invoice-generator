@@ -83,8 +83,9 @@
   color-scheme: light;
 }
 
+/* Dark palette: system preference ("Automaatne") unless the user forced light, or the user forced dark. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #141618;
     --surface: #1a1d20;
     --surface-2: #212428;
@@ -125,6 +126,48 @@
 
     color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #141618;
+  --surface: #1a1d20;
+  --surface-2: #212428;
+  --surface-3: #282c31;
+  --border: #2d3136;
+  --border-soft: #26292e;
+  --border-strong: #3c4148;
+  --border-input: #6c727b;
+  --text: #e7e9ec;
+  --text-2: #aab0b8;
+  --text-3: #969ca4;
+
+  --accent: #4dae80;
+  --accent-hover: #5dbd8f;
+  --accent-active: #6cc79b;
+  --accent-text: #6cc79b;
+  --accent-soft: #17271f;
+  --accent-soft-border: #27493a;
+  --on-accent: #04120b;
+  --focus: #6cc79b;
+  --ring: rgb(108 199 155 / 0.22);
+  --selected: #1a2a22;
+
+  --success: #6cc596;
+  --success-soft: #13261b;
+  --danger: #f08a80;
+  --danger-hover: #f4a198;
+  --danger-soft: #2c1614;
+  --danger-border: #522823;
+  --warning: #e0b456;
+  --warning-soft: #282010;
+  --warning-border: #4b3d1b;
+  --on-danger: #1c0907;
+
+  --backdrop: rgb(0 0 0 / 0.6);
+  --shadow-overlay: 0 16px 40px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.4);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 256 256'%3E%3Cpath d='M48 96l80 80 80-80' fill='none' stroke='%23969ca4' stroke-width='20' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  color-scheme: dark;
 }
 
 @media (max-width: 767px) {
