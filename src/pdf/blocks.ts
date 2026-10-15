@@ -12,6 +12,8 @@ import { vatSchemeAllowsRates } from '../domain/law'
 import { vatInEur } from '../domain/calc'
 
 export type Align = 'left' | 'right' | 'center'
+
+const NBSP = '\u00a0'
 export type Margins = [number, number, number, number]
 
 // ---------- labels ----------
@@ -56,7 +58,8 @@ export function label(ctx: DocContext, key: LabelKey, o: LabelStyle): ContentTex
   return {
     stack: [
       { text: caseOf(o, primary), fontSize: o.fontSize, ...base },
-      { text: caseOf(o, secondary), fontSize: Math.max(5.5, o.fontSize - 1), ...base, bold: false, color: o.secondaryColor ?? COLORS.muted },
+      // No letter-spacing on the smaller line: extractors would read "D AT E" instead of "DATE".
+      { text: caseOf(o, secondary), fontSize: Math.max(5.5, o.fontSize - 1), ...base, characterSpacing: undefined, bold: false, color: o.secondaryColor ?? COLORS.muted },
     ],
   }
 }
@@ -116,7 +119,8 @@ export interface ValueStyle {
 
 /** A value as one text run; identifiers in Plex Mono. */
 export function valueText(value: string, row: Pick<DefRow, 'mono' | 'strong'>, s: ValueStyle): ContentText {
-  if (row.mono) return { text: value, font: FONT.mono, fontSize: round(s.fontSize * (s.monoScale ?? 0.94)), color: s.color }
+  // Identifiers never break across lines (an IBAN split in two is unreadable for people and parsers).
+  if (row.mono) return { text: value, font: FONT.mono, fontSize: round(s.fontSize * (s.monoScale ?? 0.94)), color: s.color, noWrap: true }
   return { text: value, fontSize: s.fontSize, color: s.color, bold: !!row.strong && !s.strongFont, font: row.strong ? s.strongFont : undefined }
 }
 
@@ -127,7 +131,7 @@ export interface DefListStyle {
   labelSize?: number
   labelBold?: boolean
   labelUppercase?: boolean
-  /** Keep labels on one line ("Käibe tekkimise kuupäev"). */
+  /** Keep labels on one line ("Käibe tekkimise kuupäev"). Default true. */
   labelNoWrap?: boolean
   valueColor: string
   strongFont?: string
@@ -142,7 +146,7 @@ export interface DefListStyle {
 
 /** Two-column label → value table (label first in reading order). */
 export function defList(ctx: DocContext, rows: DefRow[], s: DefListStyle): ContentTable {
-  const labelStyle: LabelStyle = { fontSize: s.labelSize ?? s.fontSize - 0.5, color: s.labelColor, secondaryColor: s.labelSecondaryColor, bold: s.labelBold, uppercase: s.labelUppercase, noWrap: s.labelNoWrap }
+  const labelStyle: LabelStyle = { fontSize: s.labelSize ?? s.fontSize - 0.5, color: s.labelColor, secondaryColor: s.labelSecondaryColor, bold: s.labelBold, uppercase: s.labelUppercase, noWrap: s.labelNoWrap ?? true }
   return {
     table: {
       widths: [s.labelWidth ?? 'auto', s.valueWidth ?? '*'],
@@ -159,12 +163,14 @@ export function defList(ctx: DocContext, rows: DefRow[], s: DefListStyle): Conte
 export function inlineDef(ctx: DocContext, row: DefRow, labelStyle: LabelStyle, value: ValueStyle): ContentText {
   const lbl = inlineLabel(ctx, row.key, labelStyle)
   const runs = Array.isArray(lbl.text) ? (lbl.text as ContentText[]) : [{ text: lbl.text as string, color: labelStyle.color }]
-  return { text: [...runs, { text: ' ' }, valueText(row.value, row, value)], fontSize: labelStyle.fontSize }
+  return { text: [...runs, { text: NBSP }, valueText(row.value, row, value)], fontSize: labelStyle.fontSize }
 }
 
 /** Label stacked above its value (for horizontal fact rows). */
 export function fact(ctx: DocContext, row: DefRow, s: { label: LabelStyle; value: ValueStyle; gap?: number }): ContentStack {
-  return { stack: [inlineLabel(ctx, row.key, s.label), { ...valueText(row.value, row, s.value), margin: [0, s.gap ?? 2, 0, 0] }] }
+  // Bilingual: Estonian and English label on two lines so values in a row of facts stay aligned.
+  const lbl = ctx.lang === 'et-en' ? label(ctx, row.key, { ...s.label, noWrap: true }) : inlineLabel(ctx, row.key, s.label)
+  return { stack: [lbl, { ...valueText(row.value, row, s.value), margin: [0, s.gap ?? 2, 0, 0] }] }
 }
 
 // ---------- parties ----------
@@ -193,7 +199,8 @@ export function partyBlock(ctx: DocContext, role: 'seller' | 'buyer', s: PartySt
     if (!v) return null
     const lbl = inlineLabel(ctx, key, { fontSize: s.fontSize, color: s.labelColor })
     const runs = Array.isArray(lbl.text) ? lbl.text : [{ text: lbl.text as string, color: s.labelColor }]
-    return line({ text: [...(runs as ContentText[]), { text: ' ' }, mono ? { text: v, font: FONT.mono, fontSize: round(s.fontSize * 0.94), color: s.color } : { text: v, color: s.color }], fontSize: s.fontSize })
+    // NBSP between label and value: a line never ends with a label whose value went to the next line.
+    return line({ text: [...(runs as ContentText[]), { text: NBSP }, mono ? { text: v, font: FONT.mono, fontSize: round(s.fontSize * 0.94), color: s.color } : { text: v, color: s.color }], fontSize: s.fontSize })
   }
   const out: (Content | null)[] = []
   if (s.heading) out.push({ ...inlineLabel(ctx, role, s.heading), margin: [0, 0, 0, s.headingGap ?? 5] })
@@ -230,6 +237,8 @@ export interface TableStyle {
   bodyColor?: string
   /** Alternate row fill. */
   zebra?: string
+  /** Line height inside cells (default 1 — Plex already has tall line metrics). */
+  lineHeight?: number
   /** Leading "Nr" column. */
   lineNumbers?: boolean
 }
@@ -238,6 +247,7 @@ export interface TableStyle {
 const NO_WRAP_HEADERS = new Set<LabelKey>(['lineNo', 'quantity', 'unit', 'vatRate', 'lineTotal', 'unitPrice'])
 
 function headerCell(ctx: DocContext, key: LabelKey, align: Align, s: TableStyle): TableCell {
+  const noWrap = NO_WRAP_HEADERS.has(key)
   return withProps(
     label(ctx, key, {
       fontSize: s.headerFontSize,
@@ -248,9 +258,9 @@ function headerCell(ctx: DocContext, key: LabelKey, align: Align, s: TableStyle)
       uppercase: s.headerUppercase,
       characterSpacing: s.headerCharacterSpacing,
       alignment: align,
-      noWrap: NO_WRAP_HEADERS.has(key),
+      noWrap,
     }),
-    { fillColor: s.headerFill },
+    { fillColor: s.headerFill, lineHeight: s.lineHeight ?? 1 },
   )
 }
 
@@ -291,6 +301,7 @@ export function linesTable(ctx: DocContext, s: TableStyle): ContentTable {
       fontSize: s.bodyFontSize,
       color: c.key === 'lineNo' ? COLORS.faint : (s.bodyColor ?? COLORS.text),
       fillColor: fill,
+      lineHeight: s.lineHeight ?? 1,
       noWrap: c.key !== 'description' && c.key !== 'unit',
     }))
   })
@@ -307,7 +318,7 @@ export function linesTable(ctx: DocContext, s: TableStyle): ContentTable {
  */
 export function vatBreakdownTable(ctx: DocContext, s: TableStyle): ContentTable | null {
   if (!ctx.totals.showVat || ctx.totals.vatBreakdown.length < 2) return null
-  const cell = (text: string, alignment: Align): TableCell => ({ text, fontSize: s.bodyFontSize, color: s.bodyColor ?? COLORS.text, alignment, noWrap: true })
+  const cell = (text: string, alignment: Align): TableCell => ({ text, fontSize: s.bodyFontSize, color: s.bodyColor ?? COLORS.text, alignment, noWrap: true, lineHeight: s.lineHeight ?? 1 })
   return {
     table: {
       headerRows: 1,
@@ -469,7 +480,8 @@ export function notesBlock(ctx: DocContext, s: NotesStyle): ContentStack | null 
   }
   if (!items.length) return null
   const gap = s.gap ?? 3
-  return { stack: items.map((c, i) => (i === 0 ? c : { stack: [c], margin: [0, gap, 0, 0] })) }
+  // Small enough to keep together: never leave a lone heading or half a VAT note at the bottom of a page.
+  return { stack: items.map((c, i) => (i === 0 ? c : { stack: [c], margin: [0, gap, 0, 0] })), unbreakable: true }
 }
 
 // ---------- page furniture ----------
@@ -488,7 +500,8 @@ export interface FooterStyle {
 /** Two letterhead lines: "Lumi Arendus OÜ · Tartu mnt 18-4, 10115 Tallinn · Registrikood 16234571 · KMKR nr …" and contacts. */
 export function sellerSummary(ctx: DocContext): string[] {
   const s = ctx.invoice.seller
-  const join = (parts: (string | undefined)[]) => parts.filter(Boolean).join('  ·  ')
+  // Lines may break between parts, never inside one ("KMKR nr EE102345678").
+  const join = (parts: (string | undefined)[]) => parts.filter(Boolean).map((p) => p!.replace(/ /g, NBSP)).join('  ·  ')
   return [
     join([
       s.name,

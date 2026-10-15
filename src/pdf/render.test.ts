@@ -14,7 +14,7 @@ describe('renderInvoicePdf (real pdfmake)', () => {
   // pdfmake warns about missing access policies when it detects Node; irrelevant here.
   vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
-  it.each<TemplateId>(['classic', 'modern', 'minimal', 'bold'])('renders %s with Estonian characters to a PDF blob', async (templateId) => {
+  it.each<TemplateId>(['standard', 'classic', 'modern', 'minimal', 'bold', 'compact'])('renders %s with Estonian characters to a PDF blob', async (templateId) => {
     const blob = await renderInvoicePdf(sampleInvoice({ templateId, language: 'et-en' }))
     expect(blob.type).toBe('application/pdf')
     const bytes = await blobBytes(blob)

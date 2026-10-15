@@ -20,7 +20,6 @@ import {
   rule,
   tableLayout,
   totalsTable,
-  valueText,
   vatBreakdownTable,
   withProps,
   type DefRow,
@@ -97,6 +96,9 @@ const PAGE_WIDTH = 595.28
 
 const bilingual = (ctx: DocContext) => ctx.lang === 'et-en'
 
+/** Long invoices get tighter table rows so ~40 lines fit on two pages in the airy templates. */
+const isLong = (ctx: DocContext) => ctx.invoice.lines.length > 12
+
 /** Small uppercase section heading ("MÜÜJA", "MAKSEANDMED"). */
 function heading(color: string, fontSize = 7.5, secondaryColor?: string): LabelStyle {
   return { fontSize, color, secondaryColor: secondaryColor ?? color, bold: true, uppercase: true, characterSpacing: 0.6 }
@@ -132,7 +134,7 @@ function totalsRow(breakdown: Content | null, totals: Content | null, width: num
 
 function standard(ctx: DocContext): TemplateDefinition {
   const mx = 52
-  const margins: Margins = [mx, 54, mx, 64]
+  const margins: Margins = [mx, 44, mx, 62]
   const W = PAGE_WIDTH - 2 * mx
   const bi = bilingual(ctx)
   const accentText = readableOnWhite(ctx.accent)
@@ -140,13 +142,13 @@ function standard(ctx: DocContext): TemplateDefinition {
   const party: PartyStyle = { heading: head, headingGap: 6, nameSize: 10, fontSize: 9, color: COLORS.text, labelColor: COLORS.muted }
   const brand = logo(ctx, [170, 52], 'right') ?? { text: ctx.invoice.seller.name, font: FONT.strong, fontSize: 12, color: COLORS.ink, alignment: 'right' }
   const table: TableStyle = {
-    layout: tableLayout({ header: [0.8, COLORS.text], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.hairline], paddingX: 7, paddingY: 6.5, headerPaddingY: 5 }),
+    layout: tableLayout({ header: [0.8, COLORS.text], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.hairline], paddingX: 7, paddingY: isLong(ctx) ? 3.6 : 6.7, headerPaddingY: 5.5 }),
     headerColor: COLORS.muted,
     headerSecondaryColor: COLORS.faint,
     headerFontSize: 8,
-    bodyFontSize: 9,
+    bodyFontSize: isLong(ctx) ? 8.5 : 9,
   }
-  const def = { fontSize: 9, labelSize: 8.5, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 18, paddingY: 1.7 }
+  const def = { fontSize: 9, labelSize: 8.5, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 18, paddingY: 1.3 }
   const breakdown = vatBreakdownTable(ctx, { ...table, headerFontSize: 7.5, bodyFontSize: 8.5, layout: tableLayout({ header: [0.5, COLORS.rule], paddingX: 7, paddingY: 3.5 }) })
   const totals = totalsTable(ctx, {
     fontSize: 9,
@@ -158,8 +160,8 @@ function standard(ctx: DocContext): TemplateDefinition {
     grandColor: COLORS.ink,
     grandRule: [0.8, COLORS.text],
     rowRule: [0.5, COLORS.hairline],
-    paddingY: 4.5,
-    grandPaddingY: 6,
+    paddingY: 3.6,
+    grandPaddingY: 5.5,
   })
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 80, { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
@@ -179,22 +181,22 @@ function standard(ctx: DocContext): TemplateDefinition {
       ],
       columnGap: 24,
     },
-    { text: amountDueLine(ctx, accentText), bold: true, fontSize: 15, color: COLORS.ink, margin: [0, 26, 0, 0] },
+    { text: amountDueLine(ctx, accentText), bold: true, fontSize: 15, color: COLORS.ink, margin: [0, 20, 0, 0] },
     {
       columns: [
         { width: '*', ...partyBlock(ctx, 'seller', party) },
         { width: '*', ...partyBlock(ctx, 'buyer', party) },
       ],
       columnGap: 32,
-      margin: [0, 24, 0, 0],
+      margin: [0, 20, 0, 0],
     },
-    { ...linesTable(ctx, table), margin: [0, 30, 0, 0] },
+    { ...linesTable(ctx, table), margin: [0, 22, 0, 0] },
     totalsRow(breakdown ? { ...breakdown, margin: [0, 10, 0, 0] } : null, totals, bi ? 290 : 250, 40, [0, 4, 0, 0]),
   ]
   if (pay.length || qr) {
     content.push({
       stack: [
-        rule(W, COLORS.hairline, 0.5, [0, 0, 0, 14]),
+        rule(W, COLORS.hairline, 0.5, [0, 0, 0, 12]),
         {
           columns: [
             { width: '*', stack: [{ ...inlineLabel(ctx, 'bankDetails', head), margin: [0, 0, 0, 6] }, ...(pay.length ? [defList(ctx, pay, def)] : [])] },
@@ -203,14 +205,14 @@ function standard(ctx: DocContext): TemplateDefinition {
           columnGap: 24,
         },
       ],
-      margin: [0, 30, 0, 0],
+      margin: [0, 22, 0, 0],
       unbreakable: true,
     })
   }
-  if (notes) content.push({ ...notes, margin: [0, pay.length || qr ? 18 : 30, 0, 0] })
+  if (notes) content.push({ ...notes, margin: [0, pay.length || qr ? 14 : 22, 0, 0] })
   return {
     pageMargins: margins,
-    defaultStyle: { font: FONT.sans, fontSize: 9, color: COLORS.text, lineHeight: 1.25 },
+    defaultStyle: { font: FONT.sans, fontSize: 9, color: COLORS.text, lineHeight: 1.2 },
     header: continuationHeader(ctx, { marginX: mx, top: 24, fontSize: 7.5, color: COLORS.faint }),
     content,
     footer: footer(ctx, { marginX: mx, fontSize: 7.5, color: COLORS.faint, top: 24 }),
@@ -232,8 +234,10 @@ function classic(ctx: DocContext): TemplateDefinition {
   const party: PartyStyle = { heading: null, nameSize: 10, fontSize: 8.5, color: COLORS.text, labelColor: COLORS.muted, lineGap: 0.5 }
   const brand = logo(ctx, [200, 56]) ?? { text: ctx.invoice.seller.name, font: FONT.strong, bold: true, fontSize: 15, color: accentText }
   const meta = metaRows(ctx, { reference: true })
+  // At most five facts per row, rows balanced (7 → 4 + 3).
+  const perRow = Math.ceil(meta.length / Math.ceil(meta.length / 5))
   const table: TableStyle = {
-    layout: grid(5, 3.5),
+    layout: grid(5, isLong(ctx) ? 3 : 4.6),
     headerFill: fill,
     headerColor: COLORS.ink,
     headerSecondaryColor: COLORS.muted,
@@ -270,11 +274,11 @@ function classic(ctx: DocContext): TemplateDefinition {
     },
     {
       table: {
-        widths: chunk(meta, 5)[0].map(() => '*'),
+        widths: chunk(meta, perRow)[0].map(() => '*'),
         // One cell per fact, label stacked above its value, so text extraction keeps each pair together.
-        body: chunk(meta, 5).map((rows) => [
+        body: chunk(meta, perRow).map((rows) => [
           ...rows.map((r) => fact(ctx, r, { label: { fontSize: 7.5, color: COLORS.muted, secondaryColor: COLORS.faint }, value: { fontSize: 9, color: COLORS.ink }, gap: 2.5 })),
-          ...Array.from({ length: Math.min(meta.length, 5) - rows.length }, () => ({ text: '' })),
+          ...Array.from({ length: perRow - rows.length }, () => ({ text: '' })),
         ]) as never,
       },
       layout: grid(7, 5),
@@ -320,8 +324,6 @@ function classic(ctx: DocContext): TemplateDefinition {
 
 // ---------- modern ----------
 
-const MODERN_BAND = 172
-
 function modern(ctx: DocContext): TemplateDefinition {
   const mx = 48
   const top = 42
@@ -333,17 +335,22 @@ function modern(ctx: DocContext): TemplateDefinition {
   const grand = grandTotal(ctx)
   const head = heading(accentText, 7.5, COLORS.muted)
   const party: PartyStyle = { heading: head, headingGap: 7, nameSize: 10.5, fontSize: 9, color: COLORS.text, labelColor: COLORS.muted }
-  const bandRows = metaRows(ctx).filter((r) => r.key === ctx.numberKey || r.key === 'issueDate' || r.key === 'dueDate')
-  const otherMeta = metaRows(ctx, { exclude: [ctx.numberKey, 'issueDate', 'dueDate'] })
+  // All document facts live in the band; its height follows the number of rows (Plex line = 1.3 em).
+  const bandRows = metaRows(ctx)
   const brand = logo(ctx, [120, 34], 'right')
+  const titleSize = bi ? 21 : 26
+  const leftHeight = titleSize * 1.3 + 12 + bandRows.length * (9 * 1.3 * 1.2 + 3)
+  const rightHeight = (brand ? 64 : 6) + 8 * 1.3 * 1.2 + 3 + (brand ? 24 : 28) * 1.3
+  const bandContent = Math.ceil(Math.max(leftHeight, rightHeight, 104))
+  const bandHeight = top + bandContent + 28
   const table: TableStyle = {
-    layout: tableLayout({ header: [1.2, ctx.accent], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.hairline], paddingX: 8, paddingY: 7, headerPaddingY: 6 }),
+    layout: tableLayout({ header: [1.2, ctx.accent], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.hairline], paddingX: 8, paddingY: isLong(ctx) ? 3.1 : 6.7, headerPaddingY: 6 }),
     headerColor: accentText,
     headerSecondaryColor: COLORS.muted,
     headerFontSize: 7.5,
     headerUppercase: true,
     headerCharacterSpacing: 0.5,
-    bodyFontSize: 9,
+    bodyFontSize: isLong(ctx) ? 8.5 : 9,
   }
   const breakdown = vatBreakdownTable(ctx, { ...table, bodyFontSize: 8.5, layout: tableLayout({ header: [0.8, ctx.accent], rows: [0.5, COLORS.hairline], paddingX: 8, paddingY: 4 }) })
   const totals = totalsTable(ctx, {
@@ -356,8 +363,8 @@ function modern(ctx: DocContext): TemplateDefinition {
     grandColor: COLORS.ink,
     grandLabelColor: accentText,
     grandRule: [1.2, ctx.accent],
-    paddingY: 4,
-    grandPaddingY: 7,
+    paddingY: 3.5,
+    grandPaddingY: 6,
   })
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 80, { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
@@ -366,7 +373,7 @@ function modern(ctx: DocContext): TemplateDefinition {
   const band: Content = {
     table: {
       widths: ['*'],
-      heights: [MODERN_BAND - top],
+      heights: [bandContent + 28],
       body: [
         [
           {
@@ -406,20 +413,11 @@ function modern(ctx: DocContext): TemplateDefinition {
       columns: [
         { width: '*', ...partyBlock(ctx, 'seller', party) },
         { width: '*', ...partyBlock(ctx, 'buyer', party) },
-        ...(otherMeta.length
-          ? [
-              {
-                width: bi ? 190 : 150,
-                stack: [defList(ctx, otherMeta, { fontSize: 8.5, labelSize: 8, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 12, paddingY: 1.5, valueAlign: 'right' })],
-                margin: [0, 15, 0, 0],
-              } as Content,
-            ]
-          : []),
       ],
       columnGap: 28,
-      margin: [0, 30, 0, 0],
+      margin: [0, 26, 0, 0],
     },
-    { ...linesTable(ctx, table), margin: [0, 32, 0, 0] },
+    { ...linesTable(ctx, table), margin: [0, 24, 0, 0] },
     totalsRow(breakdown ? { ...breakdown, margin: [0, 10, 0, 0] } : null, totals, bi ? 290 : 250, 40, [0, 4, 0, 0]),
   ]
   if (pay.length || qr) {
@@ -428,21 +426,21 @@ function modern(ctx: DocContext): TemplateDefinition {
         widths: qr ? ['*', 'auto'] : ['*'],
         body: [
           [
-            { stack: [{ ...inlineLabel(ctx, 'bankDetails', head), margin: [0, 0, 0, 7] }, ...(pay.length ? [defList(ctx, pay, { fontSize: 9, labelSize: 8.5, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 18, paddingY: 1.6 })] : [])], fillColor: ctx.accentTint },
+            { stack: [{ ...inlineLabel(ctx, 'bankDetails', head), margin: [0, 0, 0, 7] }, ...(pay.length ? [defList(ctx, pay, { fontSize: 9, labelSize: 8.5, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 18, paddingY: 1.2 })] : [])], fillColor: ctx.accentTint },
             ...(qr ? [{ stack: [qr], fillColor: ctx.accentTint }] : []),
           ],
         ],
       },
-      layout: tableLayout({ paddingX: 12, paddingY: 14, edge: 16 }),
-      margin: [0, 30, 0, 0],
+      layout: tableLayout({ paddingX: 12, paddingY: 11, edge: 16 }),
+      margin: [0, 22, 0, 0],
       unbreakable: true,
     })
   }
-  if (notes) content.push({ ...notes, margin: [0, 18, 0, 0] })
+  if (notes) content.push({ ...notes, margin: [0, 14, 0, 0] })
   return {
     pageMargins: margins,
-    defaultStyle: { font: FONT.sans, fontSize: 9, color: COLORS.text, lineHeight: 1.25 },
-    background: (page: number, size: ContextPageSize) => ({ canvas: [{ type: 'rect', x: 0, y: 0, w: size.width, h: page === 1 ? MODERN_BAND : 8, color: ctx.accent }] }),
+    defaultStyle: { font: FONT.sans, fontSize: 9, color: COLORS.text, lineHeight: 1.2 },
+    background: (page: number, size: ContextPageSize) => ({ canvas: [{ type: 'rect', x: 0, y: 0, w: size.width, h: page === 1 ? bandHeight : 8, color: ctx.accent }] }),
     content,
     footer: footer(ctx, { marginX: mx, fontSize: 7.5, color: COLORS.faint, top: 24 }),
   }
@@ -452,7 +450,7 @@ function modern(ctx: DocContext): TemplateDefinition {
 
 function minimal(ctx: DocContext): TemplateDefinition {
   const mx = 56
-  const margins: Margins = [mx, 52, mx, 64]
+  const margins: Margins = [mx, 46, mx, 62]
   const W = PAGE_WIDTH - 2 * mx
   const GAP = 16
   const COL = (W - 3 * GAP) / 4
@@ -467,7 +465,7 @@ function minimal(ctx: DocContext): TemplateDefinition {
     columnGap: GAP,
   })
   const table: TableStyle = {
-    layout: tableLayout({ header: [0.6, COLORS.ink], rows: [0.4, COLORS.hairline], bottom: [0.6, COLORS.ink], paddingX: 6, paddingY: 6, headerPaddingY: 5 }),
+    layout: tableLayout({ header: [0.6, COLORS.ink], rows: [0.4, COLORS.hairline], bottom: [0.6, COLORS.ink], paddingX: 6, paddingY: isLong(ctx) ? 3.6 : 6.2, headerPaddingY: 5.5 }),
     headerColor: COLORS.muted,
     headerSecondaryColor: COLORS.faint,
     headerFontSize: 7,
@@ -504,9 +502,9 @@ function minimal(ctx: DocContext): TemplateDefinition {
       ],
       columnGap: GAP,
     },
-    hair([0, 20, 0, 14]),
+    hair([0, 18, 0, 12]),
     ...chunk(facts, 4).map((rows, i) => ({ ...(factRow(rows) as object), margin: [0, i ? 12 : 0, 0, 0] }) as Content),
-    hair([0, 14, 0, 14]),
+    hair([0, 12, 0, 12]),
     {
       columns: [
         { width: span(2), ...partyBlock(ctx, 'seller', party) },
@@ -514,29 +512,29 @@ function minimal(ctx: DocContext): TemplateDefinition {
       ],
       columnGap: GAP,
     },
-    { ...linesTable(ctx, table), margin: [0, 26, 0, 0] },
+    { ...linesTable(ctx, table), margin: [0, 22, 0, 0] },
     totalsRow(breakdown ? { ...breakdown, margin: [0, 8, 0, 0] } : null, totals, span(2), GAP, [0, 6, 0, 0]),
   ]
   if (pay.length || qr) {
     content.push({
       stack: [
-        hair([0, 0, 0, 14]),
+        hair([0, 0, 0, 12]),
         {
           columns: [
-            { width: span(2), stack: [{ ...inlineLabel(ctx, 'bankDetails', lbl), margin: [0, 0, 0, 7] }, ...(pay.length ? [defList(ctx, pay, { fontSize: 8.5, labelSize: 8, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 16, paddingY: 1.5 })] : [])] },
+            { width: span(2), stack: [{ ...inlineLabel(ctx, 'bankDetails', lbl), margin: [0, 0, 0, 7] }, ...(pay.length ? [defList(ctx, pay, { fontSize: 8.5, labelSize: 8, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 16, paddingY: 1.2 })] : [])] },
             { width: span(2), stack: qr ? [qr] : [{ text: '' }] },
           ],
           columnGap: GAP,
         },
       ],
-      margin: [0, 26, 0, 0],
+      margin: [0, 22, 0, 0],
       unbreakable: true,
     })
   }
-  if (notes) content.push({ columns: [{ width: span(3) + GAP / 2, ...notes }, { width: '*', text: '' }], margin: [0, 18, 0, 0] })
+  if (notes) content.push({ columns: [{ width: span(3) + GAP / 2, ...notes }, { width: '*', text: '' }], margin: [0, 14, 0, 0] })
   return {
     pageMargins: margins,
-    defaultStyle: { font: FONT.sans, fontSize: 8.5, color: COLORS.ink, lineHeight: 1.25 },
+    defaultStyle: { font: FONT.sans, fontSize: 8.5, color: COLORS.ink, lineHeight: 1.2 },
     header: continuationHeader(ctx, { marginX: mx, top: 24, fontSize: 7, color: COLORS.faint }),
     content,
     footer: footer(ctx, { marginX: mx, fontSize: 7, color: COLORS.faint, top: 24 }),
@@ -548,7 +546,7 @@ function minimal(ctx: DocContext): TemplateDefinition {
 
 function bold(ctx: DocContext): TemplateDefinition {
   const mx = 48
-  const margins: Margins = [mx, 46, mx, 64]
+  const margins: Margins = [mx, 42, mx, 62]
   const W = PAGE_WIDTH - 2 * mx
   const bi = bilingual(ctx)
   const accentText = readableOnWhite(ctx.accent)
@@ -560,36 +558,34 @@ function bold(ctx: DocContext): TemplateDefinition {
   const brand = logo(ctx, [150, 56], 'right') ?? { text: ctx.invoice.seller.name, font: FONT.strong, bold: true, fontSize: 14, color: COLORS.ink, alignment: 'right' }
   const facts = metaRows(ctx)
   const table: TableStyle = {
-    layout: tableLayout({ header: [1.6, COLORS.ink], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.rule], paddingX: 8, paddingY: 6.5, headerPaddingY: 6 }),
+    layout: tableLayout({ header: [1.6, COLORS.ink], rows: [0.5, COLORS.hairline], bottom: [0.5, COLORS.rule], paddingX: 8, paddingY: isLong(ctx) ? 3.6 : 6.7, headerPaddingY: 6 }),
     headerColor: COLORS.ink,
     headerSecondaryColor: COLORS.muted,
     headerFontSize: 7.5,
     headerUppercase: true,
     headerCharacterSpacing: 0.6,
-    bodyFontSize: 9,
+    bodyFontSize: isLong(ctx) ? 8.5 : 9,
   }
   const breakdown = vatBreakdownTable(ctx, { ...table, bodyFontSize: 8.5, layout: tableLayout({ header: [0.8, COLORS.ink], rows: [0.5, COLORS.hairline], paddingX: 8, paddingY: 4 }) })
   const subtotals = ctx.totals.showVat
-    ? totalsTable(ctx, { fontSize: 9, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, grandFontSize: 9, grandColor: COLORS.ink, rowRule: [0.5, COLORS.hairline], paddingY: 4.5, omitGrand: true })
+    ? totalsTable(ctx, { fontSize: 9, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, grandFontSize: 9, grandColor: COLORS.ink, rowRule: [0.5, COLORS.hairline], paddingY: 3.5, omitGrand: true })
     : null
   const dueRow = !ctx.isCreditNote && ctx.invoice.dueDate ? { key: 'dueDate' as LabelKey, value: ctx.date(ctx.invoice.dueDate) } : null
   const block: Content = {
     table: {
       widths: ['*', 'auto'],
+      // Reading order: label → amount → due date (the amount must directly follow its label).
       body: [
         [
-          {
-            stack: [
-              inlineLabel(ctx, grand.key, { fontSize: 9, color: on, bold: true, uppercase: true, characterSpacing: 0.8 }),
-              ...(dueRow ? [{ text: [{ text: `${ctx.t('dueDate')} `, color: onMuted }, { text: dueRow.value, color: on }], fontSize: 9, margin: [0, 4, 0, 0] } as Content] : []),
-            ],
-            fillColor: ctx.accent,
-          },
-          { text: grand.value, font: FONT.strong, bold: true, fontSize: 30, color: on, alignment: 'right', fillColor: ctx.accent, lineHeight: 1, margin: [0, 2, 0, 0] },
+          { ...inlineLabel(ctx, grand.key, { fontSize: 9, color: on, bold: true, uppercase: true, characterSpacing: 0.8 }), fillColor: ctx.accent, margin: [0, 5, 0, 0] },
+          { text: grand.value, font: FONT.strong, bold: true, fontSize: 30, color: on, alignment: 'right', fillColor: ctx.accent, lineHeight: 1, rowSpan: dueRow ? 2 : 1, margin: [0, 4, 0, 0] },
         ],
-      ],
+        ...(dueRow
+          ? [[{ text: [{ text: `${ctx.t('dueDate')} `, color: onMuted }, { text: dueRow.value, color: on }], fontSize: 9, fillColor: ctx.accent, margin: [0, 0, 0, 2] }, {}]]
+          : []),
+      ] as never,
     },
-    layout: tableLayout({ paddingX: 12, paddingY: 14, edge: 18 }),
+    layout: { ...tableLayout({ paddingX: 12, paddingY: 0, edge: 18 }), paddingTop: (i: number) => (i === 0 ? 12 : 3), paddingBottom: (i: number, node: { table: { body: unknown[] } }) => (i === node.table.body.length - 1 ? 12 : 0) },
   }
   const pay = paymentRows(ctx)
   const qr = paymentQr(ctx, 80, { fontSize: 7, color: COLORS.muted, secondaryColor: COLORS.faint, alignment: 'center' })
@@ -600,21 +596,25 @@ function bold(ctx: DocContext): TemplateDefinition {
       columns: [
         {
           width: '*',
-          stack: [{ text: ctx.title, font: FONT.strong, bold: true, fontSize: bi ? 30 : 44, color: accentText, lineHeight: 1, characterSpacing: -0.5 }],
+          stack: [{ text: ctx.title, font: FONT.strong, bold: true, fontSize: bi ? 30 : 42, color: accentText, lineHeight: 1, characterSpacing: -0.5 }],
         },
         { width: 180, stack: [brand] },
       ],
       columnGap: 24,
     },
-    ...chunk(facts, 5).map(
+    // Facts on a strict three-column grid so rows line up.
+    ...chunk(facts, 3).map(
       (rows, i) =>
         ({
-          columns: rows.map((r) => ({ width: 'auto', ...fact(ctx, r, { label: head, value: { fontSize: 11.5, color: COLORS.ink, strongFont: FONT.strong, monoScale: 1 }, gap: 3 }) }) as Content),
+          columns: [
+            ...rows.map((r) => ({ width: '*', ...fact(ctx, r, { label: { ...head, noWrap: true }, value: { fontSize: 11.5, color: COLORS.ink, strongFont: FONT.strong, monoScale: 1 }, gap: 3 }) }) as Content),
+            ...Array.from({ length: 3 - rows.length }, () => ({ width: '*', text: '' }) as Content),
+          ],
           columnGap: 30,
           margin: [0, i ? 10 : 16, 0, 0],
         }) as Content,
     ),
-    rule(W, COLORS.ink, 1.6, [0, 16, 0, 16]),
+    rule(W, COLORS.ink, 1.6, [0, 14, 0, 14]),
     {
       columns: [
         { width: '*', ...partyBlock(ctx, 'seller', party) },
@@ -622,7 +622,7 @@ function bold(ctx: DocContext): TemplateDefinition {
       ],
       columnGap: 32,
     },
-    { ...linesTable(ctx, table), margin: [0, 26, 0, 0] },
+    { ...linesTable(ctx, table), margin: [0, 22, 0, 0] },
     {
       stack: [
         ...(subtotals || breakdown ? [totalsRow(breakdown ? { ...breakdown, margin: [0, 8, 0, 0] } : null, subtotals, bi ? 290 : 260, 40)] : []),
@@ -632,21 +632,22 @@ function bold(ctx: DocContext): TemplateDefinition {
       unbreakable: true,
     },
   ]
-  if (pay.length || qr) {
+  // Payment details, notes and QR side by side keep the big-type layout on one page.
+  if (pay.length || qr || notes) {
     content.push({
       columns: [
-        { width: '*', stack: [{ ...inlineLabel(ctx, 'bankDetails', head), margin: [0, 0, 0, 6] }, ...(pay.length ? [defList(ctx, pay, { fontSize: 9, labelSize: 8.5, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 18, paddingY: 1.6 })] : [])] },
+        ...(pay.length ? [{ width: 'auto', stack: [{ ...inlineLabel(ctx, 'bankDetails', head), margin: [0, 0, 0, 6] }, defList(ctx, pay, { fontSize: 9, labelSize: 8.5, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 18, paddingY: 1.2 })] } as Content] : []),
+        { width: '*', stack: notes ? [{ ...notes, margin: [0, pay.length ? 17 : 0, 0, 0] }] : [{ text: '' }] },
         ...(qr ? [{ width: 'auto', stack: [qr] } as Content] : []),
       ],
-      columnGap: 24,
-      margin: [0, 22, 0, 0],
+      columnGap: 28,
+      margin: [0, 20, 0, 0],
       unbreakable: true,
     })
   }
-  if (notes) content.push({ ...notes, margin: [0, 16, 0, 0] })
   return {
     pageMargins: margins,
-    defaultStyle: { font: FONT.sans, fontSize: 9, color: COLORS.text, lineHeight: 1.22 },
+    defaultStyle: { font: FONT.sans, fontSize: 9, color: COLORS.text, lineHeight: 1.18 },
     header: continuationHeader(ctx, { marginX: mx, top: 22, fontSize: 7.5, color: COLORS.faint }),
     background: (_page: number, size: ContextPageSize) => ({ canvas: [{ type: 'rect', x: 0, y: 0, w: 10, h: size.height, color: ctx.accent }] }),
     content,
@@ -666,7 +667,7 @@ function compact(ctx: DocContext): TemplateDefinition {
   const brand = logo(ctx, [130, 34], 'right') ?? { text: ctx.invoice.seller.name, bold: true, fontSize: 9.5, color: COLORS.ink, alignment: 'right' }
   const def = { fontSize: 7.6, labelSize: 7.3, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, gap: 10, paddingY: 0.8 }
   const table: TableStyle = {
-    layout: tableLayout({ header: [0.6, COLORS.rule], bottom: [0.6, COLORS.rule], paddingX: 5, paddingY: 2.3, headerPaddingY: 3.5, edge: 4 }),
+    layout: tableLayout({ header: [0.6, COLORS.rule], bottom: [0.6, COLORS.rule], paddingX: 5, paddingY: 2.7, headerPaddingY: 4, edge: 4 }),
     headerFill: COLORS.fill,
     headerColor: COLORS.muted,
     headerSecondaryColor: COLORS.faint,
@@ -706,7 +707,7 @@ function compact(ctx: DocContext): TemplateDefinition {
     },
     {
       columns: [
-        { width: bi ? 200 : 160, stack: [defList(ctx, metaRows(ctx), def)], margin: [0, 11, 0, 0] },
+        { width: bi ? 210 : 'auto', stack: [defList(ctx, metaRows(ctx), { ...def, labelNoWrap: !bi, valueWidth: 'auto' })], margin: [0, 11, 0, 0] },
         { width: '*', ...partyBlock(ctx, 'seller', party) },
         { width: '*', ...partyBlock(ctx, 'buyer', party) },
       ],

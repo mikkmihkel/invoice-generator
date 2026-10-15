@@ -134,7 +134,7 @@ describe('createEmptyInvoice', () => {
       currency: 'EUR',
       vatScheme: 'domestic',
       language: 'et',
-      templateId: 'classic',
+      templateId: 'standard',
       accentColor: '#1f4e79',
       bankAccountIds: ['a1', 'a2'],
       lateInterestPercentPerDay: 0.05,

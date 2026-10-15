@@ -159,7 +159,7 @@ fieldset:disabled .template-card:not(.selected) {
   color: var(--text-3);
 }
 .template-compact .template-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--s-2);
 }
 .template-compact .template-card {
@@ -232,6 +232,26 @@ fieldset:disabled .template-card:not(.selected) {
 }
 .tpl-bold .tpl-total {
   background: var(--tpl-accent);
+}
+.tpl-standard .tpl-head {
+  width: 32%;
+  background: #16191d;
+}
+.tpl-standard .tpl-head + .tpl-line {
+  width: 46%;
+  height: 4px;
+  background: var(--tpl-accent);
+}
+.tpl-standard .tpl-table {
+  background: repeating-linear-gradient(#eceef1 0 1px, transparent 1px 6px);
+}
+.tpl-compact .tpl-head {
+  width: 26%;
+  height: 4px;
+  background: #16191d;
+}
+.tpl-compact .tpl-table {
+  background: repeating-linear-gradient(#e1e4e8 0 2px, transparent 2px 4px);
 }
 .tpl-classic .tpl-table {
   border: 1px solid #d5d9de;

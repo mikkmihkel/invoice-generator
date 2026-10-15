@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { TDocumentDefinitions } from 'pdfmake/interfaces'
 import { computeTotals } from '../domain'
-import type { InvoiceLanguage, TemplateId } from '../domain/types'
+import type { Invoice, InvoiceLanguage, TemplateId } from '../domain/types'
 import { buildDocDefinition } from './docDefinition'
+import { FONT, FONT_FAMILIES } from './fonts'
 import { formatMoney } from './format'
 import { TEMPLATES } from './templates'
 import { creditNoteInvoice, line, notRegisteredInvoice, sampleInvoice, TINY_PNG } from './testFixtures'
@@ -40,11 +41,11 @@ function images(def: TDocumentDefinitions): string[] {
   return found
 }
 
-const templates: TemplateId[] = ['classic', 'modern', 'minimal', 'bold']
+const templates: TemplateId[] = ['standard', 'classic', 'modern', 'minimal', 'bold', 'compact']
 const languages: InvoiceLanguage[] = ['et', 'en', 'et-en']
 
 describe('TEMPLATES', () => {
-  it('describes all four templates in both languages', () => {
+  it('describes all six templates in both languages, standard first', () => {
     expect(TEMPLATES.map((t) => t.id)).toEqual(templates)
     for (const t of TEMPLATES) {
       expect(t.name.et && t.name.en && t.description.et && t.description.en).toBeTruthy()
@@ -213,7 +214,7 @@ describe('buildDocDefinition — variants', () => {
     const def = buildDocDefinition(sampleInvoice({ language: 'en' }))
     expect(def.info).toMatchObject({ title: 'Invoice 2026-0007', author: 'Õunapuu & Šokolaad OÜ' })
     expect(def.pageSize).toBe('A4')
-    expect(def.defaultStyle).toMatchObject({ font: 'Roboto' })
+    expect(def.defaultStyle).toMatchObject({ font: 'PlexSans' })
   })
 
   it('prints the country for cross-border invoices and personal code for private buyers', () => {
@@ -241,5 +242,114 @@ describe('buildDocDefinition — variants', () => {
     })
     expect(found.length).toBeGreaterThan(0)
     for (const f of found) expect(f.noWrap).toBe(true)
+  })
+})
+
+/** Every object node in the definition (content, header/footer of pages 1 and 2, background). */
+function nodes(def: TDocumentDefinitions): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = []
+  const walk = (n: unknown): void => {
+    if (Array.isArray(n)) return n.forEach(walk)
+    if (n && typeof n === 'object') {
+      out.push(n as Record<string, unknown>)
+      Object.values(n).forEach(walk)
+    }
+  }
+  walk(def.content)
+  for (const page of [1, 2]) {
+    if (typeof def.footer === 'function') walk(def.footer(page, 2, PAGE))
+    if (typeof def.header === 'function') walk(def.header(page, 2, PAGE))
+  }
+  return out
+}
+
+/** Sample whose printed account has a valid IBAN, so a payment QR can be produced. */
+const payable = (o: Partial<Invoice> = {}) => sampleInvoice({ bankAccountIds: ['b2'], paymentQr: true, ...o })
+
+describe('templates — design system', () => {
+  it('only uses registered fonts (IBM Plex) and defaults to Plex Sans', () => {
+    for (const templateId of templates) {
+      for (const language of languages) {
+        const def = buildDocDefinition(sampleInvoice({ templateId, language }))
+        expect(def.defaultStyle).toMatchObject({ font: FONT.sans })
+        const used = new Set(nodes(def).map((n) => n.font).filter((f): f is string => typeof f === 'string'))
+        for (const f of used) expect(Object.keys(FONT_FAMILIES), `${templateId}: unknown font ${f}`).toContain(f)
+      }
+    }
+  })
+
+  it('sets identifiers (number, codes, IBAN, reference) in Plex Mono as single runs', () => {
+    for (const templateId of templates) {
+      const all = nodes(buildDocDefinition(sampleInvoice({ templateId })))
+      const mono = new Set(all.filter((n) => n.font === FONT.mono).map((n) => n.text))
+      for (const id of ['2026-0007', '12345678', 'EE123456789', '87654321', 'EE987654321', 'EE71 7700 7710 0123 4567', '20260007']) {
+        expect(mono, `${templateId}: ${id}`).toContain(id)
+      }
+    }
+  })
+
+  it('prints amounts as one text run with the currency', () => {
+    for (const templateId of templates) {
+      const runs = nodes(buildDocDefinition(sampleInvoice({ templateId }))).map((n) => n.text)
+      expect(runs, templateId).toContain(formatMoney(2516.92, 'EUR', 'et'))
+      expect(runs, templateId).toContain(formatMoney(2191.97, 'EUR', 'et'))
+    }
+  })
+
+  it('uses a real, repeating header row and keeps rows and the totals block together', () => {
+    for (const templateId of templates) {
+      const all = nodes(buildDocDefinition(sampleInvoice({ templateId, lines: Array.from({ length: 40 }, (_, i) => line({ id: `x${i}` })) })))
+      const lines = all.find((n) => (n.table as { body?: unknown[] } | undefined)?.body?.length === 41)!.table as { headerRows: number; dontBreakRows: boolean }
+      expect(lines.headerRows, templateId).toBe(1)
+      expect(lines.dontBreakRows, templateId).toBe(true)
+      const totalsBlock = all.find((n) => n.unbreakable && JSON.stringify(n).toUpperCase().includes('TASUMISELE KUULUB'))
+      expect(totalsBlock, templateId).toBeTruthy()
+    }
+  })
+
+  it('shows the EPC payment QR in the payment section only when enabled and possible', () => {
+    const qrs = (inv: Invoice) => nodes(buildDocDefinition(inv)).filter((n) => typeof n.qr === 'string')
+    for (const templateId of templates) {
+      const [qr] = qrs(payable({ templateId }))
+      expect(qr, templateId).toBeTruthy()
+      expect(String(qr.qr).startsWith('BCD\n002\n')).toBe(true)
+      expect(qrs(payable({ templateId, paymentQr: false })), templateId).toEqual([])
+      expect(qrs(sampleInvoice({ templateId, paymentQr: true })), `${templateId}: invalid IBAN`).toEqual([])
+      expect(qrs(payable({ templateId, type: 'credit-note', creditedInvoiceNumber: '2026-0006' })), `${templateId}: credit note`).toEqual([])
+    }
+    expect(joined(buildDocDefinition(payable({ language: 'et-en' })))).toContain('Skanni ja maksa')
+  })
+
+  it('labels the document number by type and prints it with the page count in the footer', () => {
+    for (const templateId of templates) {
+      const inv = joined(buildDocDefinition(sampleInvoice({ templateId })))
+      expect(inv).toContain('Arve nr')
+      expect(inv).toContain('Arve nr 2026-0007  ·  ')
+      const credit = joined(buildDocDefinition(creditNoteInvoice({ templateId, language: 'en' }))).toUpperCase()
+      expect(credit).toContain('CREDIT NOTE NO.')
+      expect(credit).toContain('CREDITED INVOICE')
+      expect(credit, `${templateId}: credit notes have no due date`).not.toContain('DUE DATE')
+    }
+  })
+
+  it('standard: headline with amount and due date, accent only on the amount', () => {
+    const def = buildDocDefinition(sampleInvoice({ templateId: 'standard', accentColor: '#aa3300' }))
+    const amount = formatMoney(2516.92, 'EUR', 'et')
+    const headline = nodes(def).find((n) => Array.isArray(n.text) && (n.text as { text: string }[])[0]?.text === amount)!
+    expect(headline.text).toEqual([{ text: amount, color: '#aa3300' }, { text: ' tasuda 26.10.2026' }])
+    expect(JSON.stringify(def.content).match(/#aa3300/g)).toHaveLength(1)
+    const en = joined(buildDocDefinition(sampleInvoice({ templateId: 'standard', language: 'et-en' })))
+    expect(en).toContain(' tasuda / due 26.10.2026')
+  })
+
+  it('classic prints the seller letterhead in the footer; others keep the footer light', () => {
+    const footerText = (templateId: TemplateId) => JSON.stringify((buildDocDefinition(sampleInvoice({ templateId })).footer as (p: number, c: number, s: typeof PAGE) => unknown)(1, 1, PAGE))
+    expect(footerText('classic')).toContain('Registrikood 12345678')
+    expect(footerText('standard')).not.toContain('12345678')
+  })
+
+  it('falls back to classic for unknown template ids', () => {
+    const inv = sampleInvoice({ templateId: 'nope' as TemplateId })
+    expect(JSON.stringify(buildDocDefinition(inv).content)).toEqual(JSON.stringify(buildDocDefinition(sampleInvoice({ templateId: 'classic' })).content))
   })
 })

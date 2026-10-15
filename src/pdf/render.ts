@@ -3,6 +3,7 @@ import type { TCreatedPdf, TDocumentDefinitions } from 'pdfmake/interfaces'
 import type { Invoice } from '../domain/types'
 import { buildDocDefinition, type DocDefinitionOptions } from './docDefinition'
 import { withMachineLayer } from './machine'
+import { FONT_FAMILIES, loadFontVfs } from './fonts'
 
 interface PdfMakeApi {
   createPdf(def: TDocumentDefinitions): TCreatedPdf
@@ -21,7 +22,7 @@ function unwrap<T>(mod: unknown): T {
 /** Load pdfmake (browser build) and the IBM Plex fonts, which cover Estonian letters and €. */
 export function loadPdfMake(): Promise<PdfMakeApi> {
   if (!loading) {
-    loading = Promise.all([import('pdfmake/build/pdfmake'), import('./fonts').then(async (f) => ({ vfs: await f.loadFontVfs(), families: f.FONT_FAMILIES }))])
+    loading = Promise.all([import('pdfmake/build/pdfmake'), loadFontVfs().then((vfs) => ({ vfs, families: FONT_FAMILIES }))])
       .then(([pdfMakeModule, fonts]) => {
         const pdfMake = unwrap<PdfMakeApi>(pdfMakeModule)
         pdfMake.addVirtualFileSystem(fonts.vfs)
