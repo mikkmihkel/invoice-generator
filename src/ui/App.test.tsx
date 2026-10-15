@@ -351,11 +351,11 @@ describe('status changes', () => {
     const row = (await screen.findByText('2026-0007')).closest('li')!
     // The only invoice is shown beside the list; not sent yet, so marking it paid is the quiet link in the status line.
     expect(await screen.findByRole('button', { name: 'Saada e-kirjaga' })).toHaveClass('btn-primary')
-    fireEvent.click(screen.getByRole('button', { name: 'Märgi tasutuks' }))
-    const dialog = await screen.findByRole('dialog')
+    // One click marks it paid today (undo is offered in the toast).
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Märgi tasutuks' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Märgi tasutuks' }))
     })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(repo.markInvoicePaid).toHaveBeenCalledWith(inv.id, expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/))
     expect(repo.saveInvoice).not.toHaveBeenCalled()
     expect(await within(row).findByText(/^Tasutud \d{2}\.\d{2}\.\d{4}$/)).toBeInTheDocument()

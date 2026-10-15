@@ -80,25 +80,35 @@ export interface DefRow {
   strong?: boolean
 }
 
+/** The date the reader must act by: the due date of an invoice, the validity date of a quote (none on credit notes). */
+export function deadlineRow(ctx: DocContext): DefRow | null {
+  const inv = ctx.invoice
+  if (ctx.isQuote) return inv.validUntil ? { key: 'validUntil', value: ctx.date(inv.validUntil), strong: true } : null
+  if (ctx.isCreditNote || !inv.dueDate) return null
+  return { key: 'dueDate', value: ctx.date(inv.dueDate), strong: true }
+}
+
 /** Document metadata in legal order. Optional rows are omitted when empty. */
 export function metaRows(ctx: DocContext, o: { exclude?: LabelKey[]; reference?: boolean } = {}): DefRow[] {
   const inv = ctx.invoice
   const rows: DefRow[] = [{ key: ctx.numberKey, value: inv.number || '—', mono: true, strong: true }]
-  rows.push({ key: 'issueDate', value: ctx.date(inv.issueDate) })
+  rows.push({ key: ctx.isQuote ? 'quoteDate' : 'issueDate', value: ctx.date(inv.issueDate) })
   if (inv.supplyDate) rows.push({ key: 'supplyDate', value: ctx.date(inv.supplyDate) })
   if (inv.periodStart || inv.periodEnd) rows.push({ key: 'period', value: `${ctx.date(inv.periodStart)} – ${ctx.date(inv.periodEnd)}`.trim() })
-  if (!ctx.isCreditNote && inv.dueDate) rows.push({ key: 'dueDate', value: ctx.date(inv.dueDate), strong: true })
-  if (o.reference && inv.referenceNumber) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, mono: true })
+  const deadline = deadlineRow(ctx)
+  if (deadline) rows.push(deadline)
+  if (o.reference && inv.referenceNumber && !ctx.isQuote) rows.push({ key: 'referenceNumber', value: inv.referenceNumber, mono: true })
   if (inv.orderReference) rows.push({ key: 'orderReference', value: inv.orderReference })
   if (ctx.isCreditNote && inv.creditedInvoiceNumber) rows.push({ key: 'creditedInvoice', value: inv.creditedInvoiceNumber, mono: true, strong: true })
   const exclude = new Set(o.exclude ?? [])
   return rows.filter((r) => !exclude.has(r.key))
 }
 
-/** Payment rows: recipient, bank / IBAN / BIC per printed account, reference number. */
+/** Payment rows: recipient, bank / IBAN / BIC per printed account, reference number. None on a quote. */
 export function paymentRows(ctx: DocContext, o: { reference?: boolean } = {}): DefRow[] {
   const inv = ctx.invoice
   const rows: DefRow[] = []
+  if (ctx.isQuote) return rows
   if (ctx.bankAccounts.length) rows.push({ key: 'recipient', value: inv.seller.name })
   for (const a of ctx.bankAccounts) {
     if (a.bankName?.trim()) rows.push({ key: 'bank', value: a.bankName.trim() })
@@ -359,7 +369,7 @@ export function totalRows(ctx: DocContext): TotalRow[] {
       rows.push({ key: 'vatInEur', suffix: ` (1 EUR = ${rate} ${ctx.invoice.currency.toUpperCase()})`, value: formatMoney(eur, 'EUR', ctx.lang) })
     }
   }
-  rows.push({ key: ctx.isCreditNote ? 'amountCredited' : 'amountDue', value: ctx.money(totals.gross), grand: true })
+  rows.push({ key: ctx.isCreditNote ? 'amountCredited' : ctx.isQuote ? 'total' : 'amountDue', value: ctx.money(totals.gross), grand: true })
   return rows
 }
 
@@ -473,7 +483,7 @@ export function notesBlock(ctx: DocContext, s: NotesStyle): ContentStack | null 
   if (ctx.vatNote) items.push(strong(ctx.vatNote))
   if (ctx.notRegisteredNote) items.push(strong(ctx.notRegisteredNote))
   if (ctx.isCreditNote && inv.creditedInvoiceNumber) items.push({ text: creditNoteText(inv.creditedInvoiceNumber, ctx.lang), fontSize: s.fontSize, color: s.color })
-  if (inv.lateInterestPercentPerDay && inv.lateInterestPercentPerDay > 0 && !ctx.isCreditNote) {
+  if (inv.lateInterestPercentPerDay && inv.lateInterestPercentPerDay > 0 && !ctx.isCreditNote && !ctx.isQuote) {
     items.push({ text: lateInterestText(inv.lateInterestPercentPerDay, ctx.lang), fontSize: s.fontSize, color: s.mutedColor })
   }
   if (inv.notes?.trim()) {

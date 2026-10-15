@@ -79,6 +79,37 @@
   width: 100%;
 }
 
+/* Arved / Hinnapakkumised switch and the quote shortcut beside it. */
+.list-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.list-kind .segmented {
+  flex: none;
+}
+.list-new-quote {
+  flex: none;
+}
+.list-none-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.row-recurring {
+  white-space: nowrap;
+}
+.row-recurring-icon {
+  margin-right: 3px;
+  vertical-align: -1px;
+}
+.row-quote-cancelled .row-amount {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, currentColor 60%, transparent);
+}
+
 .list-scroll {
   flex: 1;
   min-height: 0;
@@ -200,6 +231,21 @@
 }
 
 /* ---------- Selected invoice, typeset like a document ---------- */
+
+.doc-reminders {
+  margin-top: var(--s-1);
+}
+.doc .doc-quote {
+  align-items: flex-start;
+  margin: var(--s-4) 0 var(--s-3);
+}
+.doc .doc-quote .btn {
+  width: auto;
+}
+.doc .doc-recurring {
+  max-width: 360px;
+  margin-bottom: var(--s-5);
+}
 
 .doc {
   max-width: 820px;

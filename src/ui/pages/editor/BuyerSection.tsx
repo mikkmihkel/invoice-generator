@@ -5,6 +5,7 @@ import { useApp } from '../../AppContext'
 import { RegistryAttribution, RegistryResult } from '../../components/CompanySearch'
 import { fieldId, TextField } from '../../components/fields'
 import { PartyFields } from '../../components/PartyFields'
+import { VatNumberCheck } from '../../components/VatNumberCheck'
 import { useRegistryPick, useRegistrySearch } from '../../components/registrySearch'
 import { useToast } from '../../Toasts'
 import { clientFromRegistry, errorMessage, formatAddress } from '../../util'
@@ -277,6 +278,7 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
               {t('buyer.editDetails')}
             </button>
           </BuyerCard>
+          {buyer.vatNumber && <VatNumberCheck vatNumber={buyer.vatNumber} />}
           {askEmail && (
             <div className="buyer-email">
               <TextField
@@ -297,6 +299,7 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
         <div className="buyer-edit">
           <p className="field-hint">{t('buyer.snapshotHint')}</p>
           <PartyFields value={buyer} onChange={onChange} pathPrefix="buyer" person={buyer.kind === 'person'} />
+          {buyer.vatNumber && <VatNumberCheck vatNumber={buyer.vatNumber} />}
           <div className="grid">
             <TextField label={t('field.contactPerson')} path="buyer.contactPerson" value={buyer.contactPerson} onChange={(v) => onChange({ ...buyer, contactPerson: v || undefined })} />
           </div>

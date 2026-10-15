@@ -1,14 +1,14 @@
 // Authenticated fetch for Google REST APIs (separate module so tests can mock the token source).
 import { errorFromResponse, GoogleApiError } from './errors'
-import { forgetScope, getAccessToken, invalidateToken, type GoogleScope } from './googleAuth'
+import { forgetScope, getAccessToken, invalidateToken, type GoogleScope, type TokenOptions } from './googleAuth'
 
 /**
  * fetch() against a Google API with a bearer token. On 401 the token is renewed once and the
- * request retried. Non-2xx responses throw a GoogleApiError with a friendly bilingual message.
+ * request retried (with `interactive: false` the renewal never opens a popup and fails instead). Non-2xx responses throw a GoogleApiError with a friendly bilingual message.
  */
-export async function googleFetch(clientId: string, scopes: GoogleScope[], url: string, init: RequestInit = {}): Promise<Response> {
+export async function googleFetch(clientId: string, scopes: GoogleScope[], url: string, init: RequestInit = {}, options?: TokenOptions): Promise<Response> {
   const attempt = async () => {
-    const token = await getAccessToken(clientId, scopes)
+    const token = await (options ? getAccessToken(clientId, scopes, options) : getAccessToken(clientId, scopes))
     const headers = new Headers(init.headers)
     headers.set('Authorization', `Bearer ${token}`)
     try {

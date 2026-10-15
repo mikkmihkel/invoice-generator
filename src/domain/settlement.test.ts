@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { creditedAmount, creditNotesFor, outstandingAmount } from './settlement'
+import { computeTotals } from './calc'
+import { creditedAmount, creditNotesFor, outstandingAmount, remainingCreditLines } from './settlement'
 import type { Invoice } from './types'
 
 const inv = (p: Partial<Invoice> & { amount: number }): Invoice =>
@@ -52,5 +53,63 @@ describe('settlement', () => {
     const cn = inv({ id: 'b', number: '2026-0005', type: 'credit-note', creditedInvoiceNumber: '2026-0001', amount: -10 })
     expect(creditNotesFor(cn, [cn])).toEqual([])
     expect(creditNotesFor(inv({ id: 'z', amount: 5 }), [cn])).toEqual([])
+  })
+})
+
+describe('remainingCreditLines', () => {
+  const label = (rate: number) => `Krediteerimata jääk (${rate}%)`
+  const original2: Invoice = {
+    ...original,
+    id: 'r',
+    number: '2026-0010',
+    vatScheme: 'domestic',
+    lines: [
+      { id: 'l1', description: 'Arendus', quantity: 10, unit: 'h', unitPrice: 65, vatRate: 24 },
+      { id: 'l2', description: 'Domeen', quantity: 1, unit: 'tk', unitPrice: 24.9, vatRate: 24 },
+      { id: 'l3', description: 'Raamat', quantity: 2, unit: 'tk', unitPrice: 15, vatRate: 9 },
+    ],
+  }
+  const cn = (id: string, lines: Invoice['lines']): Invoice => ({ ...original2, id, number: `CN-${id}`, type: 'credit-note', creditedInvoiceNumber: '2026-0010', lines })
+  const settle = (lines: ReturnType<typeof remainingCreditLines>, all: Invoice[]) =>
+    outstandingAmount(original2, [...all, cn('final', lines.map((l, i) => ({ ...l, id: `n${i}` })))])
+
+  it('reverses every line when nothing is credited yet', () => {
+    const lines = remainingCreditLines(original2, [original2], label)
+    expect(lines.map((l) => [l.description, l.quantity])).toEqual([
+      ['Arendus', -10],
+      ['Domeen', -1],
+      ['Raamat', -2],
+    ])
+    expect(lines.every((l) => !('id' in l))).toBe(true)
+    expect(settle(lines, [original2])).toBe(0)
+  })
+
+  it('credits only the remaining quantities after a partial credit note', () => {
+    const partial = cn('p', [{ id: 'c1', description: 'Arendus', quantity: -4, unit: 'h', unitPrice: 65, vatRate: 24 }])
+    const all = [original2, partial]
+    const lines = remainingCreditLines(original2, all, label)
+    expect(lines.map((l) => [l.description, l.quantity])).toEqual([
+      ['Arendus', -6],
+      ['Domeen', -1],
+      ['Raamat', -2],
+    ])
+    expect(settle(lines, all)).toBe(0)
+  })
+
+  it('falls back to one line per VAT rate when earlier credits do not match the lines', () => {
+    const partial = cn('p', [{ id: 'c1', description: 'Allahindlus', quantity: -1, unit: '', unitPrice: 100, vatRate: 24 }])
+    const all = [original2, partial]
+    const lines = remainingCreditLines(original2, all, label)
+    expect(lines).toEqual([
+      { description: 'Krediteerimata jääk (24%)', quantity: -1, unit: '', unitPrice: 574.9, vatRate: 24 },
+      { description: 'Krediteerimata jääk (9%)', quantity: -1, unit: '', unitPrice: 30, vatRate: 9 },
+    ])
+    expect(computeTotals({ ...original2, lines: lines.map((l, i) => ({ ...l, id: String(i) })) }).gross).toBe(-745.58)
+    expect(settle(lines, all)).toBe(0)
+  })
+
+  it('returns nothing when the invoice is already fully credited', () => {
+    const all = [original2, cn('f', original2.lines.map((l) => ({ ...l, quantity: -l.quantity })))]
+    expect(remainingCreditLines(original2, all, label)).toEqual([])
   })
 })

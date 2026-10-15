@@ -7,24 +7,62 @@ import { useApp } from '../../AppContext'
 import { Dialog } from '../../components/Dialog'
 import { TextAreaField, TextField } from '../../components/fields'
 import { useToast } from '../../Toasts'
-import { errorMessage } from '../../util'
-import { emailTemplates, fillEmailText, parseRecipients, reminderTemplates, type EmailKind } from './email'
+import { lateInterest } from '../../../domain/interest'
+import { errorMessage, localTodayISO } from '../../util'
+import { recordInvoiceEvent, useInvoiceEvents } from '../invoice-detail/events'
+import { emailTemplates, fillEmailText, parseRecipients, reminderTemplates, type EmailKind, type ReminderInterest } from './email'
 
-/** Send the invoice PDF by e-mail; `kind="reminder"` starts from the payment reminder text instead. */
-export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { invoice: Invoice; onClose: () => void; kind?: EmailKind; onSent?: () => void }) {
-  const { t, profile, settings, invoices } = useApp()
+/**
+ * Send the invoice PDF by e-mail; `kind="reminder"` starts from the payment reminder text instead (with the late
+ * interest when the invoice has a rate, and a firmer text once `previousReminders` > 0). A successful send is
+ * recorded as a 'sent' or 'reminder' event of the invoice.
+ */
+export function EmailDialog({
+  invoice,
+  onClose,
+  kind = 'invoice',
+  onSent,
+  previousReminders,
+}: {
+  invoice: Invoice
+  onClose: () => void
+  kind?: EmailKind
+  onSent?: () => void
+  /** Reminders sent before this one; read from the invoice's history when not given. */
+  previousReminders?: number
+}) {
+  const { t, profile, settings, invoices, repo } = useApp()
+  const history = useInvoiceEvents(invoice.id)
+  const second = (previousReminders ?? history.reminders.length) > 0
   const toast = useToast()
   const company = invoice.seller.name || profile?.name || ''
   // A reminder asks for what is still owed after credit notes, not the original total.
   const amount = kind === 'reminder' ? outstandingAmount(invoice, invoices) : undefined
+  const [interest] = useState<ReminderInterest | undefined>(() => {
+    if (kind !== 'reminder' || amount === undefined) return undefined
+    const rate = invoice.lateInterestPercentPerDay
+    const li = lateInterest(amount, rate, invoice.dueDate, localTodayISO())
+    return li.amount > 0 && rate ? { ...li, ratePercentPerDay: rate } : undefined
+  })
   const tpl = useMemo(
-    () => (kind === 'reminder' ? reminderTemplates(invoice.language) : emailTemplates(invoice.language, profile?.defaults)),
-    [kind, invoice.language, profile],
+    () =>
+      kind === 'reminder'
+        ? reminderTemplates(invoice.language, { second, interest: !!interest })
+        : emailTemplates(invoice.language, profile?.defaults, invoice.type),
+    [kind, invoice.language, invoice.type, profile, second, interest],
   )
   const [to, setTo] = useState(invoice.buyer.email ?? '')
   const [cc, setCc] = useState('')
-  const [subject, setSubject] = useState(() => fillEmailText(tpl.subject, invoice, company, amount))
-  const [body, setBody] = useState(() => fillEmailText(tpl.body, invoice, company, amount))
+  const [subject, setSubject] = useState(() => fillEmailText(tpl.subject, invoice, company, amount, interest))
+  const [body, setBody] = useState(() => fillEmailText(tpl.body, invoice, company, amount, interest))
+  // The reminder history loads after opening: switch to the second-reminder text unless the user already edited.
+  const [edited, setEdited] = useState(false)
+  const [shownTpl, setShownTpl] = useState(tpl)
+  if (shownTpl !== tpl && !edited) {
+    setShownTpl(tpl)
+    setSubject(fillEmailText(tpl.subject, invoice, company, amount, interest))
+    setBody(fillEmailText(tpl.body, invoice, company, amount, interest))
+  }
   const [pdf, setPdf] = useState<Blob | null>(null)
   const [pdfError, setPdfError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -54,6 +92,17 @@ export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { in
     attachments: pdf ? [{ fileName, blob: pdf }] : [],
   })
 
+  const sent = async () => {
+    if (invoice.status !== 'draft') {
+      try {
+        await recordInvoiceEvent(repo, invoice.id, kind === 'reminder' ? 'reminder' : 'sent', toList.valid.map((r) => r.address).join(', '))
+      } catch (e) {
+        console.warn('Could not record the e-mail', e)
+      }
+    }
+    onSent?.()
+  }
+
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key)
     try {
@@ -73,7 +122,7 @@ export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { in
       await googleSignIn(settings.googleClientId, ['gmail'])
       await sendViaGmail(settings.googleClientId, draft())
       toast.success(t('email.sent', { to: recipients.join(', ') }))
-      onSent?.()
+      await sent()
       onClose()
     })
 
@@ -82,7 +131,7 @@ export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { in
       const shared = await shareFiles(draft())
       if (!shared) return // dismissed by the user
       toast.success(t('email.shared'))
-      onSent?.()
+      await sent()
       onClose()
     })
 
@@ -93,7 +142,7 @@ export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { in
       // mailto: only takes bare addresses (RFC 6068).
       window.location.href = buildMailtoUrl({ ...rest, to: toList.valid.map((r) => r.address), cc: ccList.valid.map((r) => r.address) })
       toast.info(t('email.attachHint', { file: fileName }))
-      onSent?.()
+      await sent()
       onClose()
     })
 
@@ -103,7 +152,7 @@ export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { in
 
   return (
     <Dialog
-      title={t(kind === 'reminder' ? 'editor.reminderTitle' : 'email.title', { number: invoice.number })}
+      title={t(kind === 'reminder' ? (second ? 'reminder.secondTitle' : 'editor.reminderTitle') : invoice.type === 'quote' ? 'email.quoteTitle' : 'email.title', { number: invoice.number })}
       onClose={onClose}
       closeLabel={t('common.close')}
       wide
@@ -148,8 +197,23 @@ export function EmailDialog({ invoice, onClose, kind = 'invoice', onSent }: { in
           onChange={setCc}
           error={ccList.invalid.length ? t('email.invalidAddress', { list: ccList.invalid.join(', ') }) : undefined}
         />
-        <TextField label={t('email.subject')} value={subject} onChange={setSubject} />
-        <TextAreaField label={t('email.body')} value={body} onChange={setBody} rows={8} />
+        <TextField
+          label={t('email.subject')}
+          value={subject}
+          onChange={(v) => {
+            setEdited(true)
+            setSubject(v)
+          }}
+        />
+        <TextAreaField
+          label={t('email.body')}
+          value={body}
+          onChange={(v) => {
+            setEdited(true)
+            setBody(v)
+          }}
+          rows={8}
+        />
         <p className="attachment">
           <PaperclipIcon />
           <span className="attachment-label">{t('email.attachment')}</span>

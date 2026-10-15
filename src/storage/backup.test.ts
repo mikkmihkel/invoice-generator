@@ -250,3 +250,88 @@ describe('validateBackup – values that reach URLs or CSS', () => {
     expect(validateBackup({ ...base(), settings: { ...settings, googleClientId: '123-abc.apps.googleusercontent.com' } }).settings).toBeTruthy()
   })
 })
+
+describe('validateBackup – version 2 data', () => {
+  const v2 = () => ({
+    ...base(),
+    version: 2,
+    products: [{ id: 'p1', description: 'Arendus', unit: 'h', unitPrice: 60, vatRate: 24, createdAt: '', updatedAt: '2026-01-01T00:00:00.000Z' }] as unknown[],
+    recurringRules: [
+      { id: 'r1', sourceInvoiceId: 'i2', interval: 'monthly', nextDate: '2026-11-01', active: true, createdAt: '', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as unknown[],
+    events: [{ id: 'e1', invoiceId: 'i2', kind: 'reminder', at: '2026-10-20T10:00:00.000Z', note: '1' }] as unknown[],
+  })
+
+  it('accepts version 1 and 2 files', () => {
+    expect(validateBackup(base()).products).toBeUndefined()
+    const ok = validateBackup(v2())
+    expect(ok.products).toHaveLength(1)
+    expect(ok.recurringRules).toHaveLength(1)
+    expect(ok.events).toHaveLength(1)
+    expect(validateBackup({ ...v2(), products: null }).products).toBeUndefined()
+  })
+
+  it('validates products, rules and events field by field', () => {
+    const cases: [(d: ReturnType<typeof v2>) => void, RegExp][] = [
+      [(d) => (d.products = {} as never), /products/],
+      [(d) => ((d.products[0] as Record<string, unknown>).unitPrice = '60'), /product #1 is invalid: invalid unit price/],
+      [(d) => ((d.products[0] as Record<string, unknown>).vatRate = Infinity), /invalid VAT rate/],
+      [(d) => delete (d.products[0] as Record<string, unknown>).updatedAt, /product #1 .* missing modification time/],
+      [(d) => d.products.push({ ...(d.products[0] as object) }), /duplicate id p1/],
+      [(d) => ((d.recurringRules[0] as Record<string, unknown>).interval = 'weekly'), /recurring rule #1 is invalid: invalid interval/],
+      [(d) => ((d.recurringRules[0] as Record<string, unknown>).nextDate = '2026-02-30'), /invalid next date/],
+      [(d) => ((d.recurringRules[0] as Record<string, unknown>).active = 'yes'), /invalid active flag/],
+      [(d) => delete (d.recurringRules[0] as Record<string, unknown>).sourceInvoiceId, /missing source invoice/],
+      [(d) => ((d.events[0] as Record<string, unknown>).kind = 'paid'), /event #1 is invalid: invalid event kind/],
+      [(d) => delete (d.events[0] as Record<string, unknown>).at, /missing event time/],
+      [(d) => ((d.events[0] as Record<string, unknown>).note = 5), /invalid note/],
+    ]
+    for (const [patch, re] of cases) {
+      const d = v2()
+      patch(d)
+      expect(errorOf(d).message).toMatch(re)
+    }
+    expect(errorOf({ ...v2(), events: [{ invoiceId: 'x', kind: 'sent', at: '' }] }).messages.et).toMatch(/sündmus nr 1 on vigane: puudub ID/)
+  })
+
+  it('accepts quotes and the new invoice fields, and checks them', () => {
+    const ok = withInvoice((inv) => Object.assign(inv, { type: 'quote', validUntil: '2026-10-29', quoteAcceptedAt: '2026-10-20T10:00:00.000Z', convertedToInvoiceId: 'x' }))
+    expect(() => validateBackup(ok)).not.toThrow()
+    expect(() => validateBackup(withInvoice((inv) => Object.assign(inv, { convertedFromQuoteId: 'q', recurringRuleId: 'r' })))).not.toThrow()
+    expect(errorOf(withInvoice((inv) => (inv.validUntil = '29.10.2026'))).message).toMatch(/invalid quote validity date/)
+    expect(errorOf(withInvoice((inv) => (inv.recurringRuleId = 3))).message).toMatch(/invalid recurring rule/)
+  })
+
+  it('validates numbering resets and period counters', () => {
+    const withNumbering = (n: Record<string, unknown>, key = 'numbering') => {
+      const d = base()
+      d.profile = { ...makeProfile(), [key]: { prefix: '{YYYY}-', nextNumber: 1, padding: 4, ...n } }
+      return d
+    }
+    expect(() => validateBackup(withNumbering({ reset: 'daily', counters: { '2026-10-15': 3, '2026-10': 2, '2026': 1 } }))).not.toThrow()
+    expect(() => validateBackup(withNumbering({ reset: 'yearly' }, 'quoteNumbering'))).not.toThrow()
+    expect(errorOf(withNumbering({ reset: 'weekly' })).message).toMatch(/invoice numbering: numbering reset/)
+    expect(errorOf(withNumbering({ counters: { abc: 1 } })).message).toMatch(/counter of period abc/)
+    expect(errorOf(withNumbering({ counters: { '2026': 0 } })).message).toMatch(/counter of period 2026/)
+    expect(errorOf(withNumbering({ counters: { '2026': 1.5 } })).message).toMatch(/counter of period 2026/)
+    expect(errorOf(withNumbering({ counters: [] })).message).toMatch(/period counters/)
+    expect(errorOf(withNumbering({ nextNumber: 'x' }, 'quoteNumbering')).message).toMatch(/quote numbering: next number/)
+    expect(errorOf({ ...base(), profile: { ...makeProfile(), quoteNumbering: 'HP' } }).message).toMatch(/quote numbering/)
+    const many = Object.fromEntries(Array.from({ length: BACKUP_LIMITS.numberingCounters + 1 }, (_, i) => [String(1000 + i).padStart(4, '0'), 1]))
+    expect(errorOf(withNumbering({ counters: many })).message).toMatch(/too many entries/)
+    const polluted = JSON.stringify(withNumbering({ counters: { '2026': 1 } })).replace('"2026":1', '"2026":1,"__proto__":{"x":1}')
+    expect(() => parseBackup(polluted)).toThrow(/__proto__/)
+  })
+
+  it('validates the automatic backup settings', () => {
+    const settings = (autoBackup: unknown) => ({ ...base(), settings: { uiLanguage: 'et', driveFolderName: 'x', registryLiveLookup: true, updatedAt: '', autoBackup } })
+    expect(() => validateBackup(settings({ enabled: true, encrypt: false, keepVersions: 10, lastBackupAt: '2026-10-15T10:00:00.000Z' }))).not.toThrow()
+    expect(() => validateBackup(settings(undefined))).not.toThrow()
+    expect(errorOf(settings({ enabled: 'yes', encrypt: false, keepVersions: 10 })).message).toMatch(/invalid automatic backup/)
+    expect(errorOf(settings({ enabled: true, keepVersions: 10 })).message).toMatch(/missing backup encryption/)
+    expect(errorOf(settings({ enabled: true, encrypt: true, keepVersions: 0 })).message).toMatch(/number of versions to keep/)
+    expect(errorOf(settings({ enabled: true, encrypt: true, keepVersions: 2.5 })).message).toMatch(/number of versions to keep/)
+    expect(errorOf(settings({ enabled: true, encrypt: true, keepVersions: 5, lastBackupAt: 1 })).message).toMatch(/last backup time/)
+    expect(errorOf(settings('on')).message).toMatch(/automatic backup settings/)
+  })
+})

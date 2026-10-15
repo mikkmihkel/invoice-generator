@@ -132,7 +132,7 @@ export function epcPayload(f: EpcFields): string | null {
 export function epcQrPayload(invoice: Invoice): string | null {
   if ((invoice.currency || 'EUR').toUpperCase() !== 'EUR') return null
   // A paid invoice must not invite a second payment when it is re-downloaded or re-sent.
-  if (invoice.type === 'credit-note' || invoice.status === 'cancelled' || invoice.status === 'paid') return null
+  if (invoice.type === 'credit-note' || invoice.type === 'quote' || invoice.status === 'cancelled' || invoice.status === 'paid') return null
   const total = computeTotals(invoice).gross
   if (!(total >= EPC_LIMITS.minAmount && total <= EPC_LIMITS.maxAmount)) return null
   const account = selectedBankAccounts(invoice).find((a) => isValidIban(a.iban ?? ''))
@@ -168,6 +168,7 @@ const TITLE = {
   invoice: { et: 'Arve', en: 'Invoice' },
   'credit-note': { et: 'Kreeditarve', en: 'Credit note' },
   prepayment: { et: 'Ettemaksuarve', en: 'Prepayment invoice' },
+  quote: { et: 'Hinnapakkumine', en: 'Quote' },
 } as const
 
 /** Information dictionary plus custom keys (pdfmake writes any extra `info` key as a custom PDF Info entry). */
@@ -187,7 +188,8 @@ export function invoiceFacts(invoice: Invoice): Record<string, string> {
     InvoiceNumber: invoice.number || undefined,
     InvoiceType: invoice.type,
     IssueDate: invoice.issueDate || undefined,
-    DueDate: invoice.type === 'credit-note' ? undefined : invoice.dueDate || undefined,
+    DueDate: invoice.type === 'credit-note' || invoice.type === 'quote' ? undefined : invoice.dueDate || undefined,
+    ValidUntil: invoice.type === 'quote' ? invoice.validUntil || undefined : undefined,
     SellerName: invoice.seller.name || undefined,
     SellerRegistryCode: invoice.seller.registryCode?.trim() || undefined,
     SellerVatNumber: invoice.seller.vatNumber?.replace(/\s+/g, '').toUpperCase() || undefined,
@@ -208,6 +210,7 @@ const KEYWORD_KEYS: [string, string][] = [
   ['InvoiceNumber', 'invoice'],
   ['IssueDate', 'issued'],
   ['DueDate', 'due'],
+  ['ValidUntil', 'validUntil'],
   ['SellerRegistryCode', 'seller'],
   ['SellerVatNumber', 'sellerVat'],
   ['BuyerRegistryCode', 'buyer'],
@@ -233,7 +236,9 @@ export function pdfMetadata(invoice: Invoice): PdfInfo {
   const currency = facts.Currency
   const amountText = plainSpaces(`${formatAmount(total, lang)} ${currency}`)
   const subject = [title, invoice.seller.name, amountText]
-  if (invoice.type !== 'credit-note' && invoice.dueDate) {
+  if (invoice.type === 'quote') {
+    if (invoice.validUntil) subject.push(`${lang === 'en' ? 'valid until' : 'kehtib kuni'} ${formatDate(invoice.validUntil, lang)}`)
+  } else if (invoice.type !== 'credit-note' && invoice.dueDate) {
     const dueWord = lang === 'en' ? 'due' : 'tasuda'
     subject.push(`${dueWord} ${formatDate(invoice.dueDate, lang)}`)
   }
@@ -262,9 +267,9 @@ export function embeddedXmlFileName(invoice: Invoice): string {
   return full
 }
 
-/** Whether the PDF gets the embedded e-invoice: only real (numbered, non-draft) documents. */
+/** Whether the PDF gets the embedded e-invoice: only real (numbered, non-draft) invoices; never a quote. */
 export function embedsEInvoice(invoice: Invoice): boolean {
-  return invoice.status !== 'draft' && !!invoice.number?.trim()
+  return invoice.type !== 'quote' && invoice.status !== 'draft' && !!invoice.number?.trim()
 }
 
 function base64Utf8(text: string): string {

@@ -7,8 +7,11 @@ interface Toast {
   id: number
   kind: ToastKind
   message: string
-  action?: { label: string; href: string }
+  action?: ToastAction
 }
+
+/** A link, or a button such as "Undo" (the toast then stays a little longer and closes when it is pressed). */
+export type ToastAction = { label: string; href: string } | { label: string; onClick: () => void }
 
 export interface ToastApi {
   success(message: string, action?: Toast['action']): void
@@ -36,7 +39,7 @@ export function ToastProvider({ children, closeLabel = 'Close' }: { children: Re
     (kind: ToastKind, message: string, action?: Toast['action']) => {
       const id = ++seq.current
       setToasts((ts) => [...ts.slice(-4), { id, kind, message, action }])
-      setTimeout(() => dismiss(id), kind === 'error' || kind === 'warning' ? 8000 : 4500)
+      setTimeout(() => dismiss(id), kind === 'error' || kind === 'warning' || (action && 'onClick' in action) ? 8000 : 4500)
     },
     [dismiss],
   )
@@ -59,11 +62,23 @@ export function ToastProvider({ children, closeLabel = 'Close' }: { children: Re
           <div key={t.id} className={`toast toast-${t.kind}`} role={t.kind === 'error' ? 'alert' : undefined}>
             <span className="toast-icon">{ICON[t.kind]}</span>
             <span className="toast-msg">{t.message}</span>
-            {t.action && (
-              <a href={t.action.href} target="_blank" rel="noreferrer" className="toast-action">
-                {t.action.label}
-              </a>
-            )}
+            {t.action &&
+              ('onClick' in t.action ? (
+                <button
+                  type="button"
+                  className="link-btn toast-action"
+                  onClick={() => {
+                    dismiss(t.id)
+                    ;(t.action as { onClick: () => void }).onClick()
+                  }}
+                >
+                  {t.action.label}
+                </button>
+              ) : (
+                <a href={t.action.href} target="_blank" rel="noreferrer" className="toast-action">
+                  {t.action.label}
+                </a>
+              ))}
             <button type="button" className="icon-btn icon-btn-sm toast-close" aria-label={closeLabel} title={closeLabel} onClick={() => dismiss(t.id)}>
               <XIcon size={14} />
             </button>

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { backupToDrive, DRIVE_BACKUP_FILE_NAME, findOrCreateFolder, restoreFromDrive, uploadToDrive } from './drive'
+import { backupToDrive, downloadDriveFile, DRIVE_BACKUP_FILE_NAME, findOrCreateFolder, listDriveBackups, restoreFromDrive, trashDriveFile, uploadBackupVersion, uploadToDrive } from './drive'
 import { GoogleApiError } from './errors'
 import { buildGmailRaw, sendViaGmail } from './gmail'
 import { getAccessToken, invalidateToken } from './googleAuth'
@@ -127,6 +127,63 @@ describe('Drive', () => {
     expect(calls).toHaveLength(1)
     stubFetch(json({ files: [{ id: 'f1' }] }), json({ files: [] }))
     expect(await restoreFromDrive(CLIENT, 'Arved')).toBeNull()
+  })
+})
+
+describe('Drive backup versions', () => {
+  it('uploads a new version with app properties and never overwrites', async () => {
+    stubFetch(json({ files: [{ id: 'f1' }] }), json({ id: 'v1', name: 'arvegeneraator-backup-2026-10-15-142305.json.enc', size: '2048', createdTime: '2026-10-15T11:23:05Z' }))
+    const file = await uploadBackupVersion(CLIENT, 'Arved', 'arvegeneraator-backup-2026-10-15-142305.json.enc', '{"format":"x"}', true)
+    expect(file).toMatchObject({ id: 'v1', size: 2048, encrypted: true, automatic: true, createdTime: '2026-10-15T11:23:05Z' })
+    expect(calls).toHaveLength(2)
+    const upload = calls[1]
+    expect(upload.init.method).toBe('POST')
+    expect(upload.url).toContain('uploadType=multipart')
+    const body = await bodyText(upload.init.body)
+    expect(body).toContain('"appProperties":{"invoiceGeneratorBackup":"auto","encrypted":"1"}')
+    expect(body).toContain('"parents":["f1"]')
+  })
+
+  it('lists automatic versions and the manual backup file, newest first, across pages', async () => {
+    stubFetch(
+      json({ files: [{ id: 'f1' }] }),
+      json({
+        nextPageToken: 'p2',
+        files: [
+          { id: 'a', name: 'arvegeneraator-backup-2026-10-14-100000.json', createdTime: '2026-10-14T07:00:00Z', appProperties: { invoiceGeneratorBackup: 'auto', encrypted: '0' } },
+          { id: 'm', name: DRIVE_BACKUP_FILE_NAME, createdTime: '2026-01-01T00:00:00Z', modifiedTime: '2026-10-01T00:00:00Z', size: '100' },
+        ],
+      }),
+      json({ files: [{ id: 'b', name: 'arvegeneraator-backup-2026-10-15-100000.json.enc', createdTime: '2026-10-15T07:00:00Z', appProperties: { invoiceGeneratorBackup: 'auto', encrypted: '1' } }] }),
+    )
+    const files = await listDriveBackups(CLIENT, 'Arved')
+    expect(files.map((f) => f.id)).toEqual(['b', 'a', 'm'])
+    expect(files[0]).toMatchObject({ encrypted: true, automatic: true })
+    expect(files[2]).toMatchObject({ encrypted: false, automatic: false, size: 100 })
+    const q = query(calls[1].url).get('q')
+    expect(q).toBe(`'f1' in parents and trashed=false and (appProperties has { key='invoiceGeneratorBackup' and value='auto' } or name='${DRIVE_BACKUP_FILE_NAME}')`)
+    expect(query(calls[2].url).get('pageToken')).toBe('p2')
+  })
+
+  it('returns no backups (and creates no folder) when the folder is missing', async () => {
+    stubFetch(json({ files: [] }))
+    expect(await listDriveBackups(CLIENT, 'Arved')).toEqual([])
+    expect(calls).toHaveLength(1)
+  })
+
+  it('downloads and trashes files by id', async () => {
+    stubFetch(() => new Response('{"a":1}'), json({ id: 'x' }))
+    expect(await downloadDriveFile(CLIENT, 'x/1')).toBe('{"a":1}')
+    expect(calls[0].url).toBe('https://www.googleapis.com/drive/v3/files/x%2F1?alt=media')
+    await trashDriveFile(CLIENT, 'x')
+    expect(calls[1].init.method).toBe('PATCH')
+    expect(JSON.parse(String(calls[1].init.body))).toEqual({ trashed: true })
+  })
+
+  it('passes interactive: false to the token source for background calls', async () => {
+    stubFetch(json({ files: [] }))
+    await listDriveBackups(CLIENT, 'Arved', { interactive: false })
+    expect(getAccessToken).toHaveBeenCalledWith(CLIENT, ['drive'], { interactive: false })
   })
 })
 

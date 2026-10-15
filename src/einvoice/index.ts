@@ -2,6 +2,7 @@
 export {
   buildUblXml,
   eInvoiceIssues,
+  supportsEInvoice,
   PEPPOL_CUSTOMIZATION_ID,
   PEPPOL_PROFILE_ID,
   type UblOptions,

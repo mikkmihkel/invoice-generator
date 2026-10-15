@@ -103,6 +103,20 @@
 .ed-status-cancelled {
   color: var(--text-3);
 }
+.ed-status-quote-accepted {
+  color: var(--success);
+}
+.ed-status-quote-expired {
+  color: var(--warning);
+}
+.ed-status-quote-cancelled {
+  color: var(--text-3);
+}
+.ed-origin {
+  margin-top: calc(-1 * var(--s-2));
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
 
 .save-state {
   display: inline-flex;
@@ -717,6 +731,46 @@
 .ed-overdue {
   color: var(--danger);
   font-weight: 500;
+}
+
+/* Quote conversion and the "Korda" control in the sidebar of an issued document. */
+.quote-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.ed-side .quote-actions .btn {
+  width: 100%;
+  height: 40px;
+}
+.quote-converted {
+  font-size: var(--fs-md);
+}
+.recurring-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.ed-recurring {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--ed-rule);
+}
+.ed-rate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.ed-rate > .field {
+  align-self: stretch;
+}
+.ed-quote-note {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
 }
 .ed-einvoice {
   display: flex;

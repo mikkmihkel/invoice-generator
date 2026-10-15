@@ -1,0 +1,122 @@
+/* Products catalogue, line suggestions and the accountant export. */
+
+/* ---------- Line description: suggestions and "save to catalogue" ---------- */
+
+.line-desc {
+  position: relative;
+}
+.lines:not(.lines-readonly) .line-desc textarea.cell {
+  padding-right: 32px;
+}
+.line-save {
+  position: absolute;
+  top: calc((var(--h-control) - 26px) / 2);
+  right: 4px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.line:hover .line-save,
+.line:focus-within .line-save {
+  opacity: 1;
+}
+.line-save:disabled {
+  visibility: hidden;
+}
+@media (hover: none) {
+  .line-save {
+    opacity: 1;
+  }
+}
+.line-suggestions {
+  min-width: min(340px, calc(100vw - 32px));
+  right: auto;
+}
+.line-suggestions .opt-name {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.line-suggestions .amount {
+  color: var(--text-2);
+}
+
+/* ---------- Products page ---------- */
+
+.product-table .product-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.product-table td.col-unit {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.product-table td.col-price,
+.product-table td.col-vat {
+  white-space: nowrap;
+}
+.product-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 639px) {
+  .product-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  .product-table tbody tr {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'name name actions'
+      'unit price actions';
+  }
+  .product-table td.col-name {
+    grid-area: name;
+  }
+  .product-table td.col-unit {
+    grid-area: unit;
+    font-size: var(--fs-xs);
+  }
+  .product-table td.col-price {
+    grid-area: price;
+    font-size: var(--fs-xs);
+  }
+  .product-table td.col-vat {
+    display: none;
+  }
+  .product-table td.col-actions {
+    grid-area: actions;
+  }
+}
+
+/* ---------- Accountant export ---------- */
+
+.export-grid {
+  align-items: end;
+}
+.export-range {
+  margin: 0;
+  padding-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.export-docs {
+  margin-top: var(--s-4);
+}
+.export-docs .field-check + .field-check {
+  margin-top: var(--s-2);
+}
+.export-row {
+  margin-top: var(--s-4);
+}
+.export-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+  margin-top: var(--s-4);
+}
+.export-progress progress {
+  flex: 1 1 200px;
+  height: 8px;
+  accent-color: var(--accent);
+}

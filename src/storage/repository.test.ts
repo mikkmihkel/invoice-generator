@@ -207,7 +207,7 @@ describe('backup', () => {
     await seed(repo)
     const backup = await repo.exportBackup()
     expect(backup.app).toBe('invoice-generator')
-    expect(backup.version).toBe(1)
+    expect(backup.version).toBe(2)
     const text = serializeBackup(backup)
 
     const other = createRepository({ dbName: `restore-${Math.random()}` })
@@ -274,7 +274,9 @@ describe('backup', () => {
     await repo.saveClient(makeClient('keep'))
     expect(() => parseBackup('not json')).toThrow(BackupFormatError)
     expect(() => parseBackup(JSON.stringify({ app: 'other', version: 1 }))).toThrow(BackupFormatError)
-    expect(() => parseBackup(JSON.stringify({ app: 'invoice-generator', version: 2, clients: [], invoices: [] }))).toThrow(/version/)
+    expect(() => parseBackup(JSON.stringify({ app: 'invoice-generator', version: 3, clients: [], invoices: [] }))).toThrow(/version/)
+    expect(() => parseBackup(JSON.stringify({ app: 'invoice-generator', version: 0, clients: [], invoices: [] }))).toThrow(/version/)
+    expect(() => parseBackup(JSON.stringify({ app: 'invoice-generator', version: 1.5, clients: [], invoices: [] }))).toThrow(/version/)
     expect(() => parseBackup(JSON.stringify({ app: 'invoice-generator', version: 1, clients: {}, invoices: [] }))).toThrow(BackupFormatError)
     expect(() =>
       parseBackup(JSON.stringify({ app: 'invoice-generator', version: 1, clients: [], invoices: [{ ...makeInvoice('x'), status: 'weird' }] })),

@@ -12,6 +12,7 @@ import CompanyPage from './ui/pages/CompanyPage'
 import InvoiceEditorRoute from './ui/pages/InvoiceEditor'
 import InvoiceList from './ui/pages/InvoiceList'
 import Onboarding from './ui/pages/Onboarding'
+import ProductsPage from './ui/pages/ProductsPage'
 import SettingsPage from './ui/pages/SettingsPage'
 import { ToastProvider } from './ui/Toasts'
 
@@ -32,6 +33,7 @@ function RouteBoundary({ children }: { children: ReactNode }) {
  *   #/invoices/new     new draft (optional ?client=<clientId>); URL becomes #/invoices/:id after first autosave
  *   #/invoices/:id     invoice editor / viewer
  *   #/clients          clients
+ *   #/products         products and services catalogue
  *   #/company          company profile
  *   #/settings         settings, backup, Google, registry
  * Without a company profile every route shows the onboarding.
@@ -58,6 +60,7 @@ function Gate() {
           <Route path="/" element={<InvoiceList />} />
           <Route path="/invoices/:id" element={<InvoiceEditorRoute />} />
           <Route path="/clients" element={<ClientsPage />} />
+          <Route path="/products" element={<ProductsPage />} />
           <Route path="/company" element={<CompanyPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -129,16 +129,18 @@ describe('selected invoice', () => {
       fireEvent.click(gmail)
     })
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    // Sent: the next step is the payment.
+    // Sent (recorded as an event): the next step is the payment.
+    expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'sent', note: 'arved@kalda.ee' }))
     const paid = await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' })
     expect(paid).toHaveClass('btn-primary')
     expect(within(article).getByText(/saadetud \d{2}\.\d{2}\.\d{4}/)).toBeInTheDocument()
-    fireEvent.click(paid)
-    const confirm = await screen.findByRole('dialog', { name: 'Märgi arve 2026-0004 tasutuks' })
+    // One click, no dialog: paid today.
     await act(async () => {
-      fireEvent.click(within(confirm).getByRole('button', { name: 'Märgi tasutuks' }))
+      fireEvent.click(paid)
     })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(repo.markInvoicePaid).toHaveBeenCalledWith(inv.id, today)
+    expect(await screen.findByText('Arve 2026-0004 märgiti tasutuks.')).toBeInTheDocument()
     // Paid: no primary action left, but it can be reopened from "More".
     await waitFor(() => expect(within(actions(article)).queryByRole('button', { name: 'Märgi tasutuks' })).not.toBeInTheDocument())
     expect(actions(article).querySelector('.btn-primary')).toBeNull()
@@ -157,6 +159,70 @@ describe('selected invoice', () => {
     fireEvent.click(within(actions(article)).getByRole('button', { name: 'Saada meeldetuletus' }))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByLabelText('Teema')).toHaveValue('Meeldetuletus: arve 2026-0004 on tasumata')
+    expect((within(dialog).getByLabelText('Sõnum') as HTMLTextAreaElement).value).not.toContain('viivis')
+  })
+
+  it('states the late interest, logs reminders and makes the second one firmer', async () => {
+    const inv = invoice({ issueDate: addDaysISO(today, -30), dueDate: addDaysISO(today, -16), lateInterestPercentPerDay: 0.05 })
+    const first = addDaysISO(today, -9)
+    const repo = createMemoryRepo({ profile, invoices: [inv], events: [{ id: 'e1', invoiceId: inv.id, kind: 'reminder', at: `${first}T10:00:00.000Z` }] })
+    renderAt('#/', repo)
+    const article = await doc()
+    const [y, m, d] = first.split('-')
+    expect(await within(article).findByText(`Meeldetuletus: ${d}.${m}.${y}`)).toBeInTheDocument()
+    fireEvent.click(within(actions(article)).getByRole('button', { name: 'Saada meeldetuletus' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Teine meeldetuletus arve 2026-0004 kohta' })
+    expect(within(dialog).getByLabelText('Teema')).toHaveValue('Teine meeldetuletus: arve 2026-0004 on endiselt tasumata')
+    // 1481,68 × 0,05% × 16 days = 11,85
+    const body = (within(dialog).getByLabelText('Sõnum') as HTMLTextAreaElement).value.replace(/[\u00a0\u202f]/g, ' ')
+    expect(body).toContain('Arvel kokku lepitud viivis on 0,05% päevas. Tänaseks (16 päeva) on viivis 11,85 €.')
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Ava e-posti rakendus' }))
+    })
+    expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'reminder' }))
+    expect(await within(article).findByText(/^Meeldetuletused: \d{2}\.\d{2}\.\d{4}, \d{2}\.\d{2}\.\d{4}$/)).toBeInTheDocument()
+    // Just reminded: the main action is the payment again, another reminder stays under "More".
+    expect(within(actions(article)).getByRole('button', { name: 'Märgi tasutuks' })).toHaveClass('btn-primary')
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    expect(screen.getByRole('menuitem', { name: 'Saada uus meeldetuletus' })).toBeInTheDocument()
+  })
+
+  it('moves the sent dates kept by earlier versions into the invoice history once', async () => {
+    const inv = invoice()
+    localStorage.setItem('invoice-generator:sentInvoices', JSON.stringify({ [inv.id]: '2026-01-06' }))
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt('#/', repo)
+    const article = await doc()
+    expect(await within(article).findByText(/saadetud 06\.01\.2026/)).toBeInTheDocument()
+    expect(repo.addInvoiceEvent).toHaveBeenCalledTimes(1)
+    expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'sent', at: '2026-01-06T12:00:00.000Z' }))
+    expect(localStorage.getItem('invoice-generator:sentInvoices')).toBeNull()
+  })
+
+  it('undoes "mark paid" from the toast and lets the date be changed afterwards', async () => {
+    const inv = invoice()
+    const repo = createMemoryRepo({ profile, invoices: [inv], events: [{ id: 's', invoiceId: inv.id, kind: 'sent', at: new Date().toISOString() }] })
+    renderAt('#/', repo)
+    const article = await doc()
+    await act(async () => {
+      fireEvent.click(await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }))
+    })
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Võta tagasi' }))
+    })
+    expect(repo.markInvoiceUnpaid).toHaveBeenCalledWith(inv.id)
+    expect(await screen.findByText('Arve 2026-0004 on jälle tasumata.')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }))
+    })
+    fireEvent.click(await within(article).findByRole('button', { name: 'muuda kuupäeva' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Arve 2026-0004 laekumise kuupäev' })
+    const yesterday = addDaysISO(today, -1)
+    fireEvent.change(within(dialog).getByLabelText('Laekumise kuupäev'), { target: { value: yesterday } })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Salvesta' }))
+    })
+    expect(repo.markInvoicePaid).toHaveBeenLastCalledWith(inv.id, yesterday)
   })
 
   it('keeps the other actions in one "More" menu and cancels through the repository', async () => {
@@ -172,15 +238,62 @@ describe('selected invoice', () => {
       'Prindi',
       'Tee koopia',
       'Koosta kreeditarve',
+      'Tasutud muul kuupäeval…',
       'Tühista arve',
     ])
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Tühista arve' }))
     const dialog = await screen.findByRole('dialog', { name: 'Kas tühistada arve 2026-0004?' })
+    expect(within(dialog).getByText(/tühistatakse kreeditarvega/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/kreeditarve summas 1\s481,68\s€/)).toBeInTheDocument()
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Tühista arve' }))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Tühista kreeditarvega' }))
     })
+    // One step: a full credit note is saved and issued, then the invoice is cancelled.
+    const credit = repo.saveInvoice.mock.calls[0][0] as Invoice
+    expect(credit).toMatchObject({ type: 'credit-note', creditedInvoiceNumber: '2026-0004', status: 'draft' })
+    expect(credit.lines.map((l) => l.quantity)).toEqual([-18, -1])
+    expect(repo.issueInvoice).toHaveBeenCalledWith(credit.id)
     expect(repo.cancelInvoice).toHaveBeenCalledWith(inv.id)
-    expect(await within(article).findByText('Tühistatud')).toBeInTheDocument()
+    // The cancelled invoice stays selected and links to its credit note.
+    const after = await doc()
+    expect(within(after).getByRole('heading', { name: 'Arve 2026-0004' })).toBeInTheDocument()
+    expect(await within(after).findByText('Tühistatud')).toBeInTheDocument()
+    expect(within(after).getByRole('link', { name: '2026-0001' })).toBeInTheDocument()
+    expect(await screen.findByText('Arve 2026-0004 tühistati kreeditarvega 2026-0001.')).toBeInTheDocument()
+  })
+
+  it('keeps a partial credit note one link away from the cancel dialog', async () => {
+    const inv = invoice()
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt('#/', repo)
+    const article = await doc()
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Tühista arve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kas tühistada arve 2026-0004?' })
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: /Krediteeri ainult osa summast/ }))
+    })
+    expect(repo.issueInvoice).not.toHaveBeenCalled()
+    expect(repo.cancelInvoice).not.toHaveBeenCalled()
+    const draft = repo.saveInvoice.mock.calls[0][0] as Invoice
+    expect(draft).toMatchObject({ type: 'credit-note', status: 'draft' })
+    await waitFor(() => expect(window.location.hash).toBe(`#/invoices/${draft.id}`))
+  })
+
+  it('shows a quote with its validity and without payment details', async () => {
+    const q = invoice({ type: 'quote', number: 'HP-2026-001', referenceNumber: undefined, validUntil: addDaysISO(today, 10), dueDate: addDaysISO(today, 10) })
+    renderAt(`#/?id=${q.id}`, createMemoryRepo({ profile, invoices: [q] }))
+    const article = (await screen.findByRole('heading', { level: 2, name: 'Hinnapakkumine HP-2026-001' })).closest('article')!
+    const [y, m, d] = addDaysISO(today, 10).split('-')
+    expect(within(article).getByText(`Kehtib kuni ${d}.${m}.${y}`)).toBeInTheDocument()
+    expect(within(article).queryByText('Pangakonto')).not.toBeInTheDocument()
+    expect(within(article).queryByText('Maksetähtaeg')).not.toBeInTheDocument()
+    expect(within(article).queryByRole('button', { name: 'Märgi tasutuks' })).not.toBeInTheDocument()
+    fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent)
+    expect(items).not.toContain('E-arve (XML)')
+    expect(items).not.toContain('Koosta kreeditarve')
+    expect(items).toContain('Tühista hinnapakkumine')
   })
 
   it('shows the real PDF page only on demand', async () => {

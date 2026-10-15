@@ -21,8 +21,11 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 import {
   computeTotals,
   newId,
-  formatInvoiceNumber,
   isValidReferenceNumber,
+  canRecur,
+  numberingFor,
+  predictNumber,
+  quoteStatus,
   selectedBankAccounts,
   validateInvoice,
   vatNoteMode,
@@ -36,11 +39,12 @@ import {
   type InvoiceType,
   type ValidationIssue,
 } from '../../domain'
-import { buildUblXml, eInvoiceIssues } from '../../einvoice'
+import { buildUblXml, eInvoiceIssues, supportsEInvoice } from '../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../integrations'
 import { invoiceFileName, preloadPdfMake, renderInvoicePdf, renderInvoicePdfBase64 } from '../../pdf'
 import { useApp } from '../AppContext'
 import { BrandColors, TemplatePicker } from '../components/Appearance'
+import { ExchangeRateButton } from '../components/ExchangeRateButton'
 import { useConfirm } from '../components/Dialog'
 import { pick } from '../i18n'
 import { CheckboxField, DecimalInput, FieldShell, fieldId, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
@@ -51,10 +55,13 @@ import { useToast } from '../Toasts'
 import { accentColor, addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isCreditSettled, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
 import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './editor/builders'
-import { DueAmount, EdSection, MoreOptions, NextStep, SaveIndicator, StatusWord } from './editor/EditorParts'
+import { DueAmount, EdSection, MoreOptions, NextStep, QuoteStatusWord, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
 import { LinesEditor } from './editor/LinesEditor'
+import { RecurringControl } from './editor/RecurringControl'
+import { QuoteActions } from './quotes/QuoteActions'
+import { QuoteIssueDialog, type StaleQuoteDate } from './quotes/QuoteIssueDialog'
 import { PreviewPanel } from './editor/PdfPreview'
 import { useFixedBarHeight } from './editor/useFixedBarHeight'
 import { useMediaQuery } from './editor/useMediaQuery'
@@ -62,9 +69,9 @@ import { IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/Statu
 import { TextRows } from './editor/TextRows'
 import { useAutosave } from './editor/useAutosave'
 import { ValidationPanel } from './editor/ValidationPanel'
-import { numberingPreview } from './ProfileForm'
 
 const TERM_PRESETS = [7, 14, 30]
+const VALIDITY_PRESETS = [14, 30, 60]
 
 /** Below this the preview is a full-screen sheet; above it, a panel docked beside the form. */
 const SHEET_QUERY = '(max-width: 1023px)'
@@ -200,7 +207,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     if (id === 'new') {
       const clientId = search.get('client')
       const client = clientId ? clients.find((c) => c.id === clientId) : undefined
-      setInvoice(newDraft(profile, client))
+      setInvoice(newDraft(profile, client, search.get('type') === 'quote' ? 'quote' : 'invoice'))
       persistedRef.current = false
       return
     }
@@ -272,11 +279,16 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const status = displayStatus(invoice, undefined, app.invoices)
   const unpaid = isUnpaid(invoice, app.invoices)
   const credit = invoice.type === 'credit-note'
+  const quote = invoice.type === 'quote'
+  const qStatus = quote ? quoteStatus(invoice, undefined, app.invoices) : null
+  const sourceQuote = invoice.convertedFromQuoteId ? app.invoices.find((i) => i.id === invoice.convertedFromQuoteId) : undefined
   const errors = issues.filter((i) => i.severity === 'error')
   const warnings = issues.filter((i) => i.severity === 'warning')
   const checklist = !ro && invoice.buyer.name && !invoice.buyer.email ? [...issues, EMAIL_SUGGESTION] : issues
-  const predicted = numberingPreview(profile.numbering, Number(invoice.issueDate.slice(0, 4)) || undefined)
+  const series = numberingFor(profile, invoice.type)
+  const predicted = predictNumber(series, invoice.issueDate)
   const term = daysBetween(invoice.issueDate, invoice.dueDate)
+  const validity = invoice.validUntil ? daysBetween(invoice.issueDate, invoice.validUntil) : 0
   const note = vatSchemeNote(invoice.vatScheme, invoice.language, invoice.vatExemptionNote)
   // The note field is shown wherever the text is printed (and whenever a note is set, so it can be cleared).
   const showNoteField = vatNoteRelevant(invoice) || !!invoice.vatExemptionNote
@@ -290,7 +302,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
           : { label: t('field.vatNoteExtra'), hint: t('field.vatNoteAppendHint') }
   const accounts = effective.seller.bankAccounts
   const selectedAccounts = selectedBankAccounts(effective)
-  const xmlIssues = ro ? eInvoiceIssues(invoice) : []
+  const xmlIssues = ro && supportsEInvoice(invoice) ? eInvoiceIssues(invoice) : []
   const today = localTodayISO()
   const stale: StaleIssueDate | null =
     !ro && /^\d{4}-\d{2}-\d{2}$/.test(invoice.issueDate) && invoice.issueDate < today
@@ -299,9 +311,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
           today,
           newDueDate: redateInvoice(invoice, today).dueDate,
           supplyDateMoves: !!invoice.supplyDate && invoice.supplyDate === invoice.issueDate,
-          numberWithToday: formatInvoiceNumber(profile.numbering, profile.numbering.nextNumber, Number(today.slice(0, 4))),
+          numberWithToday: predictNumber(series, today),
         }
       : null
+  const staleQuote: StaleQuoteDate | null = stale && quote ? { date: stale.date, today, validUntil: redateInvoice(invoice, today).validUntil ?? today, numberWithToday: stale.numberWithToday } : null
   const buyerFieldIssue = !!invoice.buyer.name && issues.some((i) => i.field.startsWith('buyer.'))
   const creditedBy =
     ro && invoice.type !== 'credit-note' && invoice.number
@@ -311,20 +324,31 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   // Issued invoices read as a document: optional fields that were left empty are not shown.
   const shown = (v: unknown) => !ro || (v !== undefined && v !== null && v !== '')
 
-  const title = invoice.number
-    ? t(invoice.type === 'credit-note' ? 'editor.titleCredit' : 'editor.title', { number: invoice.number })
-    : t(invoice.type === 'credit-note' ? 'editor.newCredit' : 'editor.new')
-  const meta = [invoice.buyer.name || t('list.noClient'), invoice.dueDate ? t('editor.dueMeta', { date: formatDate(invoice.dueDate) }) : ''].filter(Boolean).join(' · ')
+  const title = quote
+    ? invoice.number
+      ? t('quote.title', { number: invoice.number })
+      : t('quote.newTitle')
+    : invoice.number
+      ? t(invoice.type === 'credit-note' ? 'editor.titleCredit' : 'editor.title', { number: invoice.number })
+      : t(invoice.type === 'credit-note' ? 'editor.newCredit' : 'editor.new')
+  const deadline = quote
+    ? invoice.validUntil
+      ? t('quote.validTill', { date: formatDate(invoice.validUntil) })
+      : ''
+    : invoice.dueDate
+      ? t('editor.dueMeta', { date: formatDate(invoice.dueDate) })
+      : ''
+  const meta = [invoice.buyer.name || t('list.noClient'), deadline].filter(Boolean).join(' · ')
 
   // What "Lisavalikud" holds right now, so a closed section still tells what is in use.
   const inUse = [
-    invoice.type !== 'invoice' ? t(`invoice.type.${invoice.type}`) : '',
+    invoice.type !== 'invoice' && !quote ? t(`invoice.type.${invoice.type}`) : '',
     invoice.supplyDate ? t('field.supplyDate') : '',
     invoice.periodStart || invoice.periodEnd ? t('editor.period') : '',
     invoice.orderReference ? t('field.orderReference') : '',
-    invoice.lateInterestPercentPerDay ? t('field.lateInterest') : '',
+    invoice.lateInterestPercentPerDay && !quote ? t('field.lateInterest') : '',
     invoice.currency.toUpperCase() !== 'EUR' ? invoice.currency : '',
-    accounts.length > 1 && invoice.bankAccountIds.length > 0 ? t('editor.bankAccounts') : '',
+    accounts.length > 1 && invoice.bankAccountIds.length > 0 && !quote ? t('editor.bankAccounts') : '',
     invoice.notes ? t('field.notes') : '',
   ].filter(Boolean)
   const moreSummary = inUse.length ? t('editor.moreInUse', { list: inUse.join(', ') }) : t('editor.moreHintCalm')
@@ -471,21 +495,28 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     )
 
   const setTerm = (days: number) => set({ dueDate: addDaysISO(invoice.issueDate, Math.max(0, Math.round(days))) })
+  // A quote's due date mirrors its validity date (see asQuote).
+  const setValidUntil = (validUntil: string) => set({ validUntil, dueDate: validUntil })
+  const setValidity = (days: number) => setValidUntil(addDaysISO(invoice.issueDate, Math.max(0, Math.round(days))))
 
   const busyAny = busy !== null
   // One obvious action for an issued invoice; everything else lives in "Rohkem".
   const primary: null | 'email' | 'reminder' =
-    !ro || justIssued || invoice.status === 'cancelled' || invoice.status === 'paid' || isCreditSettled(invoice, app.invoices) ? null : status === 'overdue' ? 'reminder' : 'email'
+    !ro || justIssued || invoice.status === 'cancelled' || invoice.status === 'paid' || isCreditSettled(invoice, app.invoices) || (quote && qStatus !== 'sent')
+      ? null
+      : status === 'overdue'
+        ? 'reminder'
+        : 'email'
   const menuItems: MenuItem[] = [
     ...(invoice.status === 'paid' ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
-    ...(primary === 'reminder' ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
+    ...(primary === 'reminder' || (quote && !primary && invoice.status !== 'cancelled') ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
     { key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void saveToDrive() },
-    { key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void downloadXml() },
+    ...(supportsEInvoice(invoice) ? [{ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void downloadXml() }] : []),
     { key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void print() },
     { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: true, onSelect: () => void duplicate() },
-    ...(invoice.type !== 'credit-note' && invoice.status !== 'cancelled' ? [{ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void creditNote() }] : []),
+    ...(invoice.type !== 'credit-note' && !quote && invoice.status !== 'cancelled' ? [{ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void creditNote() }] : []),
     ...(invoice.status === 'paid' ? [{ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void act('unpaid', () => changeStatus(app.markInvoiceUnpaid)) }] : []),
-    ...(invoice.status === 'issued' ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
+    ...(invoice.status === 'issued' && !quote ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
   ]
 
   const togglePreview = (opener: HTMLElement) => {
@@ -528,7 +559,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   <h1 ref={titleRef} tabIndex={-1}>
                     {title}
                   </h1>
-                  {ro && <StatusWord status={status} />}
+                  {ro && (qStatus ? <QuoteStatusWord status={qStatus} /> : <StatusWord status={status} />)}
                 </div>
                 <p className="ed-meta">{ro ? meta : <SaveIndicator state={autosave.state} onRetry={() => void autosave.flush()} />}</p>
               </div>
@@ -558,6 +589,12 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             </div>
           </header>
 
+          {sourceQuote && (
+            <p className="ed-origin">
+              {t('quote.fromQuote')} <Link to={`/?id=${sourceQuote.id}`}>{sourceQuote.number || t('quote.draftNumber')}</Link>
+            </p>
+          )}
+
           {ro && justIssued && (
             <NextStep
               invoice={effective}
@@ -575,7 +612,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             <div className={`ed-locked${invoice.status === 'cancelled' ? ' ed-locked-warn' : ''}`}>
               <LockSimpleIcon size={16} className="ed-locked-icon" />
               <div>
-                <p>{invoice.status === 'cancelled' ? t('editor.cancelledBanner') : t('editor.lockedBanner')}</p>
+                <p>{invoice.status === 'cancelled' ? t('editor.cancelledBanner') : quote ? t('quote.lockedBanner') : t('editor.lockedBanner')}</p>
                 {creditedBy.length > 0 && (
                   <p className="credited-by">
                     {t('editor.creditedBy')}{' '}
@@ -600,7 +637,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
             <EdSection
               id="sec-lines"
-              title={t('editor.sectionLines')}
+              title={quote ? t('quote.sectionLines') : t('editor.sectionLines')}
               aside={totals.showVat ? t('editor.pricesExclVat') : undefined}
               hint={invoice.type === 'credit-note' ? t('editor.creditLinesHint') : undefined}
             >
@@ -608,18 +645,58 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               <LinesEditor
                 lines={invoice.lines}
                 onChange={(lines) => set({ lines })}
+                buyer={invoice.buyer}
                 vatScheme={invoice.vatScheme}
                 currency={invoice.currency}
                 totals={totals}
                 defaultUnit={profile.defaults.defaultUnit}
                 defaultVatRate={profile.defaults.defaultVatRate}
                 disabled={ro}
-                grossLabel={credit ? t('totals.credited') : undefined}
+                grossLabel={credit ? t('totals.credited') : quote ? t('totals.grossShort') : undefined}
               />
               <TextRows kind="after" rows={invoice.textAfter} onChange={(textAfter) => set({ textAfter })} disabled={ro} />
             </EdSection>
 
-            <EdSection id="sec-terms" title={t('editor.sectionPayment')}>
+            <EdSection id="sec-terms" title={quote ? t('quote.sectionTerms') : t('editor.sectionPayment')}>
+              {quote ? (
+                <div className="grid">
+                  <TextField
+                    label={t('quote.fieldDate')}
+                    type="date"
+                    path="issueDate"
+                    value={invoice.issueDate}
+                    onChange={(v) => v && set({ issueDate: v, validUntil: addDaysISO(v, Math.max(0, validity)), dueDate: addDaysISO(v, Math.max(0, validity)) })}
+                    required
+                  />
+                  <TextField label={t('quote.validUntil')} type="date" path="validUntil" value={invoice.validUntil} onChange={(v) => v && setValidUntil(v)} min={invoice.issueDate} required />
+                  {!ro && (
+                    <FieldShell id={fieldId('validity')} label={t('quote.validDays')} className="span-2">
+                      <div className="term-row">
+                        <div className="input-suffix term-days">
+                          <DecimalInput id={fieldId('validity')} className="num" value={validity} onChange={(v) => setValidity(v ?? 0)} />
+                          <span aria-hidden="true">{t('common.days')}</span>
+                        </div>
+                        <div className="chip-group" role="group" aria-label={t('quote.validDays')}>
+                          {VALIDITY_PRESETS.map((d) => (
+                            <button key={d} type="button" className="chip-btn" aria-pressed={validity === d} onClick={() => setValidity(d)}>
+                              {t('editor.termDays', { days: d })}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </FieldShell>
+                  )}
+                  <SelectField
+                    className="span-2"
+                    label={t('field.vatScheme')}
+                    path="vatScheme"
+                    value={invoice.vatScheme}
+                    onChange={(vatScheme) => edit((inv) => withVatScheme(inv, vatScheme, profile.defaults.defaultVatRate))}
+                    options={vatSchemeOptions(t)}
+                    hint={t(`vat.explain.${invoice.vatScheme}`)}
+                  />
+                </div>
+              ) : (
               <div className="grid">
                 {invoice.type === 'credit-note' && (
                   <TextField
@@ -686,6 +763,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   </FieldShell>
                 )}
               </div>
+              )}
+              {quote && !ro && <p className="ed-quote-note">{t('quote.noPayment')}</p>}
               {!profile.vatRegistered && invoice.vatScheme !== 'not-registered' && !ro && <p className="notice notice-warn">{t('editor.notVatRegistered')}</p>}
               {showNoteField && shown(invoice.vatExemptionNote) && (
                 <TextField label={noteField.label} path="vatExemptionNote" value={invoice.vatExemptionNote} onChange={(v) => set({ vatExemptionNote: v || undefined })} hint={noteField.hint} />
@@ -716,7 +795,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                       {t(`appearance.mode.${invoice.colorMode ?? 'accent'}`)}
                     </dd>
                   </div>
-                  {invoice.paymentQr && (
+                  {invoice.paymentQr && !quote && (
                     <div>
                       <dt>{t('editor.paymentQrShort')}</dt>
                       <dd>{t('editor.paymentQrOn')}</dd>
@@ -748,7 +827,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   disabled={ro}
                   compact
                 />
-                <CheckboxField label={t('field.paymentQr')} hint={t('field.paymentQrHint')} checked={!!invoice.paymentQr} onChange={(paymentQr) => set({ paymentQr })} disabled={ro} />
+                {!quote && <CheckboxField label={t('field.paymentQr')} hint={t('field.paymentQrHint')} checked={!!invoice.paymentQr} onChange={(paymentQr) => set({ paymentQr })} disabled={ro} />}
                 {!ro && (
                   <p className="ed-quiet">
                     {t('editor.designNote')} <Link to="/company">{t('editor.designNoteLink')}</Link>.
@@ -760,20 +839,22 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
             <MoreOptions initiallyOpen={ro} summary={moreSummary}>
               <div className="grid">
-                <SelectField<InvoiceType>
-                  label={t('field.invoiceType')}
-                  path="type"
-                  value={invoice.type}
-                  onChange={(type) => set({ type })}
-                  options={(['invoice', 'prepayment', 'credit-note'] as const).map((v) => ({ value: v, label: t(`invoice.type.${v}`) }))}
-                />
+                {!quote && (
+                  <SelectField<InvoiceType>
+                    label={t('field.invoiceType')}
+                    path="type"
+                    value={invoice.type}
+                    onChange={(type) => set({ type })}
+                    options={(['invoice', 'prepayment', 'credit-note'] as const).map((v) => ({ value: v, label: t(`invoice.type.${v}`) }))}
+                  />
+                )}
                 {shown(invoice.supplyDate) && (
                   <TextField label={t('field.supplyDate')} type="date" path="supplyDate" value={invoice.supplyDate} onChange={(v) => set({ supplyDate: v || undefined })} hint={t('field.supplyDateHint')} />
                 )}
                 {shown(invoice.periodStart) && <TextField label={t('field.periodStart')} type="date" path="periodStart" value={invoice.periodStart} onChange={(v) => set({ periodStart: v || undefined })} />}
                 {shown(invoice.periodEnd) && <TextField label={t('field.periodEnd')} type="date" path="periodEnd" value={invoice.periodEnd} onChange={(v) => set({ periodEnd: v || undefined })} min={invoice.periodStart} />}
                 {shown(invoice.orderReference) && <TextField label={t('field.orderReference')} path="orderReference" value={invoice.orderReference} onChange={(v) => set({ orderReference: v || undefined })} />}
-                {shown(invoice.lateInterestPercentPerDay) && (
+                {shown(invoice.lateInterestPercentPerDay) && !quote && (
                   <NumberField
                     label={t('field.lateInterest')}
                     path="lateInterestPercentPerDay"
@@ -784,18 +865,21 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   />
                 )}
                 <SelectField label={t('field.currency')} path="currency" value={invoice.currency} onChange={(currency) => set({ currency })} options={[...new Set([invoice.currency, ...CURRENCIES])].map((c) => ({ value: c, label: c }))} />
-                {invoice.currency.toUpperCase() !== 'EUR' && totals.vat !== 0 && (
-                  <NumberField
-                    label={t('field.eurExchangeRate')}
-                    hint={t('field.eurExchangeRateHint', { currency: invoice.currency })}
-                    path="eurExchangeRate"
-                    value={invoice.eurExchangeRate}
-                    onChange={(v) => set({ eurExchangeRate: v ?? undefined })}
-                    allowEmpty
-                  />
+                {invoice.currency.toUpperCase() !== 'EUR' && totals.vat !== 0 && !quote && (
+                  <div className="ed-rate">
+                    <NumberField
+                      label={t('field.eurExchangeRate')}
+                      hint={t('field.eurExchangeRateHint', { currency: invoice.currency })}
+                      path="eurExchangeRate"
+                      value={invoice.eurExchangeRate}
+                      onChange={(v) => set({ eurExchangeRate: v ?? undefined })}
+                      allowEmpty
+                    />
+                    {!ro && <ExchangeRateButton currency={invoice.currency} date={invoice.supplyDate || invoice.issueDate} onRate={(rate) => set({ eurExchangeRate: rate })} />}
+                  </div>
                 )}
               </div>
-              {accounts.length > 1 && (
+              {accounts.length > 1 && !quote && (
                 <fieldset className="bank-select">
                   <legend className="label">{t('editor.bankAccounts')}</legend>
                   {accounts.map((a) => {
@@ -826,7 +910,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         <div className="ed-dock">
         {!ro ? (
           <aside ref={barRef} id="ed-side" className="ed-side" aria-label={t('editor.sideLabel')} tabIndex={-1}>
-            <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : undefined} />
+            <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : quote ? t('totals.grossShort') : undefined} />
             <ValidationPanel issues={checklist} summaryId="issue-summary" />
             {sheet && (
               <IconButton className="ed-bar-preview" label={t('preview.title')} icon={<EyeIcon size={20} />} aria-expanded={previewOpen} onClick={(e) => togglePreview(e.currentTarget)} />
@@ -837,19 +921,19 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 className="btn btn-primary ed-issue-btn"
                 onClick={() => setDialog('issue')}
                 disabled={errors.length > 0 || busyAny}
-                title={errors.length ? t('issue.blocked') : undefined}
+                title={errors.length ? t(quote ? 'quote.issueBlocked' : 'issue.blocked') : undefined}
                 aria-describedby={errors.length ? 'issue-summary' : 'issue-note'}
               >
-                {t(credit ? 'actions.issueCredit' : 'actions.issue')}
+                {quote ? t('quote.issue') : t(credit ? 'actions.issueCredit' : 'actions.issue')}
               </button>
               <p id="issue-note" className="ed-issue-note">
-                {t(credit ? 'editor.willGetNumberCredit' : 'editor.willGetNumber', { number: predicted })}
+                {quote ? t('quote.willGetNumber', { number: predicted }) : t(credit ? 'editor.willGetNumberCredit' : 'editor.willGetNumber', { number: predicted })}
               </p>
             </div>
           </aside>
         ) : (
           <aside className="ed-side ed-side-ro" aria-label={t('editor.sideLabel')}>
-            <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : undefined} />
+            <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : quote ? t('totals.grossShort') : undefined} />
             <dl className="ed-facts">
               {invoice.issuedAt && (
                 <div>
@@ -857,10 +941,19 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   <dd>{formatDate(invoice.issuedAt.slice(0, 10))}</dd>
                 </div>
               )}
-              <div>
-                <dt>{t('field.dueDate')}</dt>
-                <dd className={status === 'overdue' ? 'ed-overdue' : undefined}>{formatDate(invoice.dueDate)}</dd>
-              </div>
+              {quote ? (
+                invoice.validUntil && (
+                  <div>
+                    <dt>{t('quote.validUntil')}</dt>
+                    <dd>{formatDate(invoice.validUntil)}</dd>
+                  </div>
+                )
+              ) : (
+                <div>
+                  <dt>{t('field.dueDate')}</dt>
+                  <dd className={status === 'overdue' ? 'ed-overdue' : undefined}>{formatDate(invoice.dueDate)}</dd>
+                </div>
+              )}
               {invoice.paidAt && (
                 <div>
                   <dt>{t('status.paid')}</dt>
@@ -890,6 +983,12 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 )}
               </div>
             )}
+            {quote && !justIssued && <QuoteActions invoice={invoice} primary={!primary} />}
+            {canRecur(invoice) && (
+              <div className="ed-recurring">
+                <RecurringControl invoice={invoice} />
+              </div>
+            )}
             {xmlIssues.length > 0 && (
               <section className="ed-einvoice" aria-labelledby="einvoice-title">
                 <h2 id="einvoice-title">{t('einvoice.title')}</h2>
@@ -913,7 +1012,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         </div>
       </div>
 
-      {dialog === 'issue' && <IssueDialog credit={credit} predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && quote && <QuoteIssueDialog predictedNumber={predicted} warnings={warnings.length} stale={staleQuote} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && !quote && <IssueDialog credit={credit} predictedNumber={predicted} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
       {dialog === 'paid' && <MarkPaidDialog invoice={invoice} onClose={() => setDialog(null)} onConfirm={(paidAt) => changeStatus((id) => app.markInvoicePaid(id, paidAt)).then(() => toast.success(t('actions.markedPaid', { number: invoice.number })))} />}
       {(dialog === 'email' || dialog === 'reminder') && <EmailDialog invoice={effective} kind={dialog === 'reminder' ? 'reminder' : 'invoice'} onSent={() => markSent(invoice.id)} onClose={() => setDialog(null)} />}
     </div>

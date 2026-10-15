@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   ArrowUUpLeftIcon,
   BellRingingIcon,
+  CalendarCheckIcon,
   CheckIcon,
   CloudArrowUpIcon,
   CopyIcon,
@@ -19,18 +20,20 @@ import {
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { computeTotals, selectedBankAccounts, textRows, type Invoice } from '../../../domain'
+import { quoteStatus } from '../../../domain/quote'
 import { TEMPLATES } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { Menu, type MenuItem } from '../../components/ui'
 import { formatDate, formatIban, formatMoney, formatNumber } from '../../format'
 import { pick, type MessageKey } from '../../i18n'
-import { useToast } from '../../Toasts'
 import { daysBetween, displayStatus, effectiveInvoice, formatAddress, isUnpaid, localTodayISO } from '../../util'
 import { EmailDialog } from '../editor/EmailDialog'
-import { MarkPaidDialog } from '../editor/StatusDialogs'
+import { RecurringControl } from '../editor/RecurringControl'
+import { CancelInvoiceDialog, MarkPaidDialog } from '../editor/StatusDialogs'
+import { QuoteActions } from '../quotes/QuoteActions'
+import { useInvoiceEvents } from './events'
 import { PdfPage } from './PdfPage'
-import { markSent, useSentAt } from './sent'
-import { detailStatus, settlementOf } from './status'
+import { detailStatus, quoteDetailStatus, settlementOf } from './status'
 import { interpolate } from './text'
 import { useInvoiceActions } from './useInvoiceActions'
 
@@ -57,23 +60,29 @@ function Facts({ rows }: { rows: [string, ReactNode][] }) {
   )
 }
 
-type Dialog = null | 'paid' | 'email' | 'reminder'
+type Dialog = null | 'paid' | 'paidDate' | 'cancel' | 'email' | 'reminder'
+
+/** After a reminder, wait this many days before offering the next one as the main action. */
+const REMIND_AGAIN_DAYS = 7
 
 /** The selected invoice, typeset like a document, with one status-dependent primary action. */
 export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBack?: boolean }) {
-  const { t, lang, profile, invoices, markInvoicePaid } = useApp()
-  const toast = useToast()
+  const { t, lang, profile, invoices } = useApp()
   const [dialog, setDialog] = useState<Dialog>(null)
   const [showPage, setShowPage] = useState(initialShowPage)
   const effective = useMemo(() => effectiveInvoice(invoice, profile), [invoice, profile])
   const totals = useMemo(() => computeTotals(invoice), [invoice])
   const actions = useInvoiceActions(invoice, effective)
-  const sentAt = useSentAt(invoice.id)
+  const history = useInvoiceEvents(invoice.id)
+  const sentAt = history.sentAt
   const today = localTodayISO()
-  const status = displayStatus(invoice, today, invoices)
   const draft = invoice.status === 'draft'
   const credit = invoice.type === 'credit-note'
-  const unpaid = isUnpaid(invoice, invoices)
+  const quote = invoice.type === 'quote'
+  const status = quote ? invoice.status : displayStatus(invoice, today, invoices)
+  const unpaid = !quote && isUnpaid(invoice, invoices)
+  const lastReminder = history.reminders[history.reminders.length - 1]
+  const remindedRecently = !!lastReminder && daysBetween(lastReminder, today) < REMIND_AGAIN_DAYS
   const settle = useMemo(() => settlementOf(invoice, invoices), [invoice, invoices])
   const busy = actions.busy !== null
   const cur = invoice.currency
@@ -92,35 +101,51 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   type Primary = { kind: 'continue' | 'email' | 'remind' | 'paid'; label: string; icon: ReactNode }
   let primary: Primary | null = null
   if (draft) primary = { kind: 'continue', label: t('detail.continue'), icon: <PencilSimpleIcon /> }
-  else if (status === 'overdue') primary = { kind: 'remind', label: t('detail.remind'), icon: <BellRingingIcon /> }
+  else if (quote) primary = null
+  else if (status === 'overdue')
+    primary = remindedRecently ? { kind: 'paid', label: t('actions.markPaid'), icon: <CheckIcon /> } : { kind: 'remind', label: t('detail.remind'), icon: <BellRingingIcon /> }
   else if (invoice.status === 'issued' && !sentAt && !settle.settled) primary = { kind: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon /> }
   else if (unpaid) primary = { kind: 'paid', label: t('actions.markPaid'), icon: <CheckIcon /> }
 
   const runPrimary = (p: Primary) => {
     if (p.kind === 'email') setDialog('email')
     else if (p.kind === 'remind') setDialog('reminder')
-    else if (p.kind === 'paid') setDialog('paid')
+    else if (p.kind === 'paid') void actions.markPaid()
   }
 
   // ---- everything else, in one menu ---------------------------------------------
   const items: MenuItem[] = []
   if (!draft && invoice.status !== 'cancelled' && primary?.kind !== 'email') items.push({ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') })
-  if (!draft) {
-    items.push({ key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void actions.saveToDrive() })
-    items.push({ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void actions.downloadXml() })
-  }
+  if (status === 'overdue' && primary?.kind !== 'remind')
+    items.push({ key: 'remind', label: t(history.reminders.length ? 'reminder.again' : 'detail.remind'), icon: <BellRingingIcon />, onSelect: () => setDialog('reminder') })
+  if (!draft) items.push({ key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void actions.saveToDrive() })
+  if (!draft && !quote) items.push({ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void actions.downloadXml() })
   items.push({ key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void actions.print() })
   items.push({ key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: true, onSelect: () => void actions.duplicate() })
-  if (!draft && !credit && invoice.status !== 'cancelled' && !settle.settled) items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
+  if (!draft && !credit && !quote && invoice.status !== 'cancelled' && !settle.settled) items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
+  if (unpaid) items.push({ key: 'paidOn', label: t('payment.otherDate'), icon: <CalendarCheckIcon />, onSelect: () => setDialog('paid') })
   if (invoice.status === 'paid') items.push({ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void actions.markUnpaid() })
-  if (invoice.status === 'issued') items.push({ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void actions.cancel() })
+  if (invoice.status === 'issued')
+    items.push({
+      key: 'cancel',
+      label: t(quote ? 'payment.cancelQuote' : 'actions.cancelInvoice'),
+      icon: <ProhibitIcon />,
+      danger: true,
+      separatorBefore: true,
+      onSelect: () => (actions.cancelsWithCredit ? setDialog('cancel') : void actions.cancel()),
+    })
   if (draft) items.push({ key: 'delete', label: t('actions.deleteDraft'), icon: <TrashIcon />, danger: true, separatorBefore: true, onSelect: () => void actions.deleteDraft() })
 
   // ---- text ---------------------------------------------------------------------
-  const title = draft
-    ? t(credit ? 'detail.draftCreditTitle' : 'detail.draftTitle')
-    : t(credit ? 'editor.titleCredit' : 'editor.title', { number: invoice.number })
-  const head = detailStatus(invoice, status, today, t, settle)
+  const title = quote
+    ? draft
+      ? t('detail.quoteDraftTitle')
+      : t('detail.quoteTitle', { number: invoice.number })
+    : draft
+      ? t(credit ? 'detail.draftCreditTitle' : 'detail.draftTitle')
+      : t(credit ? 'editor.titleCredit' : 'editor.title', { number: invoice.number })
+  const head = quote ? quoteDetailStatus(invoice, quoteStatus(invoice, today, invoices), today, t) : detailStatus(invoice, status, today, t, settle)
+  const fromQuote = invoice.convertedFromQuoteId ? invoices.find((i) => i.id === invoice.convertedFromQuoteId) : undefined
   const tail = [
     !draft && invoice.issuedAt ? t('detail.issuedOn', { date: formatDate(invoice.issuedAt.slice(0, 10)) }) : '',
     sentAt && invoice.status === 'issued' ? t('detail.sentOn', { date: formatDate(sentAt) }) : '',
@@ -155,15 +180,17 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
     ])
 
   const payRows: [string, ReactNode][] = []
-  if (invoice.type !== 'invoice') payRows.push([t('field.invoiceType'), t(`invoice.type.${invoice.type}`)])
+  if (invoice.type !== 'invoice' && !quote) payRows.push([t('field.invoiceType'), t(`invoice.type.${invoice.type}`)])
   if (invoice.issueDate) payRows.push([t('field.issueDate'), formatDate(invoice.issueDate)])
-  if (invoice.dueDate && !credit) payRows.push([t('field.dueDate'), term > 0 ? t(term === 1 ? 'detail.termOne' : 'detail.term', { date: formatDate(invoice.dueDate), days: term }) : formatDate(invoice.dueDate)])
+  if (quote && invoice.validUntil) payRows.push([t('detail.validUntil'), formatDate(invoice.validUntil)])
+  if (fromQuote) payRows.push([t('detail.fromQuote'), <Link key="quote" to={`/?id=${fromQuote.id}`}>{fromQuote.number || t('list.draftNumber')}</Link>])
+  if (invoice.dueDate && !credit && !quote) payRows.push([t('field.dueDate'), term > 0 ? t(term === 1 ? 'detail.termOne' : 'detail.term', { date: formatDate(invoice.dueDate), days: term }) : formatDate(invoice.dueDate)])
   if (invoice.paidAt) payRows.push([t('detail.paidOn'), formatDate(invoice.paidAt)])
   if (invoice.supplyDate && invoice.supplyDate !== invoice.issueDate) payRows.push([t('field.supplyDate'), formatDate(invoice.supplyDate)])
   if (invoice.periodStart || invoice.periodEnd) payRows.push([t('detail.period'), `${formatDate(invoice.periodStart)} – ${formatDate(invoice.periodEnd)}`])
-  if (invoice.referenceNumber) payRows.push([t('field.referenceNumber'), invoice.referenceNumber])
+  if (invoice.referenceNumber && !quote) payRows.push([t('field.referenceNumber'), invoice.referenceNumber])
   if (invoice.orderReference) payRows.push([t('field.orderReference'), invoice.orderReference])
-  if (accounts.length)
+  if (accounts.length && !quote)
     payRows.push([
       t('detail.bankAccount'),
       <>
@@ -202,12 +229,25 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
             {unpaid && primary?.kind !== 'paid' && (
               <>
                 {'. '}
-                <button type="button" className="link-btn" onClick={() => setDialog('paid')} disabled={busy}>
+                <button type="button" className="link-btn" onClick={() => void actions.markPaid()} disabled={busy}>
                   {t('actions.markPaid')}
                 </button>
               </>
             )}
+            {invoice.status === 'paid' && (
+              <>
+                {' · '}
+                <button type="button" className="link-btn" onClick={() => setDialog('paidDate')} disabled={busy}>
+                  {t('payment.changeDate')}
+                </button>
+              </>
+            )}
           </p>
+          {!draft && history.reminders.length > 0 && (
+            <p className="doc-reminders muted small">
+              {t(history.reminders.length > 1 ? 'reminder.many' : 'reminder.one', { dates: history.reminders.map((d) => formatDate(d)).join(', ') })}
+            </p>
+          )}
         </div>
         <div className="doc-amount">
           <span className={`doc-gross${invoice.status === 'cancelled' ? ' is-void' : ''}`}>{formatMoney(totals.gross, cur)}</span>
@@ -215,6 +255,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
         </div>
       </header>
 
+      {quote && !draft && <QuoteActions invoice={invoice} className="doc-quote" />}
       <div className="doc-actions" role="group" aria-label={t('detail.actions')}>
         {primary &&
           (primary.kind === 'continue' ? (
@@ -258,7 +299,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
               </section>
             )}
             <section aria-labelledby="doc-payment">
-              <h3 id="doc-payment">{t('detail.payment')}</h3>
+              <h3 id="doc-payment">{t(quote ? 'detail.terms' : 'detail.payment')}</h3>
               <Facts rows={payRows} />
             </section>
           </div>
@@ -326,7 +367,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
                 </>
               )}
               <div className="doc-grand">
-                <dt>{t(credit ? 'totals.credited' : 'totals.gross')}</dt>
+                <dt>{t(credit ? 'totals.credited' : quote ? 'totals.grossShort' : 'totals.gross')}</dt>
                 <dd>{formatMoney(totals.gross, cur)}</dd>
               </div>
             </dl>
@@ -345,12 +386,15 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           <p>{t('detail.draftNote')}</p>
         ) : (
           <>
+            {invoice.type === 'invoice' && (invoice.status === 'issued' || invoice.status === 'paid') && <RecurringControl invoice={invoice} className="doc-recurring" />}
             <p className="doc-lock">
               <LockSimpleIcon />
               <span>
                 {invoice.status === 'cancelled'
                   ? t('editor.cancelledBanner')
-                  : credit
+                  : quote
+                    ? t('detail.quoteLocked')
+                    : credit
                     ? t('editor.lockedBanner')
                     : interpolate(t('detail.locked'), {
                         link: (
@@ -370,18 +414,34 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
         )}
       </footer>
 
-      {dialog === 'paid' && (
+      {(dialog === 'paid' || dialog === 'paidDate') && (
         <MarkPaidDialog
           invoice={invoice}
+          change={dialog === 'paidDate'}
           onClose={() => setDialog(null)}
           onConfirm={async (paidAt) => {
-            await markInvoicePaid(invoice.id, paidAt)
-            toast.success(t('actions.markedPaid', { number: invoice.number }))
+            if (dialog === 'paidDate') await actions.changePaidDate(paidAt)
+            else await actions.markPaidOn(paidAt)
           }}
         />
       )}
+      {dialog === 'cancel' && (
+        <CancelInvoiceDialog
+          invoice={invoice}
+          amount={actions.remaining}
+          partiallyCredited={settle.creditNotes.length > 0}
+          onClose={() => setDialog(null)}
+          onConfirm={actions.cancelWithCredit}
+          onPartial={() => void actions.creditNote()}
+        />
+      )}
       {(dialog === 'email' || dialog === 'reminder') && (
-        <EmailDialog invoice={effective} kind={dialog === 'reminder' ? 'reminder' : 'invoice'} onSent={() => markSent(invoice.id)} onClose={() => setDialog(null)} />
+        <EmailDialog
+          invoice={effective}
+          kind={dialog === 'reminder' ? 'reminder' : 'invoice'}
+          previousReminders={history.reminders.length}
+          onClose={() => setDialog(null)}
+        />
       )}
     </article>
   )

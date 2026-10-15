@@ -55,5 +55,5 @@ export function integrationsMock() {
 }
 
 export function einvoiceMock() {
-  return { buildUblXml: vi.fn(() => '<Invoice/>'), eInvoiceIssues: vi.fn(() => []) }
+  return { buildUblXml: vi.fn(() => '<Invoice/>'), eInvoiceIssues: vi.fn(() => []), supportsEInvoice: (inv: { type?: string }) => inv.type !== 'quote' }
 }

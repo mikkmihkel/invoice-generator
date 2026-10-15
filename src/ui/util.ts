@@ -33,7 +33,7 @@ export function nowISO(): string {
 export function displayStatus(inv: Pick<Invoice, 'status' | 'dueDate'> & Partial<Pick<Invoice, 'type'>>, today?: string): DisplayStatus
 export function displayStatus(inv: Invoice, today: string | undefined, allInvoices: readonly Invoice[]): DisplayStatus
 export function displayStatus(inv: Pick<Invoice, 'status' | 'dueDate'> & Partial<Pick<Invoice, 'type'>>, today = localTodayISO(), allInvoices?: readonly Invoice[]): DisplayStatus {
-  if (inv.status === 'issued' && inv.type !== 'credit-note' && inv.dueDate && inv.dueDate < today) {
+  if (inv.status === 'issued' && inv.type !== 'credit-note' && inv.type !== 'quote' && inv.dueDate && inv.dueDate < today) {
     return allInvoices && isCreditSettled(inv as Invoice, allInvoices) ? 'issued' : 'overdue'
   }
   return inv.status
@@ -41,7 +41,7 @@ export function displayStatus(inv: Pick<Invoice, 'status' | 'dueDate'> & Partial
 
 /** Issued invoice whose amount credit notes have reduced to zero: settled, nothing left to pay. */
 export function isCreditSettled(inv: Invoice, allInvoices: readonly Invoice[]): boolean {
-  if (inv.status !== 'issued' || inv.type === 'credit-note') return false
+  if (inv.status !== 'issued' || inv.type === 'credit-note' || inv.type === 'quote') return false
   return creditNotesFor(inv, allInvoices).length > 0 && outstandingAmount(inv, allInvoices) === 0
 }
 
@@ -52,7 +52,8 @@ export function isCreditSettled(inv: Invoice, allInvoices: readonly Invoice[]): 
 export function isUnpaid(inv: Pick<Invoice, 'status' | 'type'>): boolean
 export function isUnpaid(inv: Invoice, allInvoices: readonly Invoice[]): boolean
 export function isUnpaid(inv: Pick<Invoice, 'status' | 'type'>, allInvoices?: readonly Invoice[]): boolean {
-  if (inv.status !== 'issued' || inv.type === 'credit-note') return false
+  // Quotes are offers: nothing is owed on them.
+  if (inv.status !== 'issued' || inv.type === 'credit-note' || inv.type === 'quote') return false
   return !allInvoices || !isCreditSettled(inv as Invoice, allInvoices)
 }
 

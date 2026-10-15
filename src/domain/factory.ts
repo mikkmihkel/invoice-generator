@@ -1,5 +1,6 @@
 import { isColorMode, isHexColor } from './brand'
 import { STANDARD_VAT_RATE } from './law'
+import { DEFAULT_QUOTE_NUMBERING } from './numbering'
 import type {
   AppSettings,
   BuyerSnapshot,
@@ -90,7 +91,8 @@ export function createDefaultProfile(): CompanyProfile {
       emailSubjectEn: DEFAULT_EMAIL_SUBJECT_EN,
       emailBodyEn: DEFAULT_EMAIL_BODY_EN,
     },
-    numbering: { prefix: '{YYYY}-', nextNumber: 1, padding: 4 },
+    numbering: { prefix: '{YYYY}-', nextNumber: 1, padding: 4, reset: 'yearly', counters: {} },
+    quoteNumbering: { ...DEFAULT_QUOTE_NUMBERING, counters: {} },
     updatedAt: new Date().toISOString(),
   }
 }
@@ -110,7 +112,7 @@ function clone<T>(value: T): T {
 
 /** Frozen copy of the seller for an invoice (profile edits must not alter issued invoices). */
 export function sellerSnapshot(profile: CompanyProfile): SellerSnapshot {
-  const { defaults: _defaults, numbering: _numbering, updatedAt: _updatedAt, ...seller } = profile
+  const { defaults: _defaults, numbering: _numbering, quoteNumbering: _quoteNumbering, updatedAt: _updatedAt, ...seller } = profile
   return clone(seller)
 }
 

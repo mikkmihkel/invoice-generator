@@ -1,7 +1,9 @@
 import type { BackupFile } from '../domain/types'
 
 export const BACKUP_APP = 'invoice-generator'
-export const BACKUP_VERSION = 1
+export const BACKUP_VERSION = 2
+/** Oldest backup format that can still be read. */
+export const BACKUP_MIN_VERSION = 1
 
 /** Thrown when a backup file is not a valid invoice-generator backup. Carries a bilingual message. */
 export class BackupFormatError extends Error {
@@ -16,7 +18,12 @@ export class BackupFormatError extends Error {
 type Text = { et: string; en: string }
 
 const STATUSES = ['draft', 'issued', 'paid', 'cancelled']
-const INVOICE_TYPES = ['invoice', 'credit-note', 'prepayment']
+const INVOICE_TYPES = ['invoice', 'credit-note', 'prepayment', 'quote']
+const NUMBERING_RESETS = ['never', 'yearly', 'monthly', 'daily']
+const RECURRENCE_INTERVALS = ['monthly', 'quarterly', 'yearly']
+const EVENT_KINDS = ['sent', 'reminder']
+/** Counter keys of a resetting number series: '2026', '2026-10' or '2026-10-15'. */
+const COUNTER_KEY = /^\d{4}(-\d{2}(-\d{2})?)?$/
 const LANGUAGES = ['et', 'en', 'et-en']
 const UI_LANGUAGES = ['et', 'en']
 const CLIENT_KINDS = ['company', 'person']
@@ -42,6 +49,10 @@ export const BACKUP_LIMITS = {
   logoDataUrlLength: 2 * 1024 * 1024,
   /** Free-text rows before/after the invoice lines (`textBefore` / `textAfter`). */
   textRows: 100,
+  /** Period counters of one number series (a daily series uses one per day). */
+  numberingCounters: 20_000,
+  /** Automatic backup versions kept in Drive. */
+  keepVersions: 1000,
 }
 
 const ADDRESS_FIELDS = [
@@ -165,6 +176,39 @@ class RecordCheck {
   optBool(key: string, field: Text, from: Record<string, unknown> = this.r) {
     return this.check(from[key], field, (x) => typeof x === 'boolean', false)
   }
+  bool(key: string, field: Text, from: Record<string, unknown> = this.r) {
+    return this.check(from[key], field, (x) => typeof x === 'boolean', true)
+  }
+  /** Required whole number within [min, max]. */
+  int(key: string, field: Text, min: number, max: number, from: Record<string, unknown> = this.r) {
+    return this.check(from[key], field, (x) => typeof x === 'number' && Number.isSafeInteger(x) && x >= min && x <= max, true)
+  }
+  optDate(key: string, field: Text, from: Record<string, unknown> = this.r) {
+    return this.check(from[key], field, isValidDate, false)
+  }
+
+  /** A number series (`CompanyProfile.numbering` / `quoteNumbering`). */
+  numbering(n: Record<string, unknown>, label: Text) {
+    const f = (et: string, en: string): Text => ({ et: `${label.et}: ${et}`, en: `${label.en}: ${en}` })
+    this.num('nextNumber', f('järgmine number', 'next number'), n)
+    this.num('padding', f('numbri pikkus', 'number padding'), n)
+    this.optStr('prefix', f('numbri eesliide', 'number prefix'), n)
+    this.optOneOf('reset', f('numeratsiooni algus', 'numbering reset'), NUMBERING_RESETS, n)
+    const counters = n.counters
+    if (this.problem || absent(counters)) return !this.problem
+    if (!isObject(counters)) return this.fail(invalid(f('perioodide loendurid', 'period counters')))
+    const keys = Object.keys(counters)
+    if (keys.length > BACKUP_LIMITS.numberingCounters) {
+      return this.fail({ et: `liiga palju kirjeid: ${f('perioodide loendurid', '').et}`, en: `too many entries: ${f('', 'period counters').en}` })
+    }
+    for (const k of keys) {
+      const v = counters[k]
+      if (!COUNTER_KEY.test(k) || typeof v !== 'number' || !Number.isSafeInteger(v) || v < 1) {
+        return this.fail(invalid(f(`perioodi ${k} loendur`, `counter of period ${k}`)))
+      }
+    }
+    return true
+  }
   /** Optional list of strings (each within `BACKUP_LIMITS.stringLength`, checked by `checkTree`). */
   optStrList(key: string, field: Text, from: Record<string, unknown> = this.r, max = BACKUP_LIMITS.textRows) {
     const v = from[key]
@@ -266,9 +310,14 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
     ['issuedAt', 'väljastamise aeg', 'issue time'],
     ['referenceNumber', 'viitenumber', 'reference number'],
     ['notes', 'märkused', 'notes'],
+    ['quoteAcceptedAt', 'pakkumise aktsepteerimise aeg', 'quote acceptance time'],
+    ['convertedToInvoiceId', 'pakkumisest koostatud arve', 'invoice created from the quote'],
+    ['convertedFromQuoteId', 'arve aluseks olev pakkumine', 'quote the invoice was created from'],
+    ['recurringRuleId', 'korduvarve reegel', 'recurring rule'],
   ]) {
     c.optStr(k, { et, en })
   }
+  c.optDate('validUntil', { et: 'pakkumise kehtivus', en: 'quote validity date' })
   c.optMatch('accentColor', { et: 'värv', en: 'accent colour' }, HEX_COLOR)
   c.optMatch('secondaryColor', { et: 'lisavärv', en: 'secondary colour' }, HEX_COLOR)
   c.optOneOf('colorMode', { et: 'värvilahendus', en: 'colour mode' }, COLOR_MODES)
@@ -326,6 +375,11 @@ function checkProfile(r: Record<string, unknown>): Text | null {
     c.num('nextNumber', { et: 'järgmine arve number', en: 'next invoice number' }, numbering)
     c.num('padding', { et: 'numbri pikkus', en: 'number padding' }, numbering)
     c.optStr('prefix', { et: 'numbri eesliide', en: 'number prefix' }, numbering)
+    c.numbering(numbering, { et: 'arvete numeratsioon', en: 'invoice numbering' })
+  }
+  if (!absent(r.quoteNumbering)) {
+    const quote = c.obj('quoteNumbering', { et: 'hinnapakkumiste numeratsioon', en: 'quote numbering' })
+    if (quote) c.numbering(quote, { et: 'hinnapakkumiste numeratsioon', en: 'quote numbering' })
   }
   c.optMatch('logoDataUrl', { et: 'logo', en: 'logo' }, LOGO_DATA_URL)
   c.optStr('website', { et: 'veebileht', en: 'website' })
@@ -341,6 +395,45 @@ function checkSettings(r: Record<string, unknown>): Text | null {
   c.optStr('driveFolderName', { et: 'Drive’i kausta nimi', en: 'Drive folder name' })
   c.optBool('registryLiveLookup', { et: 'registri otsingu seade', en: 'registry lookup setting' })
   c.optStr('updatedAt', { et: 'muutmise aeg', en: 'modification time' })
+  if (!absent(r.autoBackup)) {
+    const a = c.obj('autoBackup', { et: 'automaatse varunduse seaded', en: 'automatic backup settings' })
+    if (a) {
+      c.bool('enabled', { et: 'automaatne varundus', en: 'automatic backup' }, a)
+      c.bool('encrypt', { et: 'varukoopia krüpteerimine', en: 'backup encryption' }, a)
+      c.int('keepVersions', { et: 'säilitatavate versioonide arv', en: 'number of versions to keep' }, 1, BACKUP_LIMITS.keepVersions, a)
+      c.optStr('lastBackupAt', { et: 'viimase varunduse aeg', en: 'last backup time' }, a)
+    }
+  }
+  return c.problem
+}
+
+function checkProduct(r: Record<string, unknown>): Text | null {
+  const c = new RecordCheck(r)
+  c.str('description', { et: 'kirjeldus', en: 'description' })
+  c.str('unit', { et: 'ühik', en: 'unit' }, true)
+  c.num('unitPrice', { et: 'ühikuhind', en: 'unit price' })
+  c.optNum('vatRate', { et: 'käibemaksumäär', en: 'VAT rate' })
+  c.optStr('createdAt', { et: 'loomise aeg', en: 'creation time' })
+  return c.problem
+}
+
+function checkRecurringRule(r: Record<string, unknown>): Text | null {
+  const c = new RecordCheck(r)
+  c.str('sourceInvoiceId', { et: 'aluseks olev arve', en: 'source invoice' })
+  c.oneOf('interval', { et: 'kordumise sagedus', en: 'interval' }, RECURRENCE_INTERVALS)
+  c.date('nextDate', { et: 'järgmine kuupäev', en: 'next date' })
+  c.bool('active', { et: 'aktiivsus', en: 'active flag' })
+  c.optStr('lastCreatedInvoiceId', { et: 'viimati loodud arve', en: 'last created invoice' })
+  c.optStr('createdAt', { et: 'loomise aeg', en: 'creation time' })
+  return c.problem
+}
+
+function checkEvent(r: Record<string, unknown>): Text | null {
+  const c = new RecordCheck(r)
+  c.str('invoiceId', { et: 'arve', en: 'invoice' })
+  c.oneOf('kind', { et: 'sündmuse liik', en: 'event kind' }, EVENT_KINDS)
+  c.str('at', { et: 'sündmuse aeg', en: 'event time' })
+  c.optStr('note', { et: 'märkus', en: 'note' })
   return c.problem
 }
 
@@ -348,6 +441,7 @@ function checkRecords(
   list: unknown,
   what: { et: string; en: string; one: (n: number, r: unknown) => Text },
   extra: (r: Record<string, unknown>) => Text | null,
+  versioned = true,
 ) {
   if (!Array.isArray(list)) {
     throw new BackupFormatError(`Varukoopias puudub loend: ${what.et}`, `Backup is missing the ${what.en} list`)
@@ -367,7 +461,7 @@ function checkRecords(
     if (!isObject(r)) fail({ et: 'kirje ei ole objekt', en: 'the record is not an object' })
     const rec = r as Record<string, unknown>
     if (typeof rec.id !== 'string' || !rec.id) fail(absent(rec.id) || rec.id === '' ? missing({ et: 'ID', en: 'id' }) : invalid({ et: 'ID', en: 'id' }))
-    if (typeof rec.updatedAt !== 'string') fail(absent(rec.updatedAt) ? missing({ et: 'muutmise aeg', en: 'modification time' }) : invalid({ et: 'muutmise aeg', en: 'modification time' }))
+    if (versioned && typeof rec.updatedAt !== 'string') fail(absent(rec.updatedAt) ? missing({ et: 'muutmise aeg', en: 'modification time' }) : invalid({ et: 'muutmise aeg', en: 'modification time' }))
     if (seen.has(rec.id as string)) fail({ et: `korduv ID ${String(rec.id)}`, en: `duplicate id ${String(rec.id)}` })
     seen.add(rec.id as string)
     const problem = extra(rec)
@@ -386,7 +480,7 @@ export function validateBackup(data: unknown): BackupFile {
       `Backup version ${String(data.version)} is not supported. Please update the app.`,
     )
   }
-  if (data.version !== BACKUP_VERSION) {
+  if (!Number.isInteger(data.version) || data.version < BACKUP_MIN_VERSION) {
     throw new BackupFormatError(`Tundmatu varukoopia versioon: ${data.version}`, `Unknown backup version: ${data.version}`)
   }
   checkTree(data)
@@ -407,6 +501,29 @@ export function validateBackup(data: unknown): BackupFile {
     },
     checkInvoice,
   )
+  // Added in version 2; optional so that a version 1 file (or a partial export) still reads.
+  if (!absent(data.products)) {
+    checkRecords(
+      data.products,
+      { et: 'tooted ja teenused', en: 'products', one: (n) => ({ et: `toode nr ${n}`, en: `product #${n}` }) },
+      checkProduct,
+    )
+  }
+  if (!absent(data.recurringRules)) {
+    checkRecords(
+      data.recurringRules,
+      { et: 'korduvarved', en: 'recurring rules', one: (n) => ({ et: `korduvarve reegel nr ${n}`, en: `recurring rule #${n}` }) },
+      checkRecurringRule,
+    )
+  }
+  if (!absent(data.events)) {
+    checkRecords(
+      data.events,
+      { et: 'arvete sündmused', en: 'invoice events', one: (n) => ({ et: `sündmus nr ${n}`, en: `event #${n}` }) },
+      checkEvent,
+      false,
+    )
+  }
   if (!absent(data.profile)) {
     const problem = isObject(data.profile) ? checkProfile(data.profile) : { et: 'kirje ei ole objekt', en: 'the record is not an object' }
     if (problem) {
@@ -419,11 +536,13 @@ export function validateBackup(data: unknown): BackupFile {
       throw new BackupFormatError(`Varukoopia seaded on vigased: ${problem.et}.`, `The settings in the backup are invalid: ${problem.en}.`)
     }
   }
-  return {
+  const out: BackupFile = {
     ...(data as unknown as BackupFile),
     profile: (data.profile ?? null) as BackupFile['profile'],
     settings: (data.settings ?? null) as BackupFile['settings'],
   }
+  for (const k of ['products', 'recurringRules', 'events'] as const) if (data[k] === null) delete out[k]
+  return out
 }
 
 /** Parse backup JSON text (e.g. from a file input or Drive) and validate it. */

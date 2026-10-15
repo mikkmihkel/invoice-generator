@@ -1,4 +1,5 @@
 // Google Drive REST v3 with the non-sensitive drive.file scope: the app only sees files/folders it created.
+import type { TokenOptions } from './googleAuth'
 import { googleFetch } from './http'
 
 const API = 'https://www.googleapis.com/drive/v3/files'
@@ -11,14 +12,24 @@ interface DriveFile {
   name?: string
   webViewLink?: string
   modifiedTime?: string
+  createdTime?: string
+  /** Bytes, as a decimal string. */
+  size?: string
+  appProperties?: Record<string, string>
 }
+
+/** Options for Drive calls; `interactive: false` for background work that must never open a popup. */
+export type DriveCallOptions = TokenOptions
+
+const drive = (clientId: string, url: string, init?: RequestInit, options?: DriveCallOptions) =>
+  options ? googleFetch(clientId, ['drive'], url, init, options) : googleFetch(clientId, ['drive'], url, init)
 
 /** Escape a value for a Drive `q` string literal. */
 export function driveQueryString(value: string): string {
   return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
 }
 
-async function findFile(clientId: string, q: string, fields = 'id,name,webViewLink,modifiedTime'): Promise<DriveFile | null> {
+async function findFile(clientId: string, q: string, fields = 'id,name,webViewLink,modifiedTime', options?: DriveCallOptions): Promise<DriveFile | null> {
   const params = new URLSearchParams({
     q,
     spaces: 'drive',
@@ -26,23 +37,24 @@ async function findFile(clientId: string, q: string, fields = 'id,name,webViewLi
     orderBy: 'modifiedTime desc',
     pageSize: '1',
   })
-  const res = await googleFetch(clientId, ['drive'], `${API}?${params}`)
+  const res = await drive(clientId, `${API}?${params}`, undefined, options)
   const data = (await res.json()) as { files?: DriveFile[] }
   return data.files?.[0] ?? null
 }
 
 /** Find (or, unless `create` is false, create) a folder with this name in the user's Drive. */
-export async function findOrCreateFolder(clientId: string, folderName: string, create = true): Promise<string | null> {
+export async function findOrCreateFolder(clientId: string, folderName: string, create = true, options?: DriveCallOptions): Promise<string | null> {
   // Not cached on purpose: the user may trash/rename the folder at any time.
   const name = folderName.trim() || 'Arved'
-  const found = await findFile(clientId, `mimeType=${driveQueryString(FOLDER_MIME)} and name=${driveQueryString(name)} and trashed=false`, 'id,name')
+  const found = await findFile(clientId, `mimeType=${driveQueryString(FOLDER_MIME)} and name=${driveQueryString(name)} and trashed=false`, 'id,name', options)
   let id = found?.id ?? null
   if (!id && create) {
-    const res = await googleFetch(clientId, ['drive'], `${API}?fields=id`, {
+    const init = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=UTF-8' },
       body: JSON.stringify({ name, mimeType: FOLDER_MIME }),
-    })
+    }
+    const res = await drive(clientId, `${API}?fields=id`, init, options)
     id = ((await res.json()) as DriveFile).id
   }
   return id
@@ -65,13 +77,19 @@ export function buildDriveMultipart(metadata: object, content: Blob | string, co
   return { body, contentType: `multipart/related; boundary=${boundary}` }
 }
 
-async function createFile(clientId: string, folderId: string, name: string, content: Blob | string, mime: string, fields: string) {
-  const { body, contentType } = buildDriveMultipart({ name, mimeType: mime, parents: [folderId] }, content, mime)
-  const res = await googleFetch(clientId, ['drive'], `${UPLOAD_API}?uploadType=multipart&fields=${fields}`, {
-    method: 'POST',
-    headers: { 'Content-Type': contentType },
-    body,
-  })
+async function createFile(
+  clientId: string,
+  folderId: string,
+  name: string,
+  content: Blob | string,
+  mime: string,
+  fields: string,
+  extra?: { appProperties?: Record<string, string> },
+  options?: DriveCallOptions,
+) {
+  const { body, contentType } = buildDriveMultipart({ name, mimeType: mime, parents: [folderId], ...extra }, content, mime)
+  const init = { method: 'POST', headers: { 'Content-Type': contentType }, body }
+  const res = await drive(clientId, `${UPLOAD_API}?uploadType=multipart&fields=${fields}`, init, options)
   return (await res.json()) as DriveFile
 }
 
@@ -134,4 +152,89 @@ export async function restoreFromDrive(clientId: string, folderName: string): Pr
   if (!file) return null
   const res = await googleFetch(clientId, ['drive'], `${API}/${encodeURIComponent(file.id)}?alt=media`)
   return res.text()
+}
+
+/** appProperties key that marks the versioned backups this app uploads (value 'auto'). */
+export const BACKUP_VERSION_PROPERTY = 'invoiceGeneratorBackup'
+
+export interface DriveBackupFile {
+  id: string
+  name: string
+  /** Bytes, when Drive reports it. */
+  size?: number
+  createdTime?: string
+  modifiedTime?: string
+  encrypted: boolean
+  /** True for versioned backups uploaded by the automatic backup; false for the single manual backup file. */
+  automatic: boolean
+}
+
+function toBackupFile(f: DriveFile): DriveBackupFile {
+  const name = f.name ?? ''
+  const size = f.size != null && /^\d+$/.test(f.size) ? Number(f.size) : undefined
+  return {
+    id: f.id,
+    name,
+    size,
+    createdTime: f.createdTime,
+    modifiedTime: f.modifiedTime,
+    encrypted: f.appProperties?.encrypted === '1' || name.endsWith('.enc'),
+    automatic: f.appProperties?.[BACKUP_VERSION_PROPERTY] === 'auto',
+  }
+}
+
+const BACKUP_FIELDS = 'id,name,size,createdTime,modifiedTime,appProperties'
+
+/** Upload a new backup version (never overwrites) into the folder, marked so it can be listed and pruned later. */
+export async function uploadBackupVersion(
+  clientId: string,
+  folderName: string,
+  fileName: string,
+  content: string,
+  encrypted: boolean,
+  options?: DriveCallOptions,
+): Promise<DriveBackupFile> {
+  const folderId = (await findOrCreateFolder(clientId, folderName, true, options))!
+  const appProperties = { [BACKUP_VERSION_PROPERTY]: 'auto', encrypted: encrypted ? '1' : '0' }
+  const file = await createFile(clientId, folderId, fileName, content, 'application/json', BACKUP_FIELDS, { appProperties }, options)
+  return toBackupFile({ name: fileName, appProperties, ...file })
+}
+
+const MAX_LIST_PAGES = 10
+
+/**
+ * Backups in the folder, newest first: the versioned automatic backups and the manual backup file.
+ * Returns [] when the folder does not exist.
+ */
+export async function listDriveBackups(clientId: string, folderName: string, options?: DriveCallOptions): Promise<DriveBackupFile[]> {
+  const folderId = await findOrCreateFolder(clientId, folderName, false, options)
+  if (!folderId) return []
+  const q =
+    `${driveQueryString(folderId)} in parents and trashed=false and ` +
+    `(appProperties has { key=${driveQueryString(BACKUP_VERSION_PROPERTY)} and value='auto' } or name=${driveQueryString(DRIVE_BACKUP_FILE_NAME)})`
+  const out: DriveBackupFile[] = []
+  let pageToken: string | undefined
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    const params = new URLSearchParams({ q, spaces: 'drive', fields: `nextPageToken,files(${BACKUP_FIELDS})`, orderBy: 'createdTime desc', pageSize: '100' })
+    if (pageToken) params.set('pageToken', pageToken)
+    const res = await drive(clientId, `${API}?${params}`, undefined, options)
+    const data = (await res.json()) as { files?: DriveFile[]; nextPageToken?: string }
+    out.push(...(data.files ?? []).map(toBackupFile))
+    pageToken = data.nextPageToken
+    if (!pageToken) break
+  }
+  const time = (f: DriveBackupFile) => f.createdTime ?? f.modifiedTime ?? ''
+  return out.sort((a, b) => (time(a) < time(b) ? 1 : time(a) > time(b) ? -1 : 0))
+}
+
+/** Download a file's content as text. */
+export async function downloadDriveFile(clientId: string, fileId: string, options?: DriveCallOptions): Promise<string> {
+  const res = await drive(clientId, `${API}/${encodeURIComponent(fileId)}?alt=media`, undefined, options)
+  return res.text()
+}
+
+/** Move a file to the Drive trash (Drive empties it after 30 days). */
+export async function trashDriveFile(clientId: string, fileId: string, options?: DriveCallOptions): Promise<void> {
+  const init = { method: 'PATCH', headers: { 'Content-Type': 'application/json; charset=UTF-8' }, body: JSON.stringify({ trashed: true }) }
+  await drive(clientId, `${API}/${encodeURIComponent(fileId)}?fields=id`, init, options)
 }

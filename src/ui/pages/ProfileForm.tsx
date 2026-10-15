@@ -1,6 +1,20 @@
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
-import { useId } from 'react'
-import { DEFAULT_EMAIL_BODY_EN, DEFAULT_EMAIL_SUBJECT_EN, formatInvoiceNumber, textRows, type CompanyProfile, type InvoiceDefaults, type NumberingSettings } from '../../domain'
+import { useId, useMemo } from 'react'
+import {
+  DEFAULT_EMAIL_BODY_EN,
+  DEFAULT_EMAIL_SUBJECT_EN,
+  DEFAULT_QUOTE_NUMBERING,
+  formatInvoiceNumber,
+  NUMBERING_PRESETS,
+  predictNumber,
+  QUOTE_NUMBERING_PRESETS,
+  sameSeries,
+  textRows,
+  type CompanyProfile,
+  type ISODate,
+  type InvoiceDefaults,
+  type NumberingSettings,
+} from '../../domain'
 import { useApp } from '../AppContext'
 import { InvoiceDesign } from '../components/Appearance'
 import { CheckboxField, fieldId, NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
@@ -9,13 +23,21 @@ import { IconButton } from '../components/ui'
 import { PartyFields, registryCodeError, vatNumberError } from '../components/PartyFields'
 import { CURRENCIES, languageOptions, vatRates, vatSchemeOptions, UNIT_SUGGESTIONS } from '../options'
 import { localTodayISO } from '../util'
+import { NumberingEditor } from './NumberingEditor'
 
-export function numberingPreview(n: NumberingSettings, year = Number(localTodayISO().slice(0, 4))): string {
-  return formatInvoiceNumber(n, n.nextNumber, year)
+/**
+ * Number the next document issued on `date` would get (before skipping numbers already in use).
+ * A plain year is still accepted and uses the running nextNumber (no period counters).
+ */
+export function numberingPreview(n: NumberingSettings, date: ISODate | number = localTodayISO()): string {
+  return typeof date === 'number' ? formatInvoiceNumber(n, n.nextNumber, date) : predictNumber(n, date)
 }
 
-/** `design` = "Arve kujundus": logo, default template, colours and a live preview (`logo` = the logo alone). */
-export type ProfileSection = 'company' | 'vat' | 'bank' | 'logo' | 'design' | 'defaults' | 'numbering' | 'email'
+/**
+ * `design` = "Arve kujundus": logo, default template, colours and a live preview (`logo` = the logo alone).
+ * `quoteNumbering` = the separate number series of quotes.
+ */
+export type ProfileSection = 'company' | 'vat' | 'bank' | 'logo' | 'design' | 'defaults' | 'numbering' | 'quoteNumbering' | 'email'
 
 type ProblemKey = 'profile.needName' | 'profile.needIban' | 'profile.registryCodeInvalid' | 'profile.vatNumberInvalid' | 'profile.vatNumberRequired'
 
@@ -119,11 +141,15 @@ export function ProfileForm({
   /** Onboarding: the design section without logo, with compact template cards. */
   compactDesign?: boolean
 }) {
-  const { t } = useApp()
+  const { t, invoices } = useApp()
   const has = (s: ProfileSection) => sections.includes(s)
+  const today = localTodayISO()
+  const numbered = useMemo(() => invoices.filter((i) => i.status !== 'draft' && i.number), [invoices])
+  const usedNumbers = useMemo(() => new Set(numbered.map((i) => i.number)), [numbered])
+  const invoiceDocs = useMemo(() => numbered.filter(sameSeries('invoice')), [numbered])
+  const quoteDocs = useMemo(() => numbered.filter(sameSeries('quote')), [numbered])
   const set = (patch: Partial<CompanyProfile>) => onChange({ ...value, ...patch })
   const setDefaults = (patch: Partial<InvoiceDefaults>) => set({ defaults: { ...value.defaults, ...patch } })
-  const setNumbering = (patch: Partial<NumberingSettings>) => set({ numbering: { ...value.numbering, ...patch } })
   const d = value.defaults
 
   return (
@@ -235,14 +261,29 @@ export function ProfileForm({
 
       {has('numbering') && (
         <Section id="sec-numbering" title={t('profile.numbering')} description={t('profile.numberingHint')}>
-          <div className="grid">
-            <TextField label={t('field.prefix')} value={value.numbering.prefix} onChange={(prefix) => setNumbering({ prefix })} hint={t('field.prefixHint')} />
-            <NumberField label={t('field.nextNumber')} value={value.numbering.nextNumber} onChange={(v) => setNumbering({ nextNumber: Math.max(1, Math.round(v ?? 1)) })} />
-            <NumberField label={t('field.padding')} value={value.numbering.padding} onChange={(v) => setNumbering({ padding: Math.min(10, Math.max(0, Math.round(v ?? 0))) })} />
-          </div>
-          <p className="numbering-preview">
-            {t('profile.nextInvoiceNumber')} <strong>{numberingPreview(value.numbering)}</strong>
-          </p>
+          <NumberingEditor
+            idPrefix="numbering"
+            value={value.numbering}
+            onChange={(numbering) => set({ numbering })}
+            presets={NUMBERING_PRESETS}
+            documents={invoiceDocs}
+            usedNumbers={usedNumbers}
+            today={today}
+          />
+        </Section>
+      )}
+
+      {has('quoteNumbering') && (
+        <Section id="sec-quote-numbering" title={t('numbering.quoteTitle')} description={t('numbering.quoteHint')}>
+          <NumberingEditor
+            idPrefix="quote-numbering"
+            value={value.quoteNumbering ?? DEFAULT_QUOTE_NUMBERING}
+            onChange={(quoteNumbering) => set({ quoteNumbering })}
+            presets={QUOTE_NUMBERING_PRESETS}
+            documents={quoteDocs}
+            usedNumbers={usedNumbers}
+            today={today}
+          />
         </Section>
       )}
 

@@ -1,12 +1,15 @@
-import { ArrowDownIcon, ArrowUpIcon, PercentIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
-import { useRef, useState } from 'react'
+import { ArrowDownIcon, ArrowUpIcon, BookmarkSimpleIcon, PercentIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
+import { useMemo, useRef, useState } from 'react'
 import { newId, vatSchemeAllowsRates, type InvoiceLine, type InvoiceTotals, type VatScheme } from '../../../domain'
+import { formatUnitMoney } from '../../../pdf/format'
 import { useApp } from '../../AppContext'
 import { DecimalInput, fieldId } from '../../components/fields'
 import { IconButton } from '../../components/ui'
-import { formatMoney } from '../../format'
+import { formatDate, formatMoney } from '../../format'
 import { UNIT_SUGGESTIONS, vatRates } from '../../options'
-import { roundTo } from '../../util'
+import { useToast } from '../../Toasts'
+import { errorMessage, roundTo } from '../../util'
+import { findProduct, invoicedLinesFor, lineMatches, lineSuggestions, productFromLine, useProducts, type BuyerRef, type LineSuggestion } from '../products'
 
 // Same precision as the PDF prints (quantity 3, unit price 4 decimals), so printed qty × price matches the line total.
 const QTY_DECIMALS = 3
@@ -28,6 +31,8 @@ interface Props {
   disabled?: boolean
   /** Label of the grand total ("Krediteeritav summa" on credit notes). */
   grossLabel?: string
+  /** The invoice's buyer: lines invoiced to them before are suggested with their last price. */
+  buyer?: BuyerRef
 }
 
 const focusById = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.focus())
@@ -36,9 +41,13 @@ const focusById = (id: string) => requestAnimationFrame(() => document.getElemen
  * Spreadsheet-like line editor: Tab walks the cells in reading order, Enter in a cell of the last line adds
  * a new line (in other lines it moves down to the next description). Amounts are right-aligned tabular figures.
  */
-export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defaultUnit, defaultVatRate, disabled, grossLabel }: Props) {
-  const { t } = useApp()
+export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defaultUnit, defaultVatRate, disabled, grossLabel, buyer }: Props) {
+  const { t, invoices } = useApp()
+  const { products, save: saveProduct } = useProducts()
+  const toast = useToast()
   const showRates = vatSchemeAllowsRates(vatScheme)
+  const { clientId, registryCode, name } = buyer ?? {}
+  const history = useMemo(() => (disabled ? [] : invoicedLinesFor(invoices, { clientId, registryCode, name: name ?? '' }, currency)), [disabled, invoices, clientId, registryCode, name, currency])
   const [showDiscount, setShowDiscount] = useState(() => lines.some((l) => l.discountPercent))
   const addBtn = useRef<HTMLButtonElement>(null)
   const discountCol = showDiscount || lines.some((l) => l.discountPercent)
@@ -59,6 +68,22 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
     focusById(fieldId(`lines.${lines.length}.description`))
   }
   const remove = (i: number) => onChange(lines.filter((_, j) => j !== i))
+
+  const pick = (i: number, s: LineSuggestion) => {
+    const vatRate = showRates ? (s.vatRate ?? (s.source === 'catalogue' ? defaultVatRate : lines[i].vatRate)) : lines[i].vatRate
+    update(i, { description: s.description, unit: s.unit || lines[i].unit, unitPrice: s.unitPrice, vatRate })
+  }
+
+  const saveToCatalogue = async (l: InvoiceLine) => {
+    const existing = findProduct(products, l.description)
+    try {
+      const product = productFromLine(l, existing, showRates)
+      await saveProduct(product)
+      toast.success(t(existing ? 'products.updatedInCatalogue' : 'products.savedToCatalogue', { name: product.description }))
+    } catch (e) {
+      toast.error(t('common.saveFailed') + ' ' + errorMessage(e))
+    }
+  }
 
   const onCellKey = (i: number) => (e: React.KeyboardEvent<HTMLElement>) => {
     if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return
@@ -93,12 +118,15 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
                 <label className="line-label" htmlFor={fieldId(`${p}.description`)}>
                   {t('lines.description')} {i + 1}
                 </label>
-                <textarea
+                <DescriptionCell
                   id={fieldId(`${p}.description`)}
-                  className="cell"
-                  rows={1}
-                  value={l.description}
-                  onChange={(e) => update(i, { description: e.target.value })}
+                  line={l}
+                  currency={currency}
+                  onChange={(description) => update(i, { description })}
+                  onPick={(s) => pick(i, s)}
+                  suggest={(q) => lineSuggestions(q, history, products)}
+                  onSave={() => void saveToCatalogue(l)}
+                  saveLabel={t('products.saveLineN', { n: i + 1 })}
                   disabled={disabled}
                   placeholder={disabled ? undefined : t('lines.descriptionPlaceholder')}
                 />
@@ -197,6 +225,154 @@ export function LinesEditor({ lines, onChange, vatScheme, currency, totals, defa
         <TotalsTable totals={totals} currency={currency} grossLabel={grossLabel} />
       </div>
     </div>
+  )
+}
+
+interface DescriptionCellProps {
+  id: string
+  line: InvoiceLine
+  currency: string
+  onChange: (description: string) => void
+  onPick: (s: LineSuggestion) => void
+  suggest: (query: string) => LineSuggestion[]
+  onSave: () => void
+  saveLabel: string
+  disabled?: boolean
+  placeholder?: string
+}
+
+/**
+ * Line description with suggestions (the buyer's earlier lines and the catalogue). The textarea keeps its
+ * textbox role (descriptions may span lines) and drives a listbox through aria-activedescendant: Arrow keys
+ * move, Enter chooses, Escape closes. Enter without an active suggestion behaves as before.
+ */
+function DescriptionCell({ id, line, currency, onChange, onPick, suggest, onSave, saveLabel, disabled, placeholder }: DescriptionCellProps) {
+  const { t } = useApp()
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(-1)
+  const listId = id + '-suggestions'
+  const items = useMemo(() => (open && !disabled ? suggest(line.description).filter((s) => !lineMatches(line, s)) : []), [open, disabled, suggest, line])
+  const shown = items.length > 0
+  const current = active < items.length ? active : -1
+
+  const close = () => {
+    setOpen(false)
+    setActive(-1)
+  }
+  const choose = (s: LineSuggestion) => {
+    onPick(s)
+    close()
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.altKey && e.key === 'ArrowDown') {
+      e.preventDefault()
+      setOpen(true)
+      return
+    }
+    if (!shown) {
+      // A single-line description: ArrowDown opens the list (in multi-line text it keeps moving the caret).
+      if (e.key === 'ArrowDown' && !e.shiftKey && !line.description.includes('\n') && suggest(line.description).some((s) => !lineMatches(line, s))) {
+        e.preventDefault()
+        setOpen(true)
+        setActive(0)
+      }
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActive((a) => (a + 1 >= items.length ? 0 : a + 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActive((a) => (a <= 0 ? items.length - 1 : a - 1))
+    } else if (e.key === 'Enter' && !e.shiftKey && current >= 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      choose(items[current])
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      close()
+    } else if (e.key === 'Tab') close()
+  }
+
+  const firstCatalogue = items.findIndex((s) => s.source === 'catalogue')
+  return (
+    <div className="line-desc">
+      <textarea
+        id={id}
+        className="cell"
+        rows={1}
+        value={line.description}
+        onChange={(e) => {
+          onChange(e.target.value)
+          setOpen(e.target.value.trim() !== '')
+          setActive(-1)
+        }}
+        onKeyDown={onKeyDown}
+        onBlur={close}
+        disabled={disabled}
+        placeholder={placeholder}
+        autoComplete="off"
+        aria-autocomplete={disabled ? undefined : 'list'}
+        aria-controls={shown ? listId : undefined}
+        aria-activedescendant={shown && current >= 0 ? `${listId}-${current}` : undefined}
+      />
+      {!disabled && (
+        <IconButton className="icon-btn-sm line-save" label={saveLabel} icon={<BookmarkSimpleIcon size={14} />} onClick={onSave} disabled={!line.description.trim()} />
+      )}
+      {shown && (
+        <ul id={listId} role="listbox" className="combo-list line-suggestions" aria-label={t('products.suggestions')}>
+          {items.map((s, i) => (
+            <SuggestionOption
+              key={s.key}
+              id={`${listId}-${i}`}
+              s={s}
+              currency={currency}
+              active={i === current}
+              heading={i === 0 && s.source === 'history' ? t('products.fromHistory') : i === firstCatalogue ? t('products.fromCatalogue') : undefined}
+              onHover={() => setActive(i)}
+              onChoose={() => choose(s)}
+            />
+          ))}
+        </ul>
+      )}
+      <span className="visually-hidden" aria-live="polite">
+        {shown ? t('products.suggestionsCount', { count: items.length }) : ''}
+      </span>
+    </div>
+  )
+}
+
+function SuggestionOption({ id, s, currency, active, heading, onHover, onChoose }: { id: string; s: LineSuggestion; currency: string; active: boolean; heading?: string; onHover: () => void; onChoose: () => void }) {
+  const { t } = useApp()
+  return (
+    <>
+      {heading && (
+        <li role="presentation" className="combo-group">
+          {heading}
+        </li>
+      )}
+      <li
+        id={id}
+        role="option"
+        aria-selected={active}
+        className={active ? 'combo-opt active' : 'combo-opt'}
+        onMouseDown={(e) => e.preventDefault()}
+        onMouseEnter={onHover}
+        onClick={onChoose}
+      >
+        <span className="opt-name">{s.description}</span>
+        <span className="opt-meta">
+          <span className="amount">
+            {formatUnitMoney(s.unitPrice, currency || 'EUR', 'et')}
+            {s.unit ? ` / ${s.unit}` : ''}
+          </span>
+          {s.vatRate != null && <span>{t('products.vatShort', { rate: s.vatRate })}</span>}
+          {s.invoiceNumber && <span>{t('products.lastInvoiced', { number: s.invoiceNumber, date: formatDate(s.issueDate) })}</span>}
+        </span>
+      </li>
+    </>
   )
 }
 

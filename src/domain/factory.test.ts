@@ -77,7 +77,8 @@ describe('createDefaultProfile', () => {
     expect(p.defaults.emailSubjectEn).toBe('Invoice {number} from {company}')
     expect(p.defaults.emailBodyEn).toContain('{dueDate}')
     expect(p.defaults.emailBodyEn).toContain('{total}')
-    expect(p.numbering).toEqual({ prefix: '{YYYY}-', nextNumber: 1, padding: 4 })
+    expect(p.numbering).toEqual({ prefix: '{YYYY}-', nextNumber: 1, padding: 4, reset: 'yearly', counters: {} })
+    expect(p.quoteNumbering).toEqual({ prefix: 'HP-{YYYY}-', nextNumber: 1, padding: 3, reset: 'yearly', counters: {} })
     expect(Number.isNaN(Date.parse(p.updatedAt))).toBe(false)
   })
 })
@@ -151,6 +152,7 @@ describe('createEmptyInvoice', () => {
     const inv = createEmptyInvoice(p)
     expect(inv.seller).not.toHaveProperty('defaults')
     expect(inv.seller).not.toHaveProperty('numbering')
+    expect(inv.seller).not.toHaveProperty('quoteNumbering')
     expect(inv.seller).not.toHaveProperty('updatedAt')
     expect(inv.seller).toMatchObject({ name: 'Näide OÜ', vatNumber: 'EE100931558', vatRegistered: true })
     p.address.street = 'Changed'

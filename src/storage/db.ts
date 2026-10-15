@@ -1,8 +1,8 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
-import type { AppSettings, Client, CompanyProfile, Invoice } from '../domain/types'
+import type { AppSettings, Client, CompanyProfile, Invoice, InvoiceEvent, Product, RecurringRule } from '../domain/types'
 
 export const DB_NAME = 'invoice-generator'
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 
 /** Keys used in the singleton stores. */
 export const PROFILE_KEY = 'profile'
@@ -18,6 +18,9 @@ export interface InvoiceDbSchema extends DBSchema {
   }
   settings: { key: string; value: AppSettings }
   meta: { key: string; value: unknown }
+  products: { key: string; value: Product }
+  recurringRules: { key: string; value: RecurringRule; indexes: { sourceInvoiceId: string } }
+  invoiceEvents: { key: string; value: InvoiceEvent; indexes: { invoiceId: string } }
 }
 
 export type InvoiceDb = IDBPDatabase<InvoiceDbSchema>
@@ -41,6 +44,11 @@ export function openInvoiceDb(name: string = DB_NAME, onLost?: () => void): Prom
         invoices.createIndex('clientId', 'buyer.clientId')
         db.createObjectStore('settings')
         db.createObjectStore('meta')
+      }
+      if (oldVersion < 2) {
+        db.createObjectStore('products', { keyPath: 'id' })
+        db.createObjectStore('recurringRules', { keyPath: 'id' }).createIndex('sourceInvoiceId', 'sourceInvoiceId')
+        db.createObjectStore('invoiceEvents', { keyPath: 'id' }).createIndex('invoiceId', 'invoiceId')
       }
       // Record the schema version we migrated to (handy for debugging / support).
       void tx.objectStore('meta').put(DB_VERSION, 'schemaVersion')

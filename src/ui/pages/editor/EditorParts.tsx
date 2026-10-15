@@ -1,6 +1,6 @@
 import { CaretRightIcon, CheckCircleIcon, CheckIcon, CloudArrowUpIcon, DownloadSimpleIcon, EnvelopeSimpleIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { Invoice, InvoiceTotals } from '../../../domain'
+import type { Invoice, InvoiceTotals, QuoteStatus } from '../../../domain'
 import { invoiceFileName } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { IconButton } from '../../components/ui'
@@ -44,6 +44,12 @@ export function MoreOptions({ initiallyOpen, summary, children }: { initiallyOpe
 export function StatusWord({ status }: { status: DisplayStatus }) {
   const { t } = useApp()
   return <span className={`ed-status ed-status-${status}`}>{t(`status.${status}`)}</span>
+}
+
+/** Quote status as a coloured word: Saadetud, Aktsepteeritud, Aegunud… */
+export function QuoteStatusWord({ status }: { status: QuoteStatus }) {
+  const { t } = useApp()
+  return <span className={`ed-status ed-status-quote-${status}`}>{t(`quote.status.${status}`)}</span>
 }
 
 export function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
@@ -103,6 +109,7 @@ export function NextStep({
   const { t } = useApp()
   const ref = useRef<HTMLElement>(null)
   useEffect(() => ref.current?.focus({ preventScroll: true }), [])
+  const quote = invoice.type === 'quote'
   return (
     <section ref={ref} className="next-step" aria-labelledby="next-title" tabIndex={-1}>
       <div className="next-head">
@@ -110,12 +117,12 @@ export function NextStep({
           <CheckCircleIcon size={20} />
         </span>
         <div className="next-text">
-          <h2 id="next-title">{t('next.title', { number: invoice.number })}</h2>
-          <p>{t('next.text')}</p>
+          <h2 id="next-title">{t(quote ? 'quote.nextTitle' : 'next.title', { number: invoice.number })}</h2>
+          <p>{t(quote ? 'quote.nextText' : 'next.text')}</p>
         </div>
         <IconButton label={t('next.dismiss')} icon={<XIcon />} onClick={onDismiss} />
       </div>
-      <div className="next-actions" role="group" aria-label={t('next.actions')}>
+      <div className="next-actions" role="group" aria-label={t(quote ? 'quote.nextActions' : 'next.actions')}>
         <button type="button" className="next-action next-primary" onClick={onEmail} disabled={busy !== null}>
           <EnvelopeSimpleIcon size={18} />
           <span className="na-text">

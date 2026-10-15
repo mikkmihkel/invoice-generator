@@ -1,9 +1,9 @@
 /** Which part of the data changed. 'all' = bulk change (backup import). */
-export type StorageArea = 'profile' | 'clients' | 'invoices' | 'settings' | 'all'
+export type StorageArea = 'profile' | 'clients' | 'invoices' | 'settings' | 'products' | 'recurringRules' | 'invoiceEvents' | 'all'
 
 export interface StorageChange {
   area: StorageArea
-  /** Id of the changed record for clients / invoices. */
+  /** Id of the changed record (clients, invoices, products, recurring rules, invoice events). */
   id?: string
   /** 'local' = this tab, 'remote' = another tab via BroadcastChannel. */
   source: 'local' | 'remote'

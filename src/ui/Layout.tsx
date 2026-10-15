@@ -1,10 +1,12 @@
-import { BuildingsIcon, FileTextIcon, GearSixIcon, PlusIcon, ReceiptIcon, UsersIcon } from '@phosphor-icons/react'
+import { BuildingsIcon, FileTextIcon, GearSixIcon, PackageIcon, PlusIcon, ReceiptIcon, UsersIcon } from '@phosphor-icons/react'
 import { useEffect, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import type { CompanyProfile } from '../domain'
 import { useApp } from './AppContext'
 import { useGuardedNavigation } from './navGuard'
 import { Skeleton } from './components/ui'
+import { useAutoBackup } from './useAutoBackup'
+import { useRecurringDrafts } from './useRecurringDrafts'
 import { logoImageSrc } from './util'
 
 const LEGAL_FORMS = /^(oü|as|mtü|fie|tü|uü|sa|ou|llc|ltd|gmbh|oy|ab)$/i
@@ -71,6 +73,8 @@ export function Layout({ children }: { children: ReactNode }) {
   // Pages with unsaved changes (company details) are asked before the shell's links navigate away.
   const { onLinkClick } = useGuardedNavigation()
   useShortcuts()
+  useRecurringDrafts()
+  const autoBackupPrompt = useAutoBackup()
 
   // Arved is a full-bleed two-pane screen; its list pane carries the "data stays in this browser" note itself.
   const home = location.pathname === '/'
@@ -78,6 +82,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const nav = [
     { to: '/', label: t('nav.invoices'), icon: <FileTextIcon size={20} />, active: onInvoices },
     { to: '/clients', label: t('nav.clients'), icon: <UsersIcon size={20} /> },
+    { to: '/products', label: t('nav.products'), icon: <PackageIcon size={20} /> },
     { to: '/company', label: t('nav.company'), icon: <BuildingsIcon size={20} /> },
     { to: '/settings', label: t('nav.settings'), icon: <GearSixIcon size={20} />, settings: true },
   ]
@@ -114,6 +119,9 @@ export function Layout({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </nav>
+          <Link to="/invoices/new?type=quote" onClick={onLinkClick('/invoices/new?type=quote')} className="btn new-quote">
+            {t('quote.new')}
+          </Link>
           <Link to="/invoices/new" onClick={onLinkClick('/invoices/new')} className="btn btn-primary new-invoice" aria-keyshortcuts="N" title={t('nav.newInvoiceShortcut')}>
             <PlusIcon />
             <span>{t('nav.newInvoice')}</span>
@@ -123,6 +131,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <main id="main" tabIndex={-1} className={home ? 'main-flush' : undefined}>
         {children}
       </main>
+      {autoBackupPrompt}
       {!home && (
         <footer className="footer">
           <span>{t('footer.local')}</span>

@@ -48,7 +48,9 @@ export interface DocContext {
   /** Title parts for bilingual layouts: [et, en?]. */
   titleParts: [string, string?]
   isCreditNote: boolean
-  /** Label of the document number: "Arve nr" / "Kreeditarve nr". */
+  /** A quote (hinnapakkumine): no payment details, a validity date instead of a due date. */
+  isQuote: boolean
+  /** Label of the document number: "Arve nr" / "Kreeditarve nr" / "Pakkumise nr". */
   numberKey: LabelKey
   /** Mandatory VAT scheme note from the domain layer (or null). */
   vatNote: string | null
@@ -156,7 +158,7 @@ function isForeign(p: Party): boolean {
 }
 
 export function documentTitle(invoice: Invoice, t: Translator): { title: string; parts: [string, string?] } {
-  const key = invoice.type === 'credit-note' ? 'creditNote' : invoice.type === 'prepayment' ? 'prepayment' : 'invoice'
+  const key = invoice.type === 'credit-note' ? 'creditNote' : invoice.type === 'prepayment' ? 'prepayment' : invoice.type === 'quote' ? 'quote' : 'invoice'
   return { title: t(key), parts: t.parts(key) }
 }
 
@@ -187,7 +189,8 @@ export function createContext(invoice: Invoice): DocContext {
     title,
     titleParts: parts,
     isCreditNote: invoice.type === 'credit-note',
-    numberKey: invoice.type === 'credit-note' ? 'creditNoteNo' : 'invoiceNo',
+    isQuote: invoice.type === 'quote',
+    numberKey: invoice.type === 'credit-note' ? 'creditNoteNo' : invoice.type === 'quote' ? 'quoteNo' : 'invoiceNo',
     vatNote,
     notRegisteredNote: invoice.vatScheme === 'not-registered' && !vatNote ? t('notVatRegistered') : null,
     bankAccounts: selectedBankAccounts(invoice),

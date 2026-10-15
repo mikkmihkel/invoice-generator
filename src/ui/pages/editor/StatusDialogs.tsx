@@ -3,14 +3,25 @@ import type { Invoice } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { Dialog } from '../../components/Dialog'
 import { CheckboxField, TextField } from '../../components/fields'
-import { formatDate } from '../../format'
+import { formatDate, formatMoney } from '../../format'
 import { useToast } from '../../Toasts'
 import { errorMessage, localTodayISO } from '../../util'
 
-export function MarkPaidDialog({ invoice, onClose, onConfirm }: { invoice: Invoice; onClose: () => void; onConfirm: (paidAt: string) => Promise<void> }) {
+/** Pick the payment date: marking paid on another day than today, or (`change`) correcting the date of a paid invoice. */
+export function MarkPaidDialog({
+  invoice,
+  onClose,
+  onConfirm,
+  change,
+}: {
+  invoice: Invoice
+  onClose: () => void
+  onConfirm: (paidAt: string) => Promise<void>
+  change?: boolean
+}) {
   const { t } = useApp()
   const toast = useToast()
-  const [date, setDate] = useState(localTodayISO())
+  const [date, setDate] = useState((change && invoice.paidAt) || localTodayISO())
   const [busy, setBusy] = useState(false)
   const submit = async () => {
     setBusy(true)
@@ -24,7 +35,7 @@ export function MarkPaidDialog({ invoice, onClose, onConfirm }: { invoice: Invoi
   }
   return (
     <Dialog
-      title={t('actions.markPaidTitle', { number: invoice.number })}
+      title={t(change ? 'payment.changeDateTitle' : 'actions.markPaidTitle', { number: invoice.number })}
       onClose={onClose}
       closeLabel={t('common.close')}
       dismissible={!busy}
@@ -34,12 +45,85 @@ export function MarkPaidDialog({ invoice, onClose, onConfirm }: { invoice: Invoi
             {t('common.cancel')}
           </button>
           <button type="button" className="btn btn-primary" onClick={() => void submit()} disabled={busy || !date}>
-            {t('actions.markPaid')}
+            {t(change ? 'common.save' : 'actions.markPaid')}
           </button>
         </>
       }
     >
       <TextField label={t('actions.paidDate')} type="date" value={date} onChange={setDate} max={localTodayISO()} data-autofocus />
+    </Dialog>
+  )
+}
+
+/**
+ * Cancelling an issued invoice: one sentence on why a credit note is needed, then one confirmed step that
+ * credits the open amount. Crediting only part of it (editing the lines first) stays available as a link.
+ */
+export function CancelInvoiceDialog({
+  invoice,
+  amount,
+  partiallyCredited,
+  onClose,
+  onConfirm,
+  onPartial,
+}: {
+  invoice: Invoice
+  /** What the credit note will credit (the open amount). */
+  amount: number
+  partiallyCredited: boolean
+  onClose: () => void
+  onConfirm: () => Promise<void>
+  onPartial: () => void
+}) {
+  const { t } = useApp()
+  const [busy, setBusy] = useState(false)
+  return (
+    <Dialog
+      title={t('actions.cancelTitle', { number: invoice.number })}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+      dismissible={!busy}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={onClose} disabled={busy} data-autofocus>
+            {t('common.back')}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              try {
+                await onConfirm()
+              } finally {
+                onClose()
+              }
+            }}
+          >
+            {busy ? t('common.working') : t('payment.cancelConfirm')}
+          </button>
+        </>
+      }
+    >
+      <p>{t('payment.cancelExplain')}</p>
+      <p>
+        {t('payment.cancelWhat', { amount: formatMoney(amount, invoice.currency), number: invoice.number })}
+        {partiallyCredited && ` ${t('payment.cancelRemaining')}`}
+      </p>
+      <p className="muted small">
+        <button
+          type="button"
+          className="link-btn"
+          disabled={busy}
+          onClick={() => {
+            onClose()
+            onPartial()
+          }}
+        >
+          {t('payment.partialCredit')}
+        </button>
+      </p>
     </Dialog>
   )
 }

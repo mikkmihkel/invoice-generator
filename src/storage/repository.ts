@@ -1,10 +1,19 @@
 import {
+  advanceNumbering,
   canIssue,
   createDefaultSettings,
   formatInvoiceNumber,
   generateReferenceNumber,
+  highestUsedNumber,
+  nextSequence,
+  numberingFloor,
+  numberingFor,
+  raiseNumbering,
+  sameSeries,
   sellerSnapshot,
+  todayISO,
   validateInvoice,
+  withNumberingFor,
 } from '../domain'
 import type {
   AppSettings,
@@ -13,8 +22,10 @@ import type {
   CompanyProfile,
   ISODate,
   Invoice,
+  InvoiceEvent,
   InvoiceStatus,
-  NumberingSettings,
+  Product,
+  RecurringRule,
   SellerSnapshot,
   ValidationIssue,
 } from '../domain/types'
@@ -22,9 +33,17 @@ import { BACKUP_APP, BACKUP_VERSION, isNewer, validateBackup } from './backup'
 import { DB_NAME, getDb, PROFILE_KEY, SETTINGS_KEY } from './db'
 import { notifyChange } from './events'
 
+export interface ImportCount {
+  written: number
+  skipped: number
+}
+
 export interface ImportResult {
-  clients: { written: number; skipped: number }
-  invoices: { written: number; skipped: number }
+  clients: ImportCount
+  invoices: ImportCount
+  products: ImportCount
+  recurringRules: ImportCount
+  events: ImportCount
   profile: 'written' | 'skipped' | 'none'
   settings: 'written' | 'skipped' | 'none'
   /** Invoice numbers that now occur on more than one invoice (merge of data from different devices). */
@@ -53,8 +72,11 @@ export interface Repository {
   deleteInvoice(id: string): Promise<void>
 
   /**
-   * Atomically allocate the next invoice number from profile.numbering, snapshot the seller,
-   * set status 'issued' + issuedAt, and persist. Throws if validation has errors or already issued.
+   * Atomically allocate the next number, snapshot the seller, set status 'issued' + issuedAt, and persist.
+   * Invoices, credit notes and prepayment invoices are numbered from profile.numbering, quotes from
+   * profile.quoteNumbering (their own series, no viitenumber). The period of a resetting series is taken from
+   * the document's issueDate; a number already used by any document is skipped.
+   * Throws if validation has errors or the document was already issued.
    */
   issueInvoice(id: string): Promise<Invoice>
 
@@ -71,6 +93,22 @@ export interface Repository {
 
   getSettings(): Promise<AppSettings>
   saveSettings(settings: AppSettings): Promise<void>
+
+  /** Product and service catalogue, sorted by description. */
+  listProducts(): Promise<Product[]>
+  saveProduct(product: Product): Promise<void>
+  deleteProduct(id: string): Promise<void>
+
+  /** Sorted by nextDate. */
+  listRecurringRules(): Promise<RecurringRule[]>
+  saveRecurringRule(rule: RecurringRule): Promise<void>
+  deleteRecurringRule(id: string): Promise<void>
+
+  /** Events of one document (or all when `invoiceId` is omitted), oldest first. */
+  listInvoiceEvents(invoiceId?: string): Promise<InvoiceEvent[]>
+  /** Stores the event as given (callers create the id, e.g. with newId()). */
+  addInvoiceEvent(event: InvoiceEvent): Promise<InvoiceEvent>
+  deleteInvoiceEvent(id: string): Promise<void>
 
   exportBackup(): Promise<BackupFile>
   /**
@@ -110,9 +148,9 @@ export function snapshotSeller(profile: CompanyProfile): SellerSnapshot {
   return sellerSnapshot(profile)
 }
 
-function issueYear(invoice: Invoice): number {
-  const y = Number(/^(\d{4})-\d{2}-\d{2}/.exec(invoice.issueDate ?? '')?.[1])
-  return Number.isFinite(y) && y > 0 ? y : new Date().getFullYear()
+/** Issue date used for the numbering period; a malformed date falls back to today. */
+function numberingDate(invoice: Invoice): ISODate {
+  return isValidIsoDate(invoice.issueDate) ? invoice.issueDate : todayISO()
 }
 
 /** Numeric base for the viitenumber: digits of the invoice number (max 19, no leading zeros). */
@@ -144,10 +182,13 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 /** Fields of an issued invoice that may still change (payment / cancellation bookkeeping). */
 const MUTABLE_AFTER_ISSUE = ['status', 'paidAt', 'updatedAt'] as const
+/** Additionally changeable on an issued quote: set when the quote is accepted and converted to an invoice. */
+const QUOTE_MUTABLE_AFTER_ISSUE = ['quoteAcceptedAt', 'convertedToInvoiceId'] as const
 
-function lockedPart(invoice: Invoice): Record<string, unknown> {
+function lockedPart(invoice: Invoice, quote: boolean): Record<string, unknown> {
   const rest: Record<string, unknown> = { ...invoice }
   for (const k of MUTABLE_AFTER_ISSUE) delete rest[k]
+  if (quote) for (const k of QUOTE_MUTABLE_AFTER_ISSUE) delete rest[k]
   return rest
 }
 
@@ -181,23 +222,8 @@ function mergeInvoice(existing: Invoice | undefined, incoming: Invoice): Invoice
   return existingDraft ? incoming : { ...incoming, number: existing.number }
 }
 
-/**
- * Highest sequence number among issued invoices whose number matches the numbering prefix pattern
- * ({YYYY} / {YY} match any year), e.g. prefix "{YYYY}-" and "2025-0042" → 42. 0 if none match.
- */
-export function highestUsedNumber(invoices: Invoice[], numbering: NumberingSettings): number {
-  const escaped = (numbering.prefix ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const pattern = escaped.replace(/\\\{YYYY\\\}/g, '\\d{4}').replace(/\\\{YY\\\}/g, '\\d{2}')
-  const re = new RegExp(`^${pattern}(\\d+)$`)
-  let max = 0
-  for (const inv of invoices) {
-    if (inv.status === 'draft' || !inv.number) continue
-    const m = re.exec(inv.number)
-    const n = m ? Number(m[1]) : NaN
-    if (Number.isSafeInteger(n) && n > max) max = n
-  }
-  return max
-}
+/** Kept here for existing imports; the implementation lives in the domain numbering module. */
+export { highestUsedNumber }
 
 export interface RepositoryOptions {
   /** IndexedDB database name (tests use unique names). */
@@ -313,7 +339,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
                   'Tühistatud arve olekut ei saa enam muuta.',
                   'The status of a cancelled invoice can no longer be changed.',
                 )
-        } else if (!deepEqual(lockedPart(existing), lockedPart(invoice))) {
+        } else if (!deepEqual(lockedPart(existing, existing.type === 'quote'), lockedPart(invoice, existing.type === 'quote'))) {
           error = new RepositoryError(
             'immutable',
             'Väljastatud arvet ei saa muuta – muuta saab ainult tasumise olekut. Vea parandamiseks tühista arve või koosta kreeditarve.',
@@ -380,14 +406,16 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       }
 
       // Allocate the next free number; skip numbers already used (e.g. after merging a backup).
-      const year = issueYear(invoice)
-      let n = Math.max(1, Math.floor(profile.numbering.nextNumber || 1))
+      const isQuote = invoice.type === 'quote'
+      const series = numberingFor(profile, invoice.type)
+      const date = numberingDate(invoice)
+      let n = nextSequence(series, date).n
       let number = ''
       for (let attempts = 0; ; attempts++) {
         if (attempts > 10000) {
           return fail(new RepositoryError('numbering', 'Vaba arvenumbrit ei leitud.', 'Could not find a free invoice number.'))
         }
-        number = formatInvoiceNumber(profile.numbering, n, year)
+        number = formatInvoiceNumber(series, n, date)
         if ((await invoices.index('number').count(number)) === 0) break
         n++
       }
@@ -397,17 +425,18 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         ...invoice,
         number,
         seller: snapshotSeller(profile),
-        referenceNumber: invoice.referenceNumber?.trim() ? invoice.referenceNumber : generateReferenceNumber(referenceBase(number, n)),
         status: 'issued',
         issuedAt: ts,
         updatedAt: ts,
       }
+      if (isQuote) delete issued.referenceNumber
+      else if (!invoice.referenceNumber?.trim()) issued.referenceNumber = generateReferenceNumber(referenceBase(number, n))
 
       // Validate the final document (with number + seller snapshot), as it will be printed.
       if (!canIssue(issued)) return fail(new InvoiceValidationError(validateInvoice(issued)))
 
       await invoices.put(issued)
-      await profiles.put({ ...profile, numbering: { ...profile.numbering, nextNumber: n + 1 }, updatedAt: ts }, PROFILE_KEY)
+      await profiles.put({ ...withNumberingFor(profile, invoice.type, advanceNumbering(series, date, n)), updatedAt: ts }, PROFILE_KEY)
       await tx.done
       notifyChange('invoices', id)
       notifyChange('profile')
@@ -473,13 +502,72 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       notifyChange('settings')
     },
 
+    async listProducts() {
+      const products = await (await db()).getAll('products')
+      return products.sort((a, b) => a.description.localeCompare(b.description, 'et'))
+    },
+
+    async saveProduct(product) {
+      const ts = clock()
+      await (await db()).put('products', { ...product, createdAt: product.createdAt || ts, updatedAt: ts })
+      notifyChange('products', product.id)
+    },
+
+    async deleteProduct(id) {
+      await (await db()).delete('products', id)
+      notifyChange('products', id)
+    },
+
+    async listRecurringRules() {
+      const rules = await (await db()).getAll('recurringRules')
+      return rules.sort((a, b) => a.nextDate.localeCompare(b.nextDate) || a.createdAt.localeCompare(b.createdAt))
+    },
+
+    async saveRecurringRule(rule) {
+      if (!isValidIsoDate(rule.nextDate)) {
+        throw new RepositoryError('invalid-input', 'Kordamise järgmine kuupäev on vigane.', 'The next date of the recurring rule is invalid.')
+      }
+      const ts = clock()
+      await (await db()).put('recurringRules', { ...rule, createdAt: rule.createdAt || ts, updatedAt: ts })
+      notifyChange('recurringRules', rule.id)
+    },
+
+    async deleteRecurringRule(id) {
+      await (await db()).delete('recurringRules', id)
+      notifyChange('recurringRules', id)
+    },
+
+    async listInvoiceEvents(invoiceId) {
+      const d = await db()
+      const events = invoiceId === undefined ? await d.getAll('invoiceEvents') : await d.getAllFromIndex('invoiceEvents', 'invoiceId', invoiceId)
+      return events.sort((a, b) => a.at.localeCompare(b.at))
+    },
+
+    async addInvoiceEvent(event) {
+      if (!event.id || !event.invoiceId) {
+        throw new RepositoryError('invalid-input', 'Sündmusel puudub ID või arve.', 'The event has no id or invoice.')
+      }
+      const stored: InvoiceEvent = { ...event, at: event.at || clock() }
+      await (await db()).put('invoiceEvents', stored)
+      notifyChange('invoiceEvents', stored.id)
+      return stored
+    },
+
+    async deleteInvoiceEvent(id) {
+      await (await db()).delete('invoiceEvents', id)
+      notifyChange('invoiceEvents', id)
+    },
+
     async exportBackup() {
-      const tx = (await db()).transaction(['profile', 'clients', 'invoices', 'settings'], 'readonly')
-      const [profile, clients, invoices, settings] = await Promise.all([
+      const tx = (await db()).transaction(DATA_STORES, 'readonly')
+      const [profile, clients, invoices, settings, products, recurringRules, events] = await Promise.all([
         tx.objectStore('profile').get(PROFILE_KEY),
         tx.objectStore('clients').getAll(),
         tx.objectStore('invoices').getAll(),
         tx.objectStore('settings').get(SETTINGS_KEY),
+        tx.objectStore('products').getAll(),
+        tx.objectStore('recurringRules').getAll(),
+        tx.objectStore('invoiceEvents').getAll(),
       ])
       await tx.done
       return {
@@ -490,15 +578,24 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         clients,
         invoices,
         settings: settings ?? null,
+        products,
+        recurringRules,
+        events,
       }
     },
 
     async importBackup(input, mode) {
       const backup = validateBackup(input)
-      const tx = (await db()).transaction(['profile', 'clients', 'invoices', 'settings', 'meta'], 'readwrite')
+      const tx = (await db()).transaction([...DATA_STORES, 'meta'], 'readwrite')
+      const products = backup.products ?? []
+      const recurringRules = backup.recurringRules ?? []
+      const events = backup.events ?? []
       const result: ImportResult = {
         clients: { written: 0, skipped: 0 },
         invoices: { written: 0, skipped: 0 },
+        products: { written: 0, skipped: 0 },
+        recurringRules: { written: 0, skipped: 0 },
+        events: { written: 0, skipped: 0 },
         profile: 'none',
         settings: 'none',
         duplicateNumbers: [],
@@ -508,11 +605,18 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       const previousProfile = await tx.objectStore('profile').get(PROFILE_KEY)
 
       if (mode === 'replace') {
-        await Promise.all(['profile', 'clients', 'invoices', 'settings'].map((s) => tx.objectStore(s as 'clients').clear()))
+        // A replace restores exactly what the backup holds; a version 1 backup has no catalogue, rules or events.
+        await Promise.all(DATA_STORES.map((s) => tx.objectStore(s).clear()))
         for (const c of backup.clients) await tx.objectStore('clients').put(c)
         for (const i of backup.invoices) await tx.objectStore('invoices').put(i)
+        for (const p of products) await tx.objectStore('products').put(p)
+        for (const r of recurringRules) await tx.objectStore('recurringRules').put(r)
+        for (const e of events) await tx.objectStore('invoiceEvents').put(e)
         result.clients.written = backup.clients.length
         result.invoices.written = backup.invoices.length
+        result.products.written = products.length
+        result.recurringRules.written = recurringRules.length
+        result.events.written = events.length
         if (backup.profile) {
           await tx.objectStore('profile').put(backup.profile, PROFILE_KEY)
           result.profile = 'written'
@@ -536,6 +640,28 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
             result.invoices.written++
           } else result.invoices.skipped++
         }
+        for (const p of products) {
+          const existing = await tx.objectStore('products').get(p.id)
+          if (!existing || isNewer(p.updatedAt, existing.updatedAt)) {
+            await tx.objectStore('products').put(p)
+            result.products.written++
+          } else result.products.skipped++
+        }
+        for (const r of recurringRules) {
+          const existing = await tx.objectStore('recurringRules').get(r.id)
+          if (!existing || isNewer(r.updatedAt, existing.updatedAt)) {
+            await tx.objectStore('recurringRules').put(r)
+            result.recurringRules.written++
+          } else result.recurringRules.skipped++
+        }
+        // Events never change once recorded: add the ones not known yet.
+        for (const e of events) {
+          if (await tx.objectStore('invoiceEvents').getKey(e.id)) result.events.skipped++
+          else {
+            await tx.objectStore('invoiceEvents').put(e)
+            result.events.written++
+          }
+        }
         if (backup.profile) {
           if (!previousProfile || isNewer(backup.profile.updatedAt, previousProfile.updatedAt)) {
             await tx.objectStore('profile').put(backup.profile, PROFILE_KEY)
@@ -554,23 +680,32 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
       const all = await tx.objectStore('invoices').getAll()
 
       /*
-       * Numbering counter (both modes), independent of which profile record won by timestamp:
-       *   nextNumber = max(counter before the import, counter in the backup, highest used number + 1)
-       * where "highest used" is the largest sequence of a non-draft invoice now in the database whose number
-       * matches the profile's prefix pattern. So restoring an older backup or merging an older profile can
-       * never make the app hand out a number again. Only the counter is touched; profile.updatedAt is kept.
+       * Numbering counters (both modes, invoice and quote series), independent of which profile record won by
+       * timestamp: nextNumber and every period counter become
+       *   max(value before the import, value in the backup, highest used sequence + 1)
+       * where "highest used" comes from the non-draft documents of that series now in the database (per period
+       * by issue date for resetting series). So restoring an older backup or merging an older profile can never
+       * make the app hand out a number again. Only the counters are touched; profile.updatedAt is kept.
        * (Replace with a backup that has no profile still clears the profile.)
        */
       const profile = await tx.objectStore('profile').get(PROFILE_KEY)
       if (profile) {
-        const nextNumber = Math.max(
-          profile.numbering.nextNumber,
-          previousProfile?.numbering.nextNumber ?? 0,
-          backup.profile?.numbering.nextNumber ?? 0,
-          highestUsedNumber(all, profile.numbering) + 1,
-        )
-        if (nextNumber !== profile.numbering.nextNumber) {
-          await tx.objectStore('profile').put({ ...profile, numbering: { ...profile.numbering, nextNumber } }, PROFILE_KEY)
+        const raise = (type: 'invoice' | 'quote') => {
+          const series = numberingFor(profile, type)
+          const raised = raiseNumbering(
+            series,
+            previousProfile && numberingFor(previousProfile, type),
+            backup.profile && numberingFor(backup.profile, type),
+            numberingFloor(series, all.filter(sameSeries(type))),
+          )
+          return { raised, changed: !deepEqual(raised, series) }
+        }
+        const inv = raise('invoice')
+        const quote = raise('quote')
+        if (inv.changed || quote.changed) {
+          let next = inv.changed ? withNumberingFor(profile, 'invoice', inv.raised) : profile
+          if (quote.changed) next = withNumberingFor(next, 'quote', quote.raised)
+          await tx.objectStore('profile').put(next, PROFILE_KEY)
         }
       }
 
@@ -585,6 +720,9 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
     },
   }
 }
+
+/** Stores holding user data (everything a backup contains). */
+const DATA_STORES = ['profile', 'clients', 'invoices', 'settings', 'products', 'recurringRules', 'invoiceEvents'] as const
 
 let singleton: Repository | null = null
 

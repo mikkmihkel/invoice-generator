@@ -1,5 +1,5 @@
 // IndexedDB persistence (via `idb`) + backup import/export + change notifications.
-export type { Repository, ImportResult, RepositoryOptions } from './repository'
+export type { Repository, ImportResult, ImportCount, RepositoryOptions } from './repository'
 export {
   getRepository,
   createRepository,
@@ -18,5 +18,6 @@ export {
   BackupFormatError,
   BACKUP_APP,
   BACKUP_VERSION,
+  BACKUP_MIN_VERSION,
 } from './backup'
 export { DB_NAME, DB_VERSION, openInvoiceDb } from './db'

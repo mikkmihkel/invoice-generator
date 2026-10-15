@@ -88,4 +88,46 @@ describe('reminderTemplates', () => {
     const both = reminderTemplates('et-en')
     expect(both.body.indexOf('Tere!')).toBeLessThan(both.body.indexOf('Hello,'))
   })
+
+  it('adds the late interest paragraph only when asked', () => {
+    expect(reminderTemplates('et').body).not.toContain('{interest}')
+    const et = reminderTemplates('et', { interest: true }).body
+    expect(et).toContain('viivis on {interestRate}% päevas')
+    expect(et.indexOf('{interest}')).toBeLessThan(et.indexOf('Lugupidamisega'))
+    expect(reminderTemplates('et-en', { interest: true }).body.match(/\{interest\}/g)).toHaveLength(2)
+  })
+
+  it('uses a firmer text for the second reminder', () => {
+    expect(reminderTemplates('et', { second: true }).subject).toBe('Teine meeldetuletus: arve {number} on endiselt tasumata')
+    expect(reminderTemplates('et', { second: true }).body).toContain('7 päeva jooksul')
+    expect(reminderTemplates('en', { second: true }).subject).toBe('Second reminder: invoice {number} is still unpaid')
+  })
+})
+
+describe('reminder interest', () => {
+  const inv: Invoice = {
+    ...newDraft(sampleProfile()),
+    number: '2026-0004',
+    dueDate: '2026-10-01',
+    lines: [{ id: 'l1', description: 'Töö', quantity: 1, unit: 'tk', unitPrice: 1000, vatRate: 24 }],
+  }
+  const interest = { amount: 9.92, days: 16, ratePercentPerDay: 0.05 }
+
+  it('fills the interest, rate and days in the invoice language', () => {
+    const et = fillEmailText(reminderTemplates('et', { interest: true }).body, { ...inv, language: 'et' }, 'Näidis OÜ', 1240, interest).replace(/[\u00a0\u202f]/g, ' ')
+    expect(et).toContain('Arvel kokku lepitud viivis on 0,05% päevas. Tänaseks (16 päeva) on viivis 9,92 €.')
+    expect(et).toContain('summas 1 240,00 €')
+    const en = fillEmailText(reminderTemplates('en', { interest: true }).body, { ...inv, language: 'en' }, 'Näidis OÜ', 1240, interest)
+    expect(en).toContain('0.05% per day. For 16 days it currently amounts to €9.92.')
+  })
+})
+
+describe('quote e-mail', () => {
+  it('has its own text with the validity date', () => {
+    const d = createDefaultProfile().defaults
+    expect(emailTemplates('et', d, 'quote').subject).toBe('Hinnapakkumine {number} – {company}')
+    expect(emailTemplates('et-en', d, 'quote').body).toContain('valid until {validUntil}')
+    const inv: Invoice = { ...newDraft(sampleProfile()), type: 'quote', number: 'HP-2026-001', validUntil: '2026-10-29', language: 'et' }
+    expect(fillEmailText(emailTemplates('et', d, 'quote').body, inv, 'Näidis OÜ')).toContain('Pakkumine kehtib kuni 29.10.2026.')
+  })
 })

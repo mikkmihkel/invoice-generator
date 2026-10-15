@@ -1,16 +1,57 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Invoice } from '../../../domain'
+import { computeTotals, newId, outstandingAmount, type Invoice, type InvoiceLanguage } from '../../../domain'
+import { remainingCreditLines } from '../../../domain/settlement'
 import { buildUblXml } from '../../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../../integrations'
 import { invoiceFileName, renderInvoicePdf, renderInvoicePdfBase64 } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { useConfirm } from '../../components/Dialog'
 import { useToast } from '../../Toasts'
-import { errorMessage } from '../../util'
+import { errorMessage, isCreditSettled, localTodayISO } from '../../util'
 import { creditNoteFor, duplicateInvoice } from '../editor/builders'
 
-export type ActionKey = 'pdf' | 'print' | 'xml' | 'drive' | 'copy' | 'cancel' | 'unpaid' | 'delete'
+export type ActionKey = 'pdf' | 'print' | 'xml' | 'drive' | 'copy' | 'cancel' | 'paid' | 'unpaid' | 'delete'
+
+/**
+ * "Mark paid" in one click: paid today, with an undo button in the confirmation toast. Usable from any list of
+ * invoices; the returned function resolves to false when the change failed (the error is shown as a toast, or
+ * rethrown with `rethrow`, e.g. for a dialog that shows it itself).
+ */
+export function useMarkPaid() {
+  const { t, markInvoicePaid, markInvoiceUnpaid } = useApp()
+  const toast = useToast()
+  return useCallback(
+    async (invoice: Pick<Invoice, 'id' | 'number'>, paidAt: string = localTodayISO(), opts: { rethrow?: boolean } = {}): Promise<boolean> => {
+      try {
+        await markInvoicePaid(invoice.id, paidAt)
+      } catch (e) {
+        if (opts.rethrow) throw e
+        toast.error(e)
+        return false
+      }
+      toast.success(t('payment.markedPaid', { number: invoice.number }), {
+        label: t('payment.undo'),
+        onClick: () => {
+          markInvoiceUnpaid(invoice.id).then(
+            () => toast.info(t('payment.undone', { number: invoice.number })),
+            (e: unknown) => toast.error(e),
+          )
+        },
+      })
+      return true
+    },
+    [t, toast, markInvoicePaid, markInvoiceUnpaid],
+  )
+}
+
+/** Description of the single credit line per VAT rate used when earlier credit notes do not match the lines. */
+function remainderLabel(inv: Invoice, rate: number, multipleRates: boolean): string {
+  const et = `Arve ${inv.number} krediteerimata jääk`
+  const en = `Remaining amount of invoice ${inv.number}`
+  const byLang: Record<InvoiceLanguage, string> = { et, en, 'et-en': `${et} / ${en}` }
+  return byLang[inv.language] + (multipleRates ? ` (${rate}%)` : '')
+}
 
 /**
  * The document actions of the selected invoice (same behaviour as in the editor). `invoice` is the stored record,
@@ -109,10 +150,11 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
   const creditNote = () => profile && openCopy(creditNoteFor(invoice, profile), t('actions.creditCreated', { number: invoice.number }))
 
   const cancel = async () => {
+    const quote = invoice.type === 'quote'
     const ok = await confirm({
-      title: t('actions.cancelTitle', { number: invoice.number }),
-      message: t('actions.cancelConfirm'),
-      confirmLabel: t('actions.cancelInvoice'),
+      title: t(quote ? 'payment.cancelQuoteTitle' : 'actions.cancelTitle', { number: invoice.number }),
+      message: t(quote ? 'payment.cancelQuoteConfirm' : 'actions.cancelConfirm'),
+      confirmLabel: t(quote ? 'payment.cancelQuote' : 'actions.cancelInvoice'),
       cancelLabel: t('common.back'),
       danger: true,
     })
@@ -120,6 +162,53 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
   }
 
   const markUnpaid = () => act('unpaid', async () => void (await app.markInvoiceUnpaid(invoice.id)))
+
+  const markPaidNow = useMarkPaid()
+  const markPaid = () => act('paid', async () => void (await markPaidNow(invoice)))
+  /** From the date dialog: errors propagate so the dialog stays open. */
+  const markPaidOn = async (paidAt: string) => void (await markPaidNow(invoice, paidAt, { rethrow: true }))
+  const changePaidDate = async (paidAt: string) => {
+    await app.markInvoicePaid(invoice.id, paidAt)
+    toast.success(t('payment.dateChanged'))
+  }
+
+  /**
+   * Whether cancelling goes through a credit note: issued invoices (not quotes or credit notes) that still
+   * have something left to credit.
+   */
+  const cancelsWithCredit = (invoice.type === 'invoice' || invoice.type === 'prepayment') && invoice.status === 'issued' && !isCreditSettled(invoice, app.invoices)
+  const remaining = cancelsWithCredit ? outstandingAmount(invoice, app.invoices) : 0
+
+  /**
+   * Cancel an issued invoice in one step: create a credit note for whatever is still open, issue it and mark the
+   * invoice cancelled. If the credit note cannot be issued (e.g. the profile became incomplete), its draft opens
+   * in the editor instead and the invoice stays as it was.
+   */
+  const cancelWithCredit = () =>
+    act('cancel', async () => {
+      if (!profile) return
+      const rates = new Set(invoice.lines.map((l) => l.vatRate))
+      const lines = remainingCreditLines(invoice, app.invoices, (rate) => remainderLabel(invoice, rate, rates.size > 1 && invoice.vatScheme === 'domestic'))
+      if (lines.length === 0 || computeTotals({ ...invoice, lines: lines.map((l) => ({ ...l, id: '' })) }).gross === 0) {
+        await app.cancelInvoice(invoice.id)
+        toast.success(t('payment.cancelledOnly', { number: invoice.number }))
+        return
+      }
+      const draft: Invoice = { ...creditNoteFor(invoice, profile), lines: lines.map((l) => ({ ...l, id: newId() })) }
+      await app.saveInvoice(draft)
+      let credit: Invoice
+      try {
+        credit = await app.issueInvoice(draft.id)
+      } catch (e) {
+        toast.error(t('payment.creditIssueFailed') + ' ' + errorMessage(e))
+        navigate(`/invoices/${draft.id}`)
+        return
+      }
+      await app.cancelInvoice(invoice.id)
+      toast.success(t('payment.cancelled', { number: invoice.number, credit: credit.number }))
+      // Keep the cancelled invoice in view (the new credit note would otherwise be first in the list).
+      navigate(`/?id=${invoice.id}`)
+    })
 
   const deleteDraft = async () => {
     const ok = await confirm({ title: t('actions.deleteDraftTitle'), message: t('actions.deleteDraftConfirm'), confirmLabel: t('common.delete'), cancelLabel: t('common.cancel'), danger: true })
@@ -131,5 +220,22 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
     })
   }
 
-  return { busy, downloadPdf, print, downloadXml, saveToDrive, duplicate, creditNote, cancel, markUnpaid, deleteDraft }
+  return {
+    busy,
+    downloadPdf,
+    print,
+    downloadXml,
+    saveToDrive,
+    duplicate,
+    creditNote,
+    cancel,
+    cancelsWithCredit,
+    remaining,
+    cancelWithCredit,
+    markPaid,
+    markPaidOn,
+    changePaidDate,
+    markUnpaid,
+    deleteDraft,
+  }
 }

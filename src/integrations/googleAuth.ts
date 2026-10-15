@@ -122,12 +122,23 @@ function tokenValid(clientId: string, scopeUrls: string[]): boolean {
   )
 }
 
+export interface TokenOptions {
+  /** False: only use a token already in memory and never open the consent popup (background work). */
+  interactive?: boolean
+}
+
+/** Whether a valid token for the scopes is in memory, i.e. a request can run without a popup. */
+export function hasAccessToken(clientId: string | undefined, scopes: GoogleScope[]): boolean {
+  const id = clientId?.trim()
+  return !!id && tokenValid(id, scopes.map((s) => SCOPE_URLS[s]))
+}
+
 /**
  * Return a valid access token for the scopes, requesting one if needed. A request opens a GIS popup, so
  * call this (or googleSignIn) from a click handler before any long async work, or browsers may block it.
  * Already-granted scopes are re-requested silently (prompt '').
  */
-export async function getAccessToken(clientId: string, scopes: GoogleScope[]): Promise<string> {
+export async function getAccessToken(clientId: string, scopes: GoogleScope[], options: TokenOptions = {}): Promise<string> {
   const id = clientId?.trim()
   if (!id) throw new GoogleApiError('not_configured')
   lastClientId = id
@@ -139,6 +150,7 @@ export async function getAccessToken(clientId: string, scopes: GoogleScope[]): P
     await pending.catch(() => {})
     if (tokenValid(id, needed)) return state!.accessToken
   }
+  if (options.interactive === false) throw new GoogleApiError('unauthorized')
   const run = (async () => {
     const oauth2 = await loadGis()
     const hint = readHint(id)

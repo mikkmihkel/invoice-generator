@@ -20,6 +20,7 @@ export {
   withMachineLayer,
   embeddedXmlFileName,
   invoiceFacts,
+  embedsEInvoice,
   isRfCreditorReference,
 } from './machine'
 export { invoiceFileName } from './fileName'

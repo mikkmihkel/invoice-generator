@@ -1,4 +1,5 @@
 import { creditNotesFor, outstandingAmount, type Invoice } from '../../../domain'
+import type { QuoteStatus } from '../../../domain/quote'
 import { formatDate, formatMoney } from '../../format'
 import type { Translate } from '../../i18n'
 import { daysBetween, isUnpaid, type DisplayStatus } from '../../util'
@@ -75,4 +76,17 @@ export function detailStatus(inv: Invoice, status: DisplayStatus, today: string,
   const tone: Tone = d <= DUE_SOON_DAYS ? 'warn' : 'neutral'
   if (partial) return { text: `${partial}, ${t('detail.dueOn', { due })}`, tone }
   return { text: t('detail.statusUnpaid', { due }), tone }
+}
+
+/** Status sentence of a quote: "Kehtib kuni 29.10.2026", "Aegunud 01.10.2026", "Aktsepteeritud 12.10.2026"... */
+export function quoteDetailStatus(quote: Invoice, status: QuoteStatus, today: string, t: Translate): { text: string; tone: Tone } {
+  if (status === 'draft') return detailStatus(quote, 'draft', today, t)
+  if (status === 'cancelled') return { text: t('status.cancelled'), tone: 'muted' }
+  if (status === 'accepted') {
+    return { text: quote.quoteAcceptedAt ? t('detail.quoteAcceptedOn', { date: formatDate(quote.quoteAcceptedAt.slice(0, 10)) }) : t('detail.quoteAccepted'), tone: 'success' }
+  }
+  if (status === 'expired') return { text: t('detail.quoteExpired', { date: formatDate(quote.validUntil) }), tone: 'warn' }
+  if (!isDate(quote.validUntil)) return { text: t('status.issued'), tone: 'neutral' }
+  const d = daysBetween(today, quote.validUntil)
+  return { text: t('detail.quoteValid', { date: formatDate(quote.validUntil) }), tone: d <= DUE_SOON_DAYS ? 'warn' : 'neutral' }
 }

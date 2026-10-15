@@ -6,6 +6,8 @@ import { backupToDrive, downloadBlob, getGoogleStatus, googleSignIn, googleSignO
 import { getIndexInfo, type RegistryIndexInfo } from '../../registry'
 import { backupFileName, requestPersistentStorage, serializeBackup } from '../../storage'
 import { useApp } from '../AppContext'
+import { BackupSection } from './settings/BackupSection'
+import ExportSection from './settings/ExportSection'
 import { GOOGLE_CLIENT_ID_RE, keepClientId, paymentDetailChanges, readBackupText } from './backupReview'
 import { Dialog, useConfirm } from '../components/Dialog'
 import { CheckboxField, TextField } from '../components/fields'
@@ -366,6 +368,10 @@ export default function SettingsPage() {
             </div>
           </div>
         </Section>
+
+        <BackupSection />
+
+        <ExportSection />
 
         <Section id="set-registry" title={t('registry.title')}>
           <p>

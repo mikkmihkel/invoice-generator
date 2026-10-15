@@ -86,12 +86,18 @@ function paymentTermsText(invoice: Invoice): string | undefined {
   return parts.join(' ') || undefined
 }
 
+/** Whether the document has an e-invoice form (UBL Invoice / CreditNote). Quotes do not. */
+export function supportsEInvoice(invoice: Pick<Invoice, 'type'>): boolean {
+  return invoice.type !== 'quote'
+}
+
 /**
  * Build UBL 2.1 Invoice (or CreditNote) XML compliant with Peppol BIS Billing 3.0 / EN 16931.
  * Credit notes whose amounts are negative in the app (negative quantities) are written with positive amounts,
  * as UBL CreditNote expects.
  */
 export function buildUblXml(invoice: Invoice, opts: UblOptions = {}): string {
+  if (!supportsEInvoice(invoice)) throw new Error('A quote has no e-invoice')
   const isCredit = invoice.type === 'credit-note'
   const totals = computeTotals(invoice)
   const sign = isCredit && totals.gross < 0 ? -1 : 1
@@ -249,6 +255,10 @@ export interface UblIssue {
 export function eInvoiceIssues(invoice: Invoice): UblIssue[] {
   const issues: UblIssue[] = []
   const add = (field: string, et: string, en: string) => issues.push({ field, message: { et, en } })
+  if (!supportsEInvoice(invoice)) {
+    add('type', 'Hinnapakkumisest e-arvet ei koostata.', 'A quote is not sent as an e-invoice.')
+    return issues
+  }
   if (!invoice.number) add('number', 'Arvel puudub number (mustand).', 'The invoice has no number (draft).')
   if (!endpointFor(invoice.seller)) {
     add('seller.registryCode', 'Müüjal puudub e-arve aadress (registrikood või KMKR nr).', 'Seller has no e-invoice address (registry code or VAT number).')

@@ -12,6 +12,7 @@ import {
   inlineLabel,
   linesTable,
   logo,
+  deadlineRow,
   metaRows,
   notesBlock,
   partyBlock,
@@ -607,7 +608,7 @@ function bold(ctx: DocContext): TemplateDefinition {
   const subtotals = ctx.totals.showVat
     ? totalsTable(ctx, { fontSize: 9, labelColor: COLORS.muted, labelSecondaryColor: COLORS.faint, valueColor: COLORS.ink, grandFontSize: 9, grandColor: COLORS.ink, rowRule: [0.5, COLORS.hairline], paddingY: 3.5, omitGrand: true })
     : null
-  const dueRow = !ctx.isCreditNote && ctx.invoice.dueDate ? { key: 'dueDate' as LabelKey, value: ctx.date(ctx.invoice.dueDate) } : null
+  const dueRow = deadlineRow(ctx)
   const block: Content = {
     table: {
       widths: ['*', 'auto'],
@@ -618,7 +619,7 @@ function bold(ctx: DocContext): TemplateDefinition {
           { text: grand.value, font: FONT.strong, bold: true, fontSize: 30, color: on, alignment: 'right', fillColor: ctx.accent, lineHeight: 1, rowSpan: dueRow ? 2 : 1, margin: [0, 4, 0, 0] },
         ],
         ...(dueRow
-          ? [[{ text: [{ text: `${ctx.t('dueDate')} `, color: onMuted }, { text: dueRow.value, color: on }], fontSize: 9, fillColor: ctx.accent, margin: [0, 0, 0, 2] }, {}]]
+          ? [[{ text: [{ text: `${ctx.t(dueRow.key)} `, color: onMuted }, { text: dueRow.value, color: on }], fontSize: 9, fillColor: ctx.accent, margin: [0, 0, 0, 2] }, {}]]
           : []),
       ] as never,
     },

@@ -200,6 +200,7 @@ label.btn {
 
 input[type='text'],
 input[type='email'],
+input[type='password'],
 input[type='tel'],
 input[type='url'],
 input[type='date'],
@@ -344,6 +345,28 @@ fieldset > legend.label {
   font-weight: 500;
   line-height: 1.45;
   color: var(--danger);
+}
+/* ECB rate and VIES check under their fields */
+.rate-fetch,
+.vies-check {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+  margin-top: var(--s-2);
+}
+.rate-fetch p:empty,
+.vies-check [role='status']:empty {
+  display: none;
+}
+.vies-result {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.vies-result svg {
+  flex: none;
+  margin-top: 2px;
 }
 .field-check {
   display: grid;

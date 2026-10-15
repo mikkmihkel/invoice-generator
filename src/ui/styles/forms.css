@@ -113,6 +113,31 @@
   font-weight: 500;
   color: var(--text);
 }
+.numbering-preview + .field-hint {
+  margin-top: 2px;
+}
+.numbering-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+.numbering-editor .tpl-name.numbering-example {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.numbering-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+}
+.numbering-warning > span {
+  flex: 1 1 260px;
+  min-width: 0;
+}
 
 /* Default free-text rows (before the lines / after the totals) in "Arve vaikeseaded". */
 .text-rows-defaults {

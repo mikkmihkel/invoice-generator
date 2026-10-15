@@ -56,12 +56,26 @@ function isBlank(value: string | undefined | null): boolean {
   return !value || value.trim() === ''
 }
 
-/** Check an invoice against Estonian legal requirements (KMS § 37, RPS § 7, ÄS § 15) and sanity rules. */
+/** Invoice-content rules (KMS § 37, RPS § 7) that do not apply to a quote, which is not an accounting document. */
+function quoteBasis(legalBasis: string | undefined): string | undefined {
+  const kept = (legalBasis ?? '')
+    .split('; ')
+    .filter((b) => b && !b.startsWith('KMS § 37') && !b.startsWith('RPS § 7'))
+  return kept.length ? kept.join('; ') : undefined
+}
+
+/**
+ * Check an invoice against Estonian legal requirements (KMS § 37, RPS § 7, ÄS § 15) and sanity rules.
+ * Quotes get the lighter check of an offer: seller, buyer, lines and VAT treatment, without the invoice-only
+ * requirements (due date, payment details, reference number, source-document rules).
+ */
 export function validateInvoice(invoice: Invoice, options: ValidateOptions = {}): ValidationIssue[] {
   const issues: ValidationIssue[] = []
+  const quote = invoice.type === 'quote'
   const add = (field: string, severity: Severity, et: string, en: string, legalBasis?: string) => {
     const issue: ValidationIssue = { field, severity, message: { et, en } }
-    if (legalBasis) issue.legalBasis = legalBasis
+    const basis = quote ? quoteBasis(legalBasis) : legalBasis
+    if (basis) issue.legalBasis = basis
     issues.push(issue)
   }
   const { seller, buyer, vatScheme } = invoice
@@ -70,16 +84,18 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
 
   // --- Invoice identification -------------------------------------------------
   if ((options.requireNumber ?? true) && isBlank(invoice.number)) {
-    add('number', 'error', 'Arve number puudub.', 'Invoice number is missing.', `${L.KMS37_1}; ${L.RPS7}`)
+    if (quote) add('number', 'error', 'Hinnapakkumise number puudub.', 'Quote number is missing.')
+    else add('number', 'error', 'Arve number puudub.', 'Invoice number is missing.', `${L.KMS37_1}; ${L.RPS7}`)
   }
   const issueOk = isValidISODate(invoice.issueDate)
   if (!issueOk) {
-    add('issueDate', 'error', 'Arve kuupäev puudub või on vigane.', 'Issue date is missing or invalid.', `${L.KMS37_1}; ${L.RPS7}`)
+    if (quote) add('issueDate', 'error', 'Hinnapakkumise kuupäev puudub või on vigane.', 'Quote date is missing or invalid.')
+    else add('issueDate', 'error', 'Arve kuupäev puudub või on vigane.', 'Issue date is missing or invalid.', `${L.KMS37_1}; ${L.RPS7}`)
   } else {
     const today = options.today ?? todayISO()
     if (invoice.issueDate > addDays(today, 30)) {
-      add('issueDate', 'warning', 'Arve kuupäev on kaugel tulevikus.', 'Issue date is far in the future.')
-    } else if (invoice.status === 'draft' && invoice.issueDate < addDays(today, -7)) {
+      add('issueDate', 'warning', quote ? 'Hinnapakkumise kuupäev on kaugel tulevikus.' : 'Arve kuupäev on kaugel tulevikus.', 'Issue date is far in the future.')
+    } else if (!quote && invoice.status === 'draft' && invoice.issueDate < addDays(today, -7)) {
       add(
         'issueDate',
         'warning',
@@ -88,7 +104,15 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       )
     }
   }
-  if (!isValidISODate(invoice.dueDate)) {
+  if (quote) {
+    if (isBlank(invoice.validUntil)) {
+      add('validUntil', 'warning', 'Hinnapakkumise kehtivusaeg puudub.', 'The quote has no validity date.')
+    } else if (!isValidISODate(invoice.validUntil!)) {
+      add('validUntil', 'error', 'Kehtivuse kuupäev on vigane.', 'The validity date is invalid.')
+    } else if (issueOk && invoice.validUntil! < invoice.issueDate) {
+      add('validUntil', 'error', 'Pakkumine ei saa kehtida lühemalt kui selle kuupäevani.', 'The validity date cannot be before the quote date.')
+    }
+  } else if (!isValidISODate(invoice.dueDate)) {
     add('dueDate', 'error', 'Maksetähtaeg puudub või on vigane.', 'Due date is missing or invalid.')
   } else if (issueOk && invoice.dueDate < invoice.issueDate) {
     add('dueDate', 'error', 'Maksetähtaeg ei saa olla varasem kui arve kuupäev.', 'Due date cannot be before the issue date.')
@@ -96,7 +120,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
   if (invoice.supplyDate !== undefined && invoice.supplyDate !== '') {
     if (!isValidISODate(invoice.supplyDate)) {
       add('supplyDate', 'error', 'Käibe tekkimise kuupäev on vigane.', 'Date of supply is invalid.', L.KMS37_6)
-    } else if (issueOk && sellerRegistered && addDays(invoice.supplyDate, 7) < invoice.issueDate) {
+    } else if (!quote && issueOk && sellerRegistered && addDays(invoice.supplyDate, 7) < invoice.issueDate) {
       add(
         'supplyDate',
         'warning',
@@ -172,10 +196,10 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     }
   }
 
-  // --- Bank accounts ------------------------------------------------------------
-  const accounts = seller?.bankAccounts ?? []
+  // --- Bank accounts (not printed on quotes) -------------------------------------
+  const accounts = quote ? [] : (seller?.bankAccounts ?? [])
   const selected = selectedBankAccounts(invoice, accounts)
-  if (selected.length === 0) {
+  if (!quote && selected.length === 0) {
     add(
       'bankAccountIds',
       'warning',
@@ -183,7 +207,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       'No bank account on the invoice – the buyer will not know where to pay.',
     )
   }
-  ;(invoice.bankAccountIds ?? []).forEach((id) => {
+  ;(quote ? [] : (invoice.bankAccountIds ?? [])).forEach((id) => {
     if (!accounts.some((a) => a.id === id)) {
       add('bankAccountIds', 'warning', 'Valitud pangakontot ei leitud müüja andmetest.', 'A selected bank account no longer exists in the seller data.')
     }
@@ -201,14 +225,14 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
   checkAddress(
     buyer?.address,
     'buyer.address',
-    sellerRegistered ? 'error' : 'warning',
+    sellerRegistered && !quote ? 'error' : 'warning',
     sellerRegistered ? L.KMS37_3 : L.RPS7,
     'Ostja',
     'Buyer',
     add,
   )
   const buyerCountry = (buyer?.address?.country ?? '').trim().toUpperCase()
-  if (buyer?.kind === 'company' && buyerCountry === 'EE') {
+  if (!quote && buyer?.kind === 'company' && buyerCountry === 'EE') {
     if (isBlank(buyer.registryCode)) {
       add(
         'buyer.registryCode',
@@ -322,7 +346,8 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
 
   // --- Lines --------------------------------------------------------------------
   if (lines.length === 0) {
-    add('lines', 'error', 'Arvel peab olema vähemalt üks rida.', 'The invoice must have at least one line.', `${L.KMS37_5}; ${L.RPS7}`)
+    if (quote) add('lines', 'error', 'Hinnapakkumisel peab olema vähemalt üks rida.', 'The quote must have at least one line.')
+    else add('lines', 'error', 'Arvel peab olema vähemalt üks rida.', 'The invoice must have at least one line.', `${L.KMS37_5}; ${L.RPS7}`)
   }
   let zeroRateDomestic = false
   lines.forEach((line, i) => {
@@ -400,12 +425,14 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
         'The credit note total is positive – credited quantities should be negative.',
       )
     }
-    if (invoice.type !== 'credit-note' && totals.gross < 0) {
+    if (quote && totals.gross < 0) {
+      add('lines', 'warning', 'Hinnapakkumise summa on negatiivne.', 'The quote total is negative.')
+    } else if (invoice.type !== 'credit-note' && totals.gross < 0) {
       add('lines', 'warning', 'Arve summa on negatiivne – koosta selle asemel kreeditarve.', 'The invoice total is negative – use a credit note.')
     }
     if (isBlank(invoice.currency)) {
       add('currency', 'error', 'Valuuta puudub.', 'Currency is missing.')
-    } else if (vatScheme === 'domestic' && totals.vat !== 0 && invoice.currency.trim().toUpperCase() !== 'EUR') {
+    } else if (!quote && vatScheme === 'domestic' && totals.vat !== 0 && invoice.currency.trim().toUpperCase() !== 'EUR') {
       const rate = invoice.eurExchangeRate
       if (!rate || !Number.isFinite(rate) || rate <= 0) {
         add(
@@ -419,7 +446,8 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     }
   }
 
-  // --- Payment reference ----------------------------------------------------------
+  // --- Payment reference (invoices only) -------------------------------------------
+  if (quote) return issues
   if (!isBlank(invoice.referenceNumber) && !isValidReferenceNumber(invoice.referenceNumber!)) {
     add(
       'referenceNumber',

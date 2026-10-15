@@ -2,8 +2,8 @@ import type { Invoice } from '../domain/types'
 import { fileNameSegment } from './format'
 
 const PREFIX = {
-  et: { invoice: 'Arve', 'credit-note': 'Kreeditarve', prepayment: 'Ettemaksuarve', draft: 'mustand' },
-  en: { invoice: 'Invoice', 'credit-note': 'Credit-note', prepayment: 'Prepayment-invoice', draft: 'draft' },
+  et: { invoice: 'Arve', 'credit-note': 'Kreeditarve', prepayment: 'Ettemaksuarve', quote: 'Hinnapakkumine', draft: 'mustand' },
+  en: { invoice: 'Invoice', 'credit-note': 'Credit-note', prepayment: 'Prepayment-invoice', quote: 'Quote', draft: 'draft' },
 } as const
 
 /** ASCII-safe file name, e.g. "Arve_2026-0007_Klient-OU.pdf"; drafts: "Arve_mustand_2026-10-12_Klient-OU.pdf". */

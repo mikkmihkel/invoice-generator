@@ -7,6 +7,7 @@ import {
   getGrantedScopes,
   googleSignIn,
   googleSignOut,
+  hasAccessToken,
   invalidateToken,
   SCOPE_URLS,
 } from './googleAuth'
@@ -107,6 +108,19 @@ describe('token model', () => {
     invalidateToken()
     const t2 = await getAccessToken(CLIENT, ['drive'])
     expect(t2).not.toBe(t1)
+  })
+
+  it('never opens a popup for non-interactive requests', async () => {
+    expect(hasAccessToken(CLIENT, ['drive'])).toBe(false)
+    await expect(getAccessToken(CLIENT, ['drive'], { interactive: false })).rejects.toMatchObject({ code: 'unauthorized' })
+    expect(requests).toHaveLength(0)
+    const t1 = await getAccessToken(CLIENT, ['drive'])
+    expect(hasAccessToken(CLIENT, ['drive'])).toBe(true)
+    expect(hasAccessToken(CLIENT, ['gmail'])).toBe(false)
+    expect(await getAccessToken(CLIENT, ['drive'], { interactive: false })).toBe(t1)
+    invalidateToken()
+    await expect(getAccessToken(CLIENT, ['drive'], { interactive: false })).rejects.toMatchObject({ code: 'unauthorized' })
+    expect(requests).toHaveLength(1)
   })
 
   it('shares one popup between concurrent callers', async () => {

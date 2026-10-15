@@ -115,13 +115,23 @@ export interface InvoiceDefaults {
   textAfter?: string[]
 }
 
+/** When the running number starts again from 1. */
+export type NumberingReset = 'never' | 'yearly' | 'monthly' | 'daily'
+
 export interface NumberingSettings {
-  /** e.g. "2026-" or "ARVE-". May contain {YYYY} which is replaced with issue year. */
+  /**
+   * e.g. "2026-", "ARVE-" or "{YYYYMMDD}". Date tokens are replaced from the document's issue date:
+   * {YYYY} {YY} {MM} {DD} {YYYYMMDD}.
+   */
   prefix: string
-  /** Next sequential number to allocate. */
+  /** Next sequential number to allocate when `reset` is 'never' (or missing). */
   nextNumber: number
-  /** Zero padding width, e.g. 4 → 0007. */
+  /** Zero padding width, e.g. 4 → 0007, 3 → 001. */
   padding: number
+  /** Missing means 'never' (one running sequence). */
+  reset?: NumberingReset
+  /** Next number per reset period, keyed by period: '2026', '2026-10' or '2026-10-15'. */
+  counters?: Record<string, number>
 }
 
 /** The user's own (seller) company. Singleton. */
@@ -133,6 +143,8 @@ export interface CompanyProfile extends Party {
   logoDataUrl?: string
   defaults: InvoiceDefaults
   numbering: NumberingSettings
+  /** Separate number series for quotes (hinnapakkumised). Missing means the built-in default series. */
+  quoteNumbering?: NumberingSettings
   updatedAt: ISODateTime
 }
 
@@ -165,10 +177,11 @@ export interface InvoiceLine {
 }
 
 export type InvoiceStatus = 'draft' | 'issued' | 'paid' | 'cancelled'
-export type InvoiceType = 'invoice' | 'credit-note' | 'prepayment'
+/** 'quote' is a hinnapakkumine: not an invoice for accounting, numbered from its own series. */
+export type InvoiceType = 'invoice' | 'credit-note' | 'prepayment' | 'quote'
 
 /** Frozen copy of the seller at the time of issuing (later profile edits must not alter issued invoices). */
-export type SellerSnapshot = Omit<CompanyProfile, 'defaults' | 'numbering' | 'updatedAt'>
+export type SellerSnapshot = Omit<CompanyProfile, 'defaults' | 'numbering' | 'quoteNumbering' | 'updatedAt'>
 
 export interface BuyerSnapshot extends Party {
   clientId?: string
@@ -184,6 +197,16 @@ export interface Invoice {
   status: InvoiceStatus
   /** For credit notes: number of the invoice being credited. */
   creditedInvoiceNumber?: string
+  /** Quotes: last day the offer is valid. */
+  validUntil?: ISODate
+  /** Quotes: when the client accepted (set on conversion). */
+  quoteAcceptedAt?: ISODateTime
+  /** Quotes: id of the invoice created from this quote. */
+  convertedToInvoiceId?: string
+  /** Invoices: id of the quote this invoice was created from. */
+  convertedFromQuoteId?: string
+  /** Drafts created by a recurring rule, and the source invoice of a rule. */
+  recurringRuleId?: string
 
   issueDate: ISODate
   dueDate: ISODate
@@ -288,6 +311,8 @@ export interface AppSettings {
   theme?: UiTheme
   /** Google OAuth 2.0 Web client ID; enables Drive + Gmail features. */
   googleClientId?: string
+  /** Automatic backups to Google Drive after changes. Missing means off. */
+  autoBackup?: AutoBackupSettings
   /** Drive folder name for exported PDFs. */
   driveFolderName: string
   /** Try the live e-Business Register autocomplete API in addition to the bundled index. */
@@ -309,12 +334,63 @@ export interface RegistryCompany {
   addressText?: string
 }
 
+export interface AutoBackupSettings {
+  enabled: boolean
+  /** Encrypt backup files with a passphrase (the passphrase itself is never stored). */
+  encrypt: boolean
+  /** How many backup versions to keep in the Drive folder. */
+  keepVersions: number
+  lastBackupAt?: ISODateTime
+}
+
+/** A saved product or service, offered while typing an invoice line. */
+export interface Product {
+  id: string
+  description: string
+  unit: string
+  /** Unit price excluding VAT, in EUR unless the invoice says otherwise. */
+  unitPrice: number
+  /** Missing means the profile default rate. */
+  vatRate?: number
+  createdAt: ISODateTime
+  updatedAt: ISODateTime
+}
+
+export type RecurrenceInterval = 'monthly' | 'quarterly' | 'yearly'
+
+/** Prepares a new draft from a source invoice on a schedule (drafts are created when the app is opened). */
+export interface RecurringRule {
+  id: string
+  sourceInvoiceId: string
+  interval: RecurrenceInterval
+  /** Issue date of the next draft to prepare. */
+  nextDate: ISODate
+  active: boolean
+  lastCreatedInvoiceId?: string
+  createdAt: ISODateTime
+  updatedAt: ISODateTime
+}
+
+/** Things that happened to an issued document (issued documents themselves are immutable). */
+export interface InvoiceEvent {
+  id: string
+  invoiceId: string
+  kind: 'sent' | 'reminder'
+  at: ISODateTime
+  /** e.g. the recipient or the reminder level. */
+  note?: string
+}
+
 export interface BackupFile {
   app: 'invoice-generator'
-  version: 1
+  /** 2 adds products, recurringRules and events (all optional when reading). */
+  version: 1 | 2
   exportedAt: ISODateTime
   profile: CompanyProfile | null
   clients: Client[]
   invoices: Invoice[]
   settings: AppSettings | null
+  products?: Product[]
+  recurringRules?: RecurringRule[]
+  events?: InvoiceEvent[]
 }

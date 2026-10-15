@@ -5,10 +5,37 @@ export { validateInvoice, canIssue } from './validation'
 export type { ValidateOptions } from './validation'
 export {
   formatInvoiceNumber,
+  formatPrefix,
   generateReferenceNumber,
   isValidReferenceNumber,
   referenceCheckDigit,
+  NUMBERING_TOKENS,
+  NUMBERING_RESETS,
+  NUMBERING_PRESETS,
+  QUOTE_NUMBERING_PRESETS,
+  DEFAULT_QUOTE_NUMBERING,
+  matchPreset,
+  resetOf,
+  numberingFor,
+  withNumberingFor,
+  periodKey,
+  nextSequence,
+  setNextSequence,
+  advanceNumbering,
+  previewNumbers,
+  predictNumber,
+  prefixHasDate,
+  prefixCoversPeriod,
+  unknownTokens,
+  sequenceOf,
+  highestUsedNumber,
+  numberingFloor,
+  raiseNumbering,
+  sameSeries,
+  upcomingNumbers,
+  restartBelowUsed,
 } from './numbering'
+export type { NumberingPreset, NumberingPresetId } from './numbering'
 export {
   ESTONIAN_VAT_RATES,
   STANDARD_VAT_RATE,
@@ -56,3 +83,34 @@ export { withVatScheme } from './scheme'
 export { selectedBankAccounts } from './accounts'
 export { COLOR_MODES, HEX_COLOR_PATTERN, MIN_TEXT_CONTRAST, colorModeOf, contrastRatio, hexOr, isColorMode, isHexColor, relativeLuminance } from './brand'
 export { creditNotesFor, creditedAmount, outstandingAmount } from './settlement'
+export {
+  DEFAULT_QUOTE_VALIDITY_DAYS,
+  isQuote,
+  isQuoteAccepted,
+  invoiceFromQuote,
+  quoteStatus,
+  quoteValidUntil,
+  asQuote,
+  createEmptyQuote,
+  quoteToInvoiceDraft,
+  markQuoteAccepted,
+} from './quote'
+export type { QuoteStatus } from './quote'
+export {
+  RECURRENCE_INTERVALS,
+  MAX_CATCH_UP,
+  isRecurrenceInterval,
+  intervalMonths,
+  addMonths,
+  monthsBetween,
+  isMonthEnd,
+  nextOccurrence,
+  firstOccurrence,
+  upcomingOccurrence,
+  createRecurringRule,
+  ruleForInvoice,
+  canRecur,
+  recurringDraft,
+  prepareRecurringDrafts,
+} from './recurring'
+export type { RecurringRun } from './recurring'

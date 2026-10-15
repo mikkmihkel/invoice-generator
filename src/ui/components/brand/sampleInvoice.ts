@@ -1,5 +1,5 @@
 // A realistic sample invoice for the design preview, built from the (possibly unfinished) company profile.
-import { createEmptyInvoice, formatInvoiceNumber, type ColorMode, type CompanyProfile, type Invoice, type InvoiceLanguage, type TemplateId } from '../../../domain'
+import { createEmptyInvoice, predictNumber, type ColorMode, type CompanyProfile, type Invoice, type InvoiceLanguage, type TemplateId } from '../../../domain'
 
 const TEXT: Record<'et' | 'en', { seller: string; buyer: string; lines: [string, number, string, number][] }> = {
   et: {
@@ -43,7 +43,7 @@ export function designSampleInvoice(profile: CompanyProfile, design: DesignChoic
   const sample: Invoice = {
     ...inv,
     id: 'design-sample',
-    number: formatInvoiceNumber(profile.numbering, profile.numbering.nextNumber, year),
+    number: predictNumber(profile.numbering, issueDate),
     status: 'issued',
     issueDate,
     dueDate: due.toISOString().slice(0, 10),
