@@ -110,6 +110,12 @@
   width: var(--h-control);
   padding: 0;
 }
+/* File pickers styled as buttons (<label class="btn"> around a visually hidden file input): the focus is on the
+   1×1 input, so the label shows the ring. */
+.btn:has(> input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 .btn-block {
   width: 100%;
   height: 40px;
@@ -764,7 +770,11 @@ fieldset {
 .menu-item:hover,
 .menu-item:focus-visible {
   background: var(--surface-2);
-  outline: none;
+}
+/* The background alone is a 1.07:1 change: keyboard focus gets the regular focus ring, drawn inside the item. */
+.menu-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 .menu-item-danger,
 .menu-item-danger svg {
