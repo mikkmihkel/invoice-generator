@@ -10,6 +10,9 @@ export {
   hasAccessToken,
   invalidateToken,
   loadGis,
+  rememberedGoogleAccount,
+  subscribeGoogleAuth,
+  getGoogleAuthVersion,
   SCOPE_URLS,
   GIS_SCRIPT_URL,
 } from './googleAuth'
@@ -20,6 +23,9 @@ export {
   backupToDrive,
   restoreFromDrive,
   findOrCreateFolder,
+  findOrCreateAppFolder,
+  resolveDriveFolder,
+  driveFolderKey,
   DRIVE_BACKUP_FILE_NAME,
   LEGACY_DRIVE_BACKUP_FILE_NAME,
   uploadBackupVersion,
@@ -28,7 +34,27 @@ export {
   trashDriveFile,
   BACKUP_VERSION_PROPERTY,
 } from './drive'
-export type { UploadOptions, DriveBackupFile, DriveCallOptions } from './drive'
+export type { UploadOptions, DriveBackupFile, DriveCallOptions, DriveFolderRef } from './drive'
+export {
+  builtInGoogleConfig,
+  effectiveClientId,
+  ownClientId,
+  usesBuiltInClient,
+  isBuiltInClientId,
+  availableScopes,
+  canSendWithGmail,
+  pickerConfig,
+  driveFolderRef,
+  driveFolderLabel,
+  driveFolderUrl,
+  autoSavePdfEnabled,
+  DRIVE_APP_FOLDER_NAME,
+  DRIVE_PDF_SUBFOLDER,
+  DRIVE_BACKUP_SUBFOLDER,
+} from './googleClient'
+export type { BuiltInGoogleConfig, DriveFileKind } from './googleClient'
+export { loadPicker, pickDriveFolder, GAPI_SCRIPT_URL } from './picker'
+export type { PickFolderOptions } from './picker'
 export { encryptText, decryptText, isEncryptedEnvelope, BackupCryptoError, PBKDF2_ITERATIONS, ENCRYPTED_BACKUP_FORMAT } from './backupCrypto'
 export type { EncryptedEnvelope } from './backupCrypto'
 export { sendViaGmail, buildGmailRaw } from './gmail'

@@ -4,12 +4,15 @@ import {
   __resetGoogleAuthForTests,
   getAccessToken,
   getGoogleStatus,
+  getGoogleAuthVersion,
   getGrantedScopes,
   googleSignIn,
   googleSignOut,
   hasAccessToken,
   invalidateToken,
+  rememberedGoogleAccount,
   SCOPE_URLS,
+  subscribeGoogleAuth,
 } from './googleAuth'
 
 const CLIENT = 'client.apps.googleusercontent.com'
@@ -178,5 +181,41 @@ describe('token model', () => {
     script!.dispatchEvent(new Event('error'))
     await expect(promise).rejects.toMatchObject({ code: 'script_load_failed' })
     script!.remove()
+  })
+})
+
+describe('shared client and account state', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('never requests gmail.send with the site’s built-in client', async () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', CLIENT)
+    await expect(getAccessToken(CLIENT, ['gmail'])).rejects.toMatchObject({ code: 'gmail_needs_own_client' })
+    await expect(googleSignIn(CLIENT, ['drive', 'gmail'])).rejects.toMatchObject({ code: 'gmail_needs_own_client' })
+    expect(requests).toHaveLength(0)
+    // Drive alone is fine, and asks only for non-sensitive scopes.
+    await googleSignIn(CLIENT, ['drive'])
+    expect(requests[0].config.scope.split(' ').sort()).toEqual(['email', 'openid', SCOPE_URLS.drive].sort())
+    // Another (the user's own) client may ask for Gmail.
+    await googleSignIn('222-own.apps.googleusercontent.com', ['gmail'])
+    expect(requests[1].config.scope).toContain(SCOPE_URLS.gmail)
+  })
+
+  it('remembers the signed-in account for this client across reloads until sign-out, and notifies listeners', async () => {
+    const listener = vi.fn()
+    const unsubscribe = subscribeGoogleAuth(listener)
+    expect(rememberedGoogleAccount(CLIENT)).toBeNull()
+    const before = getGoogleAuthVersion()
+    await googleSignIn(CLIENT, ['drive'])
+    expect(listener).toHaveBeenCalled()
+    expect(getGoogleAuthVersion()).not.toBe(before)
+    expect(rememberedGoogleAccount(CLIENT)).toEqual({ email: 'omanik@gmail.com' })
+    expect(rememberedGoogleAccount('other.apps.googleusercontent.com')).toBeNull()
+    listener.mockClear()
+    await googleSignOut()
+    expect(listener).toHaveBeenCalled()
+    expect(rememberedGoogleAccount(CLIENT)).toBeNull()
+    unsubscribe()
   })
 })

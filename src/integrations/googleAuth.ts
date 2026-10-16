@@ -2,6 +2,7 @@
 // No refresh tokens, no client secret, no backend.
 import { errorFromGis, GoogleApiError } from './errors'
 import type { GisOauth2, GisTokenResponse } from './gis-types'
+import { isBuiltInClientId } from './googleClient'
 import type { GoogleStatus } from './types'
 
 export type GoogleScope = 'drive' | 'gmail'
@@ -29,6 +30,24 @@ let state: TokenState | null = null
 let lastClientId: string | undefined
 let gisPromise: Promise<GisOauth2> | null = null
 let pending: Promise<string> | null = null
+
+// Listeners for sign-in / sign-out (the account chip and Settings follow them).
+const listeners = new Set<() => void>()
+let version = 0
+function changed() {
+  version++
+  for (const l of [...listeners]) l()
+}
+
+/** Called after every sign-in, token change and sign-out. */
+export function subscribeGoogleAuth(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+/** Changes whenever the sign-in state changes (a snapshot for useSyncExternalStore). */
+export function getGoogleAuthVersion(): number {
+  return version
+}
 
 interface Hint {
   clientId: string
@@ -141,6 +160,8 @@ export function hasAccessToken(clientId: string | undefined, scopes: GoogleScope
 export async function getAccessToken(clientId: string, scopes: GoogleScope[], options: TokenOptions = {}): Promise<string> {
   const id = clientId?.trim()
   if (!id) throw new GoogleApiError('not_configured')
+  // The site's shared client asks only for non-sensitive scopes: Gmail needs the user's own client.
+  if (scopes.includes('gmail') && isBuiltInClientId(id)) throw new GoogleApiError('gmail_needs_own_client')
   lastClientId = id
   if (state && state.clientId !== id) state = null
   const needed = scopes.map((s) => SCOPE_URLS[s])
@@ -170,6 +191,7 @@ export async function getAccessToken(clientId: string, scopes: GoogleScope[], op
       email,
     }
     writeHint({ clientId: id, email })
+    changed()
     if (needed.length && !oauth2.hasGrantedAllScopes(resp, needed[0], ...needed.slice(1))) {
       throw new GoogleApiError('insufficient_scope')
     }
@@ -204,6 +226,17 @@ export function getGoogleStatus(clientId?: string): GoogleStatus {
   }
 }
 
+/**
+ * The account last signed in with this client in this browser (kept after a reload, while the token itself is not),
+ * or null. `email` may be missing when Google did not return it.
+ */
+export function rememberedGoogleAccount(clientId: string | undefined): { email?: string } | null {
+  const id = clientId?.trim()
+  if (!id) return null
+  const hint = readHint(id)
+  return hint ? { email: hint.email } : null
+}
+
 /** Granted Google scopes of the current token (for UI hints). */
 export function getGrantedScopes(): GoogleScope[] {
   if (!state || state.expiresAt <= Date.now()) return []
@@ -221,6 +254,7 @@ export async function googleSignOut(): Promise<void> {
   const token = state?.accessToken
   state = null
   writeHint(null)
+  changed()
   if (!token) return
   const oauth2 = typeof window !== 'undefined' ? window.google?.accounts?.oauth2 : undefined
   if (oauth2) {
@@ -252,4 +286,5 @@ export function __resetGoogleAuthForTests(): void {
   gisPromise = null
   pending = null
   writeHint(null)
+  changed()
 }
