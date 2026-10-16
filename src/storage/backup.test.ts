@@ -57,8 +57,10 @@ describe('validateBackup', () => {
 
   it('names the record and the field in natural bilingual messages', () => {
     const err = errorOf(withInvoice((i) => delete i.issueDate))
-    expect(err.messages.et).toBe('Varukoopia arve nr 3 (2026-0003) on vigane: puudub arve kuupäev.')
-    expect(err.messages.en).toBe('Backup invoice #3 (2026-0003) is invalid: missing issue date.')
+    expect(err.messages.et).toBe('Varukoopias on vigane arvete 3. kirje (2026-0003): puudub arve kuupäev.')
+    expect(err.messages.en).toBe('Backup entry 3 in the invoice list (2026-0003) is invalid: missing issue date.')
+    // The position in the list is named as an entry, so it cannot be mistaken for the invoice number.
+    expect(err.messages.et).not.toMatch(/arve nr/)
     expect(err.message).toBe(err.messages.en)
   })
 
@@ -92,14 +94,14 @@ describe('validateBackup', () => {
   ])('rejects an invoice with a bad %s', (_name, patch, message) => {
     const err = errorOf(withInvoice(patch))
     // the number is shown when it is readable
-    expect(err.message).toMatch(/^Backup invoice #3( \(2026-0003\))? is invalid: /)
+    expect(err.message).toMatch(/^Backup entry 3 in the invoice list( \(2026-0003\))? is invalid: /)
     expect(err.message).toMatch(message)
-    expect(err.messages.et).toMatch(/^Varukoopia arve nr 3( \(2026-0003\))? on vigane: (puudub|vigane) /)
+    expect(err.messages.et).toMatch(/^Varukoopias on vigane arvete 3\. kirje( \(2026-0003\))?: (puudub|vigane) /)
   })
 
   it('reports Estonian line-level problems naturally', () => {
     const err = errorOf(withInvoice((i) => ((i.lines as Record<string, unknown>[])[0].quantity = 'kaks')))
-    expect(err.messages.et).toBe('Varukoopia arve nr 3 (2026-0003) on vigane: vigane 1. rea kogus.')
+    expect(err.messages.et).toBe('Varukoopias on vigane arvete 3. kirje (2026-0003): vigane 1. rea kogus.')
   })
 
   it('allows an empty number on drafts and optional fields to be absent', () => {
@@ -129,9 +131,9 @@ describe('validateBackup', () => {
       patch(client)
       data.clients.push(client)
       const err = errorOf(data)
-      expect(err.message).toMatch(/^Backup client #2 is invalid: /)
+      expect(err.message).toMatch(/^Backup entry 2 in the client list is invalid: /)
       expect(err.message).toMatch(message)
-      expect(err.messages.et).toMatch(/^Varukoopia klient nr 2 on vigane: /)
+      expect(err.messages.et).toMatch(/^Varukoopias on vigane klientide 2\. kirje: /)
     }
   })
 
@@ -274,15 +276,15 @@ describe('validateBackup – version 2 data', () => {
   it('validates products, rules and events field by field', () => {
     const cases: [(d: ReturnType<typeof v2>) => void, RegExp][] = [
       [(d) => (d.products = {} as never), /products/],
-      [(d) => ((d.products[0] as Record<string, unknown>).unitPrice = '60'), /product #1 is invalid: invalid unit price/],
+      [(d) => ((d.products[0] as Record<string, unknown>).unitPrice = '60'), /entry 1 in the product list is invalid: invalid unit price/],
       [(d) => ((d.products[0] as Record<string, unknown>).vatRate = Infinity), /invalid VAT rate/],
-      [(d) => delete (d.products[0] as Record<string, unknown>).updatedAt, /product #1 .* missing modification time/],
+      [(d) => delete (d.products[0] as Record<string, unknown>).updatedAt, /entry 1 in the product list .* missing modification time/],
       [(d) => d.products.push({ ...(d.products[0] as object) }), /duplicate id p1/],
-      [(d) => ((d.recurringRules[0] as Record<string, unknown>).interval = 'weekly'), /recurring rule #1 is invalid: invalid interval/],
+      [(d) => ((d.recurringRules[0] as Record<string, unknown>).interval = 'weekly'), /entry 1 in the recurring rules is invalid: invalid interval/],
       [(d) => ((d.recurringRules[0] as Record<string, unknown>).nextDate = '2026-02-30'), /invalid next date/],
       [(d) => ((d.recurringRules[0] as Record<string, unknown>).active = 'yes'), /invalid active flag/],
       [(d) => delete (d.recurringRules[0] as Record<string, unknown>).sourceInvoiceId, /missing source invoice/],
-      [(d) => ((d.events[0] as Record<string, unknown>).kind = 'paid'), /event #1 is invalid: invalid event kind/],
+      [(d) => ((d.events[0] as Record<string, unknown>).kind = 'paid'), /entry 1 in the invoice events is invalid: invalid event kind/],
       [(d) => delete (d.events[0] as Record<string, unknown>).at, /missing event time/],
       [(d) => ((d.events[0] as Record<string, unknown>).note = 5), /invalid note/],
     ]
@@ -291,17 +293,17 @@ describe('validateBackup – version 2 data', () => {
       patch(d)
       expect(errorOf(d).message).toMatch(re)
     }
-    expect(errorOf({ ...v2(), events: [{ invoiceId: 'x', kind: 'sent', at: '' }] }).messages.et).toMatch(/sündmus nr 1 on vigane: puudub ID/)
+    expect(errorOf({ ...v2(), events: [{ invoiceId: 'x', kind: 'sent', at: '' }] }).messages.et).toMatch(/arvete sündmuste 1\. kirje: puudub ID/)
   })
 
   it('accepts deletion records and checks them like the other lists', () => {
     const record = { id: 'gone', number: 'A-001', type: 'invoice', deletedAt: '2026-10-15T10:00:00.000Z' }
     expect(validateBackup({ ...v2(), deleted: [record] }).deleted).toEqual([record])
     expect(validateBackup({ ...v2(), deleted: null }).deleted).toBeUndefined()
-    expect(errorOf({ ...v2(), deleted: [{ ...record, type: 'receipt' }] }).message).toMatch(/deleted document record #1 is invalid: invalid document type/)
+    expect(errorOf({ ...v2(), deleted: [{ ...record, type: 'receipt' }] }).message).toMatch(/entry 1 in the deleted documents is invalid: invalid document type/)
     expect(errorOf({ ...v2(), deleted: [{ ...record, deletedAt: 'eile' }] }).message).toMatch(/invalid deletion time/)
     expect(errorOf({ ...v2(), deleted: [record, record] }).message).toMatch(/duplicate id gone/)
-    expect(errorOf({ ...v2(), deleted: [{ ...record, id: '' }] }).messages.et).toMatch(/kustutatud dokumendi kirje nr 1 on vigane: puudub ID/)
+    expect(errorOf({ ...v2(), deleted: [{ ...record, id: '' }] }).messages.et).toMatch(/kustutatud dokumentide 1\. kirje: puudub ID/)
     expect(errorOf(withInvoice((inv) => (inv.reopenedIssueDate = '31.12.2026'))).message).toMatch(/invalid original issue date/)
   })
 

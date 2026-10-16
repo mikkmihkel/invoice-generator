@@ -473,7 +473,7 @@ function checkRecords(
   list.forEach((r, i) => {
     const label = what.one(i + 1, r)
     const fail = (p: Text): never => {
-      throw new BackupFormatError(`Varukoopia ${label.et} on vigane: ${p.et}.`, `Backup ${label.en} is invalid: ${p.en}.`)
+      throw new BackupFormatError(`Varukoopias on vigane ${label.et}: ${p.et}.`, `Backup ${label.en} is invalid: ${p.en}.`)
     }
     if (!isObject(r)) fail({ et: 'kirje ei ole objekt', en: 'the record is not an object' })
     const rec = r as Record<string, unknown>
@@ -503,7 +503,7 @@ export function validateBackup(data: unknown): BackupFile {
   checkTree(data)
   checkRecords(
     data.clients,
-    { et: 'kliendid', en: 'clients', one: (n) => ({ et: `klient nr ${n}`, en: `client #${n}` }) },
+    { et: 'kliendid', en: 'clients', one: (n) => ({ et: `klientide ${n}. kirje`, en: `entry ${n} in the client list` }) },
     checkClient,
   )
   checkRecords(
@@ -513,7 +513,7 @@ export function validateBackup(data: unknown): BackupFile {
       en: 'invoices',
       one: (n, r) => {
         const num = isObject(r) && typeof r.number === 'string' && r.number ? ` (${r.number})` : ''
-        return { et: `arve nr ${n}${num}`, en: `invoice #${n}${num}` }
+        return { et: `arvete ${n}. kirje${num}`, en: `entry ${n} in the invoice list${num}` }
       },
     },
     checkInvoice,
@@ -522,21 +522,21 @@ export function validateBackup(data: unknown): BackupFile {
   if (!absent(data.products)) {
     checkRecords(
       data.products,
-      { et: 'tooted ja teenused', en: 'products', one: (n) => ({ et: `toode nr ${n}`, en: `product #${n}` }) },
+      { et: 'tooted ja teenused', en: 'products', one: (n) => ({ et: `toodete ${n}. kirje`, en: `entry ${n} in the product list` }) },
       checkProduct,
     )
   }
   if (!absent(data.recurringRules)) {
     checkRecords(
       data.recurringRules,
-      { et: 'korduvarvete reeglid', en: 'recurring rules', one: (n) => ({ et: `korduvarve reegel nr ${n}`, en: `recurring rule #${n}` }) },
+      { et: 'korduvarvete reeglid', en: 'recurring rules', one: (n) => ({ et: `korduvarvete reeglite ${n}. kirje`, en: `entry ${n} in the recurring rules` }) },
       checkRecurringRule,
     )
   }
   if (!absent(data.events)) {
     checkRecords(
       data.events,
-      { et: 'arvete sündmused', en: 'invoice events', one: (n) => ({ et: `sündmus nr ${n}`, en: `event #${n}` }) },
+      { et: 'arvete sündmused', en: 'invoice events', one: (n) => ({ et: `arvete sündmuste ${n}. kirje`, en: `entry ${n} in the invoice events` }) },
       checkEvent,
       false,
     )
@@ -544,7 +544,7 @@ export function validateBackup(data: unknown): BackupFile {
   if (!absent(data.deleted)) {
     checkRecords(
       data.deleted,
-      { et: 'kustutatud dokumendid', en: 'deleted documents', one: (n) => ({ et: `kustutatud dokumendi kirje nr ${n}`, en: `deleted document record #${n}` }) },
+      { et: 'kustutatud dokumendid', en: 'deleted documents', one: (n) => ({ et: `kustutatud dokumentide ${n}. kirje`, en: `entry ${n} in the deleted documents` }) },
       checkDeletionRecord,
       false,
     )
