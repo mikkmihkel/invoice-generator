@@ -1002,7 +1002,7 @@ export const en: Record<keyof typeof et, string> = {
   'vies.validName': 'Valid: {name}',
   'vies.invalid': 'According to VIES this VAT number is not valid.',
   'vies.unavailable': 'VIES or the member state database is not answering right now. Try again later.',
-  'vies.blocked': 'VIES does not allow this number to be checked automatically from here. Check {number} on the official VIES page.',
+  'vies.blocked': 'Could not connect to VIES: the network connection failed or VIES does not accept requests from here. Try again, or check {number} on the official VIES page.',
   'vies.open': 'Copy number and open VIES',
   'vies.openPage': 'Open the VIES page',
   'vies.retry': 'Try again',
@@ -1122,4 +1122,13 @@ export const en: Record<keyof typeof et, string> = {
   'gdrive.pdfSignInSave': 'Sign in and save',
   'gdrive.pdfFailed': '{doc} {number}: could not save the PDF to Drive. {reason}',
   'gdrive.retry': 'Try again',
+  // --- Accessibility and visual fixes (UX audit F04–F20) ---
+  'registry.unavailable': 'The Business Register could not be searched right now. Check your internet connection and try again, or enter the details manually.',
+  'registry.unavailablePartial': 'Part of the Business Register search did not respond, so some companies may be missing from the results.',
+  'registry.retry': 'Try again',
+  'preview.pages': 'Preview pages',
+  'preview.fullSize': 'Show at full size',
+  'backup.changesTitleCompany': 'The backup changes your company details',
+  'backup.changesTitleSettings': 'The backup changes settings',
+  'backup.changesIntroOther': 'Check that these changes are correct before you accept them.',
 }

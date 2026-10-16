@@ -13,6 +13,11 @@ export interface RegistrySearchOptions {
   /** Also query the live RIK autocomplete API (may fail due to CORS — must degrade silently). */
   live?: boolean
   signal?: AbortSignal
+  /**
+   * Called when a source could not be searched: 'index' = the bundled index is missing or failed to load,
+   * 'live' = the live API did not answer. Lets the UI tell "nothing found" apart from "could not search".
+   */
+  onUnavailable?: (source: 'index' | 'live') => void
 }
 
 export interface RegistryIndexInfo {
@@ -94,8 +99,9 @@ async function search(query: string, opts: RegistrySearchOptions): Promise<Regis
   const [byName, byCode, live] = await Promise.all([
     findByTokens(tokens, nameMatches, signal),
     codePrefix ? findByCodePrefix(codePrefix, signal) : Promise.resolve([]),
-    opts.live ? liveSearch(q, { limit, signal }) : Promise.resolve([]),
+    opts.live ? liveSearch(q, { limit, signal, onFail: () => opts.onUnavailable?.('live') }) : Promise.resolve([]),
   ])
+  if (byName === null && !signal?.aborted) opts.onUnavailable?.('index')
 
   const merged = new Map<string, MergedCandidate>()
   for (const c of [...(byName ?? []), ...(byCode ?? [])]) if (!merged.has(c.code)) merged.set(c.code, { ...c })
@@ -147,8 +153,9 @@ export async function getCompanyByCode(registryCode: string, opts: RegistrySearc
     if (!/^\d{8}$/.test(code)) return null
     const rec = await getRecord(code, opts.signal)
     if (rec) return opts.signal?.aborted ? null : rec
+    if (rec === null && !opts.signal?.aborted) opts.onUnavailable?.('index')
     if (opts.live) {
-      const live = await liveSearch(code, { limit: 5, signal: opts.signal })
+      const live = await liveSearch(code, { limit: 5, signal: opts.signal, onFail: () => opts.onUnavailable?.('live') })
       const hit = live.find((l) => l.company.registryCode === code)
       if (hit && !opts.signal?.aborted) return hit.company
     }

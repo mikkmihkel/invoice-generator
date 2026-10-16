@@ -226,7 +226,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
       </>,
     ])
   payRows.push([t('detail.vat'), t(`vat.scheme.${invoice.vatScheme}` as MessageKey)])
-  payRows.push([t('detail.design'), [template ? pick(template.name, lang) : invoice.templateId, t(`lang.${invoice.language}` as MessageKey).toLowerCase()].filter(Boolean).join(', ')])
+  payRows.push([t('detail.design'), [template ? pick(template.name, lang) : invoice.templateId, lang === 'et' ? t(`lang.${invoice.language}` as MessageKey).toLowerCase() : t(`lang.${invoice.language}` as MessageKey)].filter(Boolean).join(', ')])
 
   return (
     <article className="doc" aria-labelledby="doc-title">

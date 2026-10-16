@@ -1,10 +1,10 @@
-import { MagnifyingGlassIcon } from '@phosphor-icons/react'
+import { ArrowClockwiseIcon, MagnifyingGlassIcon } from '@phosphor-icons/react'
 import { useEffect, useId, useState } from 'react'
 import type { RegistryCompany } from '../../domain'
 import { REGISTRY_ATTRIBUTION } from '../../registry'
 import { useApp } from '../AppContext'
 import { formatAddress, addressFromRegistry } from '../util'
-import { inactiveStatus, useRegistryPick, useRegistrySearch } from './registrySearch'
+import { inactiveStatus, searchNotice, useRegistryPick, useRegistrySearch } from './registrySearch'
 
 interface Props {
   onPick: (company: RegistryCompany) => void
@@ -39,7 +39,7 @@ export function CompanySearch({ onPick, label, autoFocus, placeholder }: Props) 
   const listId = id + '-list'
   const [query, setQuery] = useState('')
   const [dismissed, setDismissed] = useState(false)
-  const { results, loading, failed, searched } = useRegistrySearch(query)
+  const { results, loading, failed, searched, unavailable, retry } = useRegistrySearch(query)
   const [active, setActive] = useState(-1)
   const { pick, picking } = useRegistryPick((c) => {
     setQuery('')
@@ -110,10 +110,22 @@ export function CompanySearch({ onPick, label, autoFocus, placeholder }: Props) 
         </ul>
       </div>
       <div className="field-hint" aria-live="polite">
-        {failed ? t('registry.failed') : searched && !loading && results.length === 0 ? t('registry.noResults') : query.trim().length < 2 ? t('registry.hint') : null}
+        {failed ? t('registry.failed') : searchNotice(t, { query, loading, searched, unavailable, count: results.length })}
       </div>
+      {unavailable && searched && !loading && <RegistryRetry onRetry={retry} />}
       <RegistryAttribution lang={lang} />
     </div>
+  )
+}
+
+/** "Try again" for a register search that could not reach every source. */
+export function RegistryRetry({ onRetry }: { onRetry: () => void }) {
+  const { t } = useApp()
+  return (
+    <button type="button" className="btn btn-sm btn-ghost registry-retry" onClick={onRetry}>
+      <ArrowClockwiseIcon aria-hidden="true" />
+      {t('registry.retry')}
+    </button>
   )
 }
 

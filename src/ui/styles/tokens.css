@@ -52,7 +52,7 @@
   --border-input: #8f959d;
   --text: #1d1f23;
   --text-2: #5b616a;
-  --text-3: #6b717a;
+  --text-3: #646a73; /* ≥ 4.5:1 also on --accent-soft (selected cards) */
 
   --accent: #1f6b4a;
   --accent-hover: #185a3d;

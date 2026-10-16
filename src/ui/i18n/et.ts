@@ -1000,7 +1000,7 @@ export const et = {
   'vies.validName': 'Kehtiv: {name}',
   'vies.invalid': 'VIES-i andmetel ei ole see käibemaksukohustuslase number kehtiv.',
   'vies.unavailable': 'VIES või liikmesriigi andmebaas ei vasta praegu. Proovi hiljem uuesti.',
-  'vies.blocked': 'VIES ei võimalda seda numbrit siit automaatselt kontrollida. Kontrolli numbrit {number} ametlikul VIES-i lehel.',
+  'vies.blocked': 'VIES-iga ei saanud ühendust: võrguühendus katkes või VIES ei luba siit päringuid teha. Proovi uuesti või kontrolli numbrit {number} ametlikul VIES-i lehel.',
   'vies.open': 'Kopeeri number ja ava VIES',
   'vies.openPage': 'Ava VIES-i leht',
   'vies.retry': 'Proovi uuesti',
@@ -1120,4 +1120,13 @@ export const et = {
   'gdrive.pdfSignInSave': 'Logi sisse ja salvesta',
   'gdrive.pdfFailed': '{doc} {number}: PDF-faili ei õnnestunud Drive’i salvestada. {reason}',
   'gdrive.retry': 'Proovi uuesti',
+  // --- Accessibility and visual fixes (UX audit F04–F20) ---
+  'registry.unavailable': 'Äriregistrist ei saanud praegu otsida. Kontrolli internetiühendust ja proovi uuesti või sisesta andmed käsitsi.',
+  'registry.unavailablePartial': 'Osa äriregistri otsingust ei vastanud, seega võib mõni ettevõte tulemustest puududa.',
+  'registry.retry': 'Proovi uuesti',
+  'preview.pages': 'Eelvaate leheküljed',
+  'preview.fullSize': 'Näita täissuuruses',
+  'backup.changesTitleCompany': 'Varukoopia muudab ettevõtte andmeid',
+  'backup.changesTitleSettings': 'Varukoopia muudab seadeid',
+  'backup.changesIntroOther': 'Kontrolli, et muudatused on õiged, enne kui need üle võtad.',
 }

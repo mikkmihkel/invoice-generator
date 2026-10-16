@@ -41,6 +41,16 @@ export function paymentDetailChanges(current: { profile: CompanyProfile | null; 
   return out
 }
 
+/**
+ * Heading and intro for the changes a backup would make, by what actually changes: the IBAN warning only when bank
+ * accounts differ, so the guard stays credible when only the company name changes.
+ */
+export function changesHeading(changes: PaymentChange[], t: Translate): { title: string; intro: string } {
+  if (changes.some((c) => c.field === 'ibans')) return { title: t('backup.changesTitle'), intro: t('backup.changesIntro') }
+  const company = changes.some((c) => c.field !== 'googleClientId')
+  return { title: t(company ? 'backup.changesTitleCompany' : 'backup.changesTitleSettings'), intro: t('backup.changesIntroOther') }
+}
+
 /** The backup with the current Google client ID instead of the imported one (the default). */
 export function keepClientId(backup: BackupFile, currentClientId: string | undefined): BackupFile {
   if (!backup.settings) return backup

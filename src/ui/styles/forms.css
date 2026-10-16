@@ -706,3 +706,12 @@ fieldset:disabled .template-option:not(.selected) {
     padding: var(--s-4);
   }
 }
+
+/* Touch screens: colour swatches a little larger, still with room between them. */
+@media (pointer: coarse) {
+  .swatch,
+  .color-field .swatch {
+    width: 28px;
+    height: 28px;
+  }
+}

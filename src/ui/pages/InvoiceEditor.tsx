@@ -818,7 +818,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             <legend className="visually-hidden">{title}</legend>
 
             <EdSection id="sec-buyer" title={t('editor.buyer')}>
-              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} autoFocus={autoFocusBuyer} />
+              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} autoFocus={autoFocusBuyer} vatScheme={invoice.vatScheme} />
               {clientNote && (
                 <div className="ed-client-note" role="note" aria-label={t('editor.clientNote')}>
                   <NoteIcon size={16} className="ed-client-note-icon" aria-hidden="true" />
@@ -1221,8 +1221,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         </div>
       </div>
 
-      {dialog === 'issue' && quote && <QuoteIssueDialog predictedNumber={predicted} keepsNumber={reopened} warnings={warnings.length} stale={staleQuote} onClose={() => setDialog(null)} onConfirm={issue} />}
-      {dialog === 'issue' && !quote && <IssueDialog credit={credit} predictedNumber={predicted} keepsNumber={reopened} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && quote && <QuoteIssueDialog predictedNumber={predicted} keepsNumber={reopened} warnings={warnings} stale={staleQuote} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && !quote && <IssueDialog credit={credit} predictedNumber={predicted} keepsNumber={reopened} warnings={warnings} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
       {dialog === 'delete' && (
         <DeleteInvoiceDialog
           invoice={invoice}

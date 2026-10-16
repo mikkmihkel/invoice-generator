@@ -10,7 +10,7 @@ import { useApp } from '../AppContext'
 import { BackupSection } from './settings/BackupSection'
 import ExportSection from './settings/ExportSection'
 import { GoogleSection } from './settings/GoogleSection'
-import { backupContents, keepClientId, keepDriveFolder, paymentDetailChanges, readBackupText } from './backupReview'
+import { backupContents, changesHeading, keepClientId, keepDriveFolder, paymentDetailChanges, readBackupText } from './backupReview'
 import { Dialog, useConfirm } from '../components/Dialog'
 import { CheckboxField } from '../components/fields'
 import { Section } from '../components/misc'
@@ -85,8 +85,8 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
       </ul>
       {changes.length > 0 && (
         <div className="notice notice-warn backup-changes">
-          <strong>{t('backup.changesTitle')}</strong>
-          <p className="small">{t('backup.changesIntro')}</p>
+          <strong>{changesHeading(changes, t).title}</strong>
+          <p className="small">{changesHeading(changes, t).intro}</p>
           <dl className="change-list">
             {changes.map((c) => (
               <div key={c.field}>
