@@ -159,6 +159,7 @@ describe('quote wording', () => {
     const repo = createMemoryRepo({ profile, invoices: [q] })
     const { unmount } = renderAt('#/invoices/new?type=quote', repo)
     expect(await screen.findByRole('heading', { name: 'Uus hinnapakkumine', level: 1 }, { timeout: 5000 })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Muuda kujundust' }))
     expect(screen.getByLabelText('Pakkumise keel')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Lisa tekstirida enne pakkumise ridu' })).toBeInTheDocument()
     expect(screen.queryByText(/arveridu/)).not.toBeInTheDocument()

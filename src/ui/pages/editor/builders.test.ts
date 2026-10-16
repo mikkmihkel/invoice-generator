@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import { makeClient, makeInvoice, makeProfile } from '../../../storage/testFixtures'
-import { clientEmailCc, copyLines, creditNoteFor, duplicateInvoice, linesAreBlank, monthLabel, savedClientOf } from './builders'
+import { createEmptyInvoice } from '../../../domain'
+import { appearanceMatchesDefaults, clientEmailCc, copyLines, creditNoteFor, duplicateInvoice, linesAreBlank, monthLabel, savedClientOf } from './builders'
+
+describe('appearanceMatchesDefaults', () => {
+  const profile = makeProfile()
+  const fresh = () => createEmptyInvoice(profile)
+
+  it('holds for a new draft and ignores the case of colour codes', () => {
+    expect(appearanceMatchesDefaults(fresh(), profile)).toBe(true)
+    expect(appearanceMatchesDefaults({ ...fresh(), accentColor: profile.defaults.accentColor.toUpperCase() }, profile)).toBe(true)
+  })
+
+  it('fails once the language, template, colours or payment QR differ', () => {
+    expect(appearanceMatchesDefaults({ ...fresh(), language: 'en' }, profile)).toBe(false)
+    expect(appearanceMatchesDefaults({ ...fresh(), templateId: 'bold' }, profile)).toBe(false)
+    expect(appearanceMatchesDefaults({ ...fresh(), accentColor: '#000000' }, profile)).toBe(false)
+    expect(appearanceMatchesDefaults({ ...fresh(), colorMode: 'mono' }, profile)).toBe(false)
+    expect(appearanceMatchesDefaults({ ...fresh(), paymentQr: true }, profile)).toBe(false)
+  })
+
+  it('takes the client’s invoice language as the default', () => {
+    const client = makeClient('c1', { defaultLanguage: 'en' })
+    expect(appearanceMatchesDefaults({ ...fresh(), language: 'en' }, profile, client)).toBe(true)
+    expect(appearanceMatchesDefaults(fresh(), profile, client)).toBe(false)
+  })
+})
 
 describe('copies of a reopened document', () => {
   const reopened = makeInvoice('src', { number: 'A-001', status: 'draft', reopenedAt: '2026-03-11T10:00:00.000Z', reopenedIssueDate: '2026-03-10' })

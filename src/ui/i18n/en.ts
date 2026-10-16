@@ -1050,5 +1050,7 @@ export const en: Record<keyof typeof et, string> = {
   'shortcuts.suggestions': 'Choose a client or line suggestion',
   'shortcuts.typingNote': 'Single-key shortcuts do not work while you are typing in a field.',
   'shortcuts.issueTitle': 'Shortcut {keys}',
+  'appearance.change': 'Change',
+  'appearance.changeLabel': 'Change the appearance',
   // ---- end of Workstream C ----
 }

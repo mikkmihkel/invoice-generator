@@ -64,7 +64,8 @@ import { issueKeys } from '../shortcuts'
 import { useToast } from '../Toasts'
 import { accentColor, addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isCreditSettled, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
-import { copyLines, creditNoteFor, duplicateInvoice, linesAreBlank, newDraft, redateInvoice, savedClientOf } from './editor/builders'
+import { appearanceMatchesDefaults, copyLines, creditNoteFor, duplicateInvoice, linesAreBlank, newDraft, redateInvoice, savedClientOf } from './editor/builders'
+import { AppearanceSummary } from './editor/AppearanceSummary'
 import { CopyLinesOffer } from './editor/CopyLinesOffer'
 import { latestInvoiceFor } from './products'
 import { DueAmount, EdSection, MoreOptions, NextStep, QuoteStatusWord, SaveIndicator, StatusWord } from './editor/EditorParts'
@@ -190,6 +191,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const [autoFocusBuyer] = useState(() => id === 'new' && !focusTitle && !sheet)
   // Ctrl/⌘+Enter asks to issue; each blocked attempt reveals the checklist (counter as a signal).
   const [checkReveal, setCheckReveal] = useState(0)
+  // Appearance that follows the company defaults is one summary line until the user asks to change it.
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
   const issueKeyRef = useRef<(() => void) | null>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -380,6 +383,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       : undefined
   const clientForNew = savedClientOf(invoice, clients)
   const termFromClient = !ro && pickedClient?.paymentTermDays !== undefined && term === clientPaymentTermDays(profile, pickedClient)
+  const appearanceCollapsed = !ro && !appearanceOpen && appearanceMatchesDefaults(invoice, profile, pickedClient)
   // Issued invoices read as a document: optional fields that were left empty are not shown.
   const shown = (v: unknown) => !ro || (v !== undefined && v !== null && v !== '')
 
@@ -977,6 +981,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                     </div>
                   )}
                 </dl>
+              ) : appearanceCollapsed ? (
+                <AppearanceSummary
+                  invoice={invoice}
+                  onChange={() => {
+                    setAppearanceOpen(true)
+                    requestAnimationFrame(() => document.getElementById(fieldId('language'))?.focus())
+                  }}
+                />
               ) : (
                 <>
                 <div className="grid">

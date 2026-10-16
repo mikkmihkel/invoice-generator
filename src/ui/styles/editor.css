@@ -1616,3 +1616,32 @@ html.ed-sheet-open {
     min-height: 44px;
   }
 }
+
+/* Appearance that follows the company defaults: one line and "Muuda". */
+.ed-appearance-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-4);
+}
+.ed-appearance-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  color: var(--text-2);
+}
+.ed-appearance-sep {
+  white-space: pre;
+  color: var(--text-3);
+}
+.ed-appearance-colour {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@media (max-width: 640px) {
+  .ed-appearance-summary .ed-text-btn {
+    min-height: 44px;
+  }
+}

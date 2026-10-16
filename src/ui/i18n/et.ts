@@ -1048,5 +1048,7 @@ export const et = {
   'shortcuts.suggestions': 'Vali kliendi- või reasoovitus',
   'shortcuts.typingNote': 'Ühe klahvi kiirklahvid ei tööta, kui kirjutad parasjagu väljale.',
   'shortcuts.issueTitle': 'Kiirklahv {keys}',
+  'appearance.change': 'Muuda',
+  'appearance.changeLabel': 'Muuda kujundust',
   // ---- end of Workstream C ----
 }

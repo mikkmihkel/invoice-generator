@@ -138,6 +138,24 @@ export function savedClientOf(inv: Pick<Invoice, 'buyer'>, clients: readonly Cli
   return code ? clients.find((c) => c.registryCode?.trim() === code) : undefined
 }
 
+/**
+ * Whether a draft looks as the company defaults (and the client's invoice language) would make it: same language,
+ * template, colours and payment QR setting. The editor then shows the appearance as one summary line.
+ */
+export function appearanceMatchesDefaults(inv: Invoice, profile: CompanyProfile, client?: Client): boolean {
+  const d = profile.defaults
+  const mode = inv.colorMode ?? 'accent'
+  const sameColour = (a: string | undefined, b: string | undefined) => (a ?? '').toLowerCase() === (b ?? '').toLowerCase()
+  return (
+    inv.language === (client?.defaultLanguage ?? d.language) &&
+    inv.templateId === d.templateId &&
+    mode === (d.colorMode ?? 'accent') &&
+    (mode === 'mono' || sameColour(inv.accentColor, d.accentColor)) &&
+    (mode !== 'duo' || sameColour(inv.secondaryColor, d.secondaryColor)) &&
+    (inv.type === 'quote' || !!inv.paymentQr === !!d.paymentQr)
+  )
+}
+
 /** Copy recipients from the client card, for the CC field when e-mailing this document ('' when none). */
 export function clientEmailCc(inv: Pick<Invoice, 'buyer'>, clients: readonly Client[]): string {
   return savedClientOf(inv, clients)?.emailCc?.trim() ?? ''
