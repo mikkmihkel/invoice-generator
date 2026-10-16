@@ -37,7 +37,7 @@ export function EmailDialog({
   /** Reminders sent before this one; read from the invoice's history when not given. */
   previousReminders?: number
 }) {
-  const { t, profile, settings, invoices, repo } = useApp()
+  const { t, profile, settings, invoices, repo, clients } = useApp()
   const history = useInvoiceEvents(invoice.id)
   const second = (previousReminders ?? history.reminders.length) > 0
   const toast = useToast()
@@ -59,7 +59,9 @@ export function EmailDialog({
     [kind, invoice.language, invoice.type, profile, second, interest],
   )
   const [to, setTo] = useState(invoice.buyer.email ?? '')
-  const [cc, setCc] = useState('')
+  // The client card can name copy recipients (e.g. the client's accountant). `emailCc` comes with the per-client
+  // defaults of the client card; the cast keeps this compiling before that field exists in Client.
+  const [cc, setCc] = useState(() => (invoice.buyer.clientId ? (clients.find((c) => c.id === invoice.buyer.clientId) as { emailCc?: string } | undefined)?.emailCc?.trim() : '') ?? '')
   const [subject, setSubject] = useState(() => fillEmailText(tpl.subject, invoice, company, amount, interest))
   const [body, setBody] = useState(() => fillEmailText(tpl.body, invoice, company, amount, interest))
   // The reminder history loads after opening: switch to the second-reminder text unless the user already edited.

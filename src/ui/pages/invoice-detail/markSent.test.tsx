@@ -1,8 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../../../App'
-import { createDefaultSettings, newId, reopenBlocker, type Invoice, type InvoiceEvent } from '../../../domain'
-import { addDaysISO, localTodayISO } from '../../util'
+import { createDefaultSettings, newId, reopenBlocker, type Client, type Invoice, type InvoiceEvent } from '../../../domain'
+import { addDaysISO, localTodayISO, newClient } from '../../util'
 import { createMemoryRepo, sampleProfile } from '../../testing/memoryRepo'
 import * as integrations from '../../../integrations'
 import { canMarkSent, sentPromptKey } from './markSent'
@@ -299,5 +299,17 @@ describe('e-mail handed to the mail app or the share sheet', () => {
       fireEvent.click(within(toast).getByRole('button', { name: 'Märgi saadetuks' }))
     })
     expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'sent' }))
+  })
+})
+
+describe('e-mail copy recipients from the client card', () => {
+  it('fills "Cc" with the client card copy addresses', async () => {
+    const client = { ...newClient({ name: 'Kalda Puutöö OÜ' }), emailCc: ' raamatupidaja@kalda.ee ' } as Client
+    const inv = invoice({ buyer: { ...invoice().buyer, clientId: client.id } })
+    renderAt(`#/?id=${inv.id}`, createMemoryRepo({ profile, clients: [client], invoices: [inv] }))
+    const article = await doc()
+    fireEvent.click(within(actions(article)).getByRole('button', { name: 'Saada e-kirjaga' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Saada arve 2026-0004' })
+    expect(within(dialog).getByLabelText('Koopia (CC)')).toHaveValue('raamatupidaja@kalda.ee')
   })
 })
