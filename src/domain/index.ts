@@ -120,5 +120,8 @@ export {
   recurringDraftId,
   stopRulesFor,
   prepareRecurringDrafts,
+  recurringOverview,
+  nextRecurring,
+  resumeRule,
 } from './recurring'
-export type { RecurringRun } from './recurring'
+export type { RecurringEntry, RecurringRun } from './recurring'

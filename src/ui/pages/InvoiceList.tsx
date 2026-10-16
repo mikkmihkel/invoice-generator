@@ -1,8 +1,9 @@
 import { ArrowsClockwiseIcon, FileTextIcon, PlusIcon, ReceiptIcon, UserPlusIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { computeTotals, isVoided, quoteStatus, type Invoice, type QuoteStatus } from '../../domain'
+import { computeTotals, isVoided, nextRecurring, quoteStatus, recurringOverview, type Invoice, type QuoteStatus } from '../../domain'
 import { useApp } from '../AppContext'
+import type { MessageKey } from '../i18n'
 import { EmptyState, SearchField, Segmented } from '../components/ui'
 import { DriveNudge } from '../google/DriveNudge'
 import { formatDate, formatMoney } from '../format'
@@ -10,15 +11,34 @@ import { daysBetween, displayStatus, getLastBackupAt, isUnpaid, localTodayISO, n
 import { InvoiceDetail } from './invoice-detail/InvoiceDetail'
 import { rowStatus, settlementOf, type Settlement } from './invoice-detail/status'
 import { interpolate, joinSums } from './invoice-detail/text'
+import { attentionGroups, type AttentionGroup, type AttentionKey } from './list/attention'
+import { AttentionStrip } from './list/AttentionStrip'
+import { Highlight } from './list/Highlight'
+import { RecurringPanel } from './list/RecurringPanel'
+import { searchInvoice, type SearchField as HitField, type SearchHit } from './list/search'
 
 type Kind = 'invoices' | 'quotes'
-type MainFilter = 'all' | 'unpaid' | 'draft'
-type ExtraFilter = 'overdue' | 'paid' | 'cancelled'
+type MainFilter = 'all' | 'unpaid' | 'overdue' | 'draft'
+type ExtraFilter = 'overdue' | 'paid' | 'cancelled' | 'recurring'
 type QuoteMain = 'all' | 'sent' | 'draft'
 type QuoteExtra = 'accepted' | 'expired' | 'cancelled'
-type StatusFilter = MainFilter | ExtraFilter | QuoteMain | QuoteExtra
+/** Filters set from the "needs attention" strip (drafts use the ordinary drafts filter). */
+type AttentionFilter = 'remind' | 'unsent' | 'expiring'
+type StatusFilter = MainFilter | ExtraFilter | QuoteMain | QuoteExtra | AttentionFilter
+const ATTENTION_FILTER: Record<AttentionKey, StatusFilter> = { overdue: 'remind', unsent: 'unsent', quotes: 'expiring', drafts: 'draft' }
+const ATTENTION_FILTERS: readonly StatusFilter[] = ['remind', 'unsent', 'expiring']
 const EXTRA: ExtraFilter[] = ['overdue', 'paid', 'cancelled']
 const QUOTE_EXTRA: QuoteExtra[] = ['accepted', 'expired', 'cancelled']
+
+/** Fields not visible in a row: a search hit in one of them is shown under the row with this label. */
+const HIDDEN_FIELD: Partial<Record<HitField, MessageKey>> = {
+  registryCode: 'field.registryCode',
+  reference: 'field.referenceNumber',
+  orderReference: 'field.orderReference',
+  email: 'field.email',
+  line: 'search.line',
+  net: 'totals.net',
+}
 
 interface Row {
   inv: Invoice
@@ -26,6 +46,7 @@ interface Row {
   /** Quotes only. */
   quote?: QuoteStatus
   gross: number
+  net: number
   /** Credit notes against the row's invoice and what is still owed after them. */
   settle: Settlement
   unpaid: boolean
@@ -76,7 +97,7 @@ function usePhone(): boolean {
 
 /** Arved: the receivables sentence, a quiet filter, month-grouped rows and the selected invoice beside them. */
 export default function InvoiceList() {
-  const { t, lang, invoices } = useApp()
+  const { t, lang, invoices, invoiceEvents, recurringRules } = useApp()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const today = localTodayISO()
@@ -95,7 +116,7 @@ export default function InvoiceList() {
       inv,
       status: displayStatus(inv, today, all),
       quote: inv.type === 'quote' ? quoteStatus(inv, today, all) : undefined,
-      gross: computeTotals(inv).gross,
+      ...(({ gross, net }) => ({ gross, net }))(computeTotals(inv)),
       settle: settlementOf(inv, all),
       unpaid: isUnpaid(inv, all),
     }))
@@ -109,6 +130,12 @@ export default function InvoiceList() {
   const kindRows = useMemo(() => rows.filter((r) => (kind === 'quotes') === !!r.quote), [rows, kind])
   const invoiceRows = useMemo(() => rows.filter((r) => !r.quote), [rows])
 
+  const recurring = useMemo(() => recurringOverview(recurringRules, invoices), [recurringRules, invoices])
+  const nextRule = useMemo(() => nextRecurring(recurringRules, invoices), [recurringRules, invoices])
+  const recurringIds = useMemo(() => new Set([...recurring.active, ...recurring.paused].map((e) => e.source.id)), [recurring])
+  const attention = useMemo(() => attentionGroups(rows.map((r) => r.inv), invoiceEvents, today), [rows, invoiceEvents, today])
+  const attentionIdsBy = useMemo(() => new Map(attention.map((g) => [ATTENTION_FILTER[g.key], new Set(g.docs.map((d) => d.id))])), [attention])
+
   const years = useMemo(() => [...new Set(kindRows.map((r) => r.inv.issueDate.slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse(), [kindRows])
 
   const summary = useMemo(() => {
@@ -121,6 +148,7 @@ export default function InvoiceList() {
     return {
       unpaid: owed(invoiceRows.filter((r) => r.unpaid)),
       overdue: owed(invoiceRows.filter((r) => r.status === 'overdue')),
+      overdueCount: invoiceRows.filter((r) => r.status === 'overdue').length,
       year: sumByCurrency(billed.map((r) => ({ amount: r.gross, currency: r.inv.currency }))),
       yearCount: billed.length,
       issued: invoiceRows.some((r) => r.status !== 'draft'),
@@ -128,12 +156,24 @@ export default function InvoiceList() {
     }
   }, [rows, invoiceRows, thisYear])
 
-  const q = query.trim().toLowerCase()
-  const filtered = kindRows.filter((r) => {
-    if (year !== 'all' && !r.inv.issueDate.startsWith(year)) return false
-    if (q && ![r.inv.number, r.inv.buyer.name, r.inv.orderReference, r.inv.buyer.registryCode].some((s) => s?.toLowerCase().includes(q))) return false
-    return matches(r, status)
-  })
+  // The rows shown, and which field each one matched the search in (to show it under the row).
+  const { filtered, hits } = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const hits = new Map<string, SearchHit>()
+    const filtered = kindRows.filter((r) => {
+      if (year !== 'all' && !r.inv.issueDate.startsWith(year)) return false
+      if (q) {
+        const hit = searchInvoice(r.inv, q, r)
+        if (!hit) return false
+        hits.set(r.inv.id, hit)
+      }
+      if (ATTENTION_FILTERS.includes(status)) return !!attentionIdsBy.get(status)?.has(r.inv.id)
+      // The recurring overview: its invoices, for the selection beside it.
+      if (status === 'recurring') return recurringIds.has(r.inv.id)
+      return matches(r, status)
+    })
+    return { filtered, hits }
+  }, [kindRows, year, query, status, attentionIdsBy, recurringIds])
 
   const groups = useMemo(() => {
     const out: { key: string; label: string; rows: Row[] }[] = []
@@ -194,7 +234,11 @@ export default function InvoiceList() {
 
   const money = (amount: number, currency: string) => formatMoney(amount, currency)
   const quotes = kind === 'quotes'
-  const extras: StatusFilter[] = quotes ? QUOTE_EXTRA : EXTRA
+  // Overdue invoices get their own chip while there are any; otherwise "overdue" stays under "More filters".
+  const overdueChip = !quotes && summary.overdueCount > 0
+  const invoiceExtras = [...(overdueChip ? EXTRA.filter((s) => s !== 'overdue') : EXTRA), ...(recurringIds.size > 0 || status === 'recurring' ? (['recurring'] as const) : [])]
+  const showRecurring = !quotes && status === 'recurring'
+  const extras: StatusFilter[] = quotes ? QUOTE_EXTRA : invoiceExtras
   const isExtra = extras.includes(status)
   const extraValue = isExtra ? status : year !== 'all' ? `y:${year}` : ''
   const onExtra = (v: string) => {
@@ -209,6 +253,23 @@ export default function InvoiceList() {
       if (isExtra) setStatus('all')
     }
   }
+  // The strip line whose filter is on (drafts only in the invoices view).
+  const activeAttention = (Object.keys(ATTENTION_FILTER) as AttentionKey[]).find(
+    (k) => ATTENTION_FILTER[k] === status && (k === 'quotes') === quotes,
+  )
+  const openAttention = (g: AttentionGroup) => {
+    const k: Kind = g.key === 'quotes' ? 'quotes' : 'invoices'
+    setKind(k)
+    setYear('all')
+    setQuery('')
+    if (g.docs.length === 1) {
+      setStatus('all')
+      navigate(`/?id=${g.docs[0].id}`)
+      return
+    }
+    setStatus(ATTENTION_FILTER[g.key])
+    if (explicit && (k === 'quotes') !== !!explicit.quote) navigate('/', { replace: true })
+  }
   const switchKind = (k: Kind) => {
     setKind(k)
     setStatus('all')
@@ -217,7 +278,14 @@ export default function InvoiceList() {
   }
   const mainOptions = quotes
     ? (['all', 'sent', 'draft'] as const).map((s) => ({ value: s as StatusFilter, label: s === 'sent' ? t('list.quoteFilter.sent') : t(`list.filter.${s}`) }))
-    : (['all', 'unpaid', 'draft'] as const).map((s) => ({ value: s as StatusFilter, label: t(`list.filter.${s}`) }))
+    : (['all', 'unpaid', 'overdue', 'draft'] as const)
+        .filter((s) => s !== 'overdue' || overdueChip)
+        .map((s) => (s === 'overdue' ? { value: s as StatusFilter, label: t('list.filter.overdueChip'), count: summary.overdueCount } : { value: s as StatusFilter, label: t(`list.filter.${s}`) }))
+  /** The receivables sentence leads to the invoices it sums up. */
+  const showStatus = (s: StatusFilter) => {
+    setStatus(s)
+    setYear('all')
+  }
 
   // Roving tabindex: only one row is in the tab order (the selected one, else the last focused or first row),
   // so Tab goes from the list straight on to the invoice's actions. Arrow keys move between rows (and select).
@@ -273,15 +341,42 @@ export default function InvoiceList() {
               : summary.unpaid.size === 0
               ? t('list.allPaid')
               : interpolate(t(summary.overdue.size ? 'list.receivable' : 'list.receivableNoOverdue'), {
-                  unpaid: <strong className="tnum">{joinSums(summary.unpaid, money)}</strong>,
-                  overdue: <strong className="tnum tone-danger">{joinSums(summary.overdue, money)}</strong>,
+                  unpaid: (
+                    <button
+                      type="button"
+                      className="sum-link"
+                      aria-label={t('list.showUnpaid', { amount: joinSums(summary.unpaid, money) })}
+                      onClick={() => showStatus('unpaid')}
+                    >
+                      <strong className="tnum">{joinSums(summary.unpaid, money)}</strong>
+                    </button>
+                  ),
+                  overdue: (
+                    <button
+                      type="button"
+                      className="sum-link"
+                      aria-label={t('list.showOverdue', { amount: joinSums(summary.overdue, money) })}
+                      onClick={() => showStatus('overdue')}
+                    >
+                      <strong className="tnum tone-danger">{joinSums(summary.overdue, money)}</strong>
+                    </button>
+                  ),
                 })}
           </p>
           )}
+          {!quotes && nextRule && (
+            <p className="recurring-next">
+              <ArrowsClockwiseIcon size={14} aria-hidden="true" />
+              <button type="button" className="sum-link" onClick={() => showStatus('recurring')}>
+                {t('recurring.nextHint', { date: formatDate(nextRule.rule.nextDate), client: nextRule.source.buyer.name || t('list.noClient') })}
+              </button>
+            </p>
+          )}
+          <AttentionStrip groups={attention} active={activeAttention ?? null} onOpen={openAttention} />
           <div className="list-filters">
             <Segmented<StatusFilter | ''>
               label={t('list.filterStatus')}
-              value={isExtra ? '' : status}
+              value={mainOptions.some((o) => o.value === status) ? status : ''}
               onChange={(v) => v && setStatus(v)}
               className="status-filter"
               options={mainOptions}
@@ -295,7 +390,7 @@ export default function InvoiceList() {
                         {t(`quote.status.${s}`)}
                       </option>
                     ))
-                  : EXTRA.map((s) => (
+                  : invoiceExtras.map((s) => (
                       <option key={s} value={s}>
                         {t(`list.filter.${s}`)}
                       </option>
@@ -312,11 +407,13 @@ export default function InvoiceList() {
               )}
             </select>
           </div>
-          <SearchField value={query} onChange={setQuery} label={t('list.search')} shortcutHint={t('common.searchShortcut')} />
+          <SearchField value={query} onChange={setQuery} label={t('list.searchWide')} shortcutHint={t('common.searchShortcut')} />
         </div>
 
         <div className="list-scroll" onKeyDown={onListKey}>
-          {quotes && !hasQuotes ? (
+          {showRecurring ? (
+            <RecurringPanel active={recurring.active} paused={recurring.paused} selectedId={selected?.inv.id} />
+          ) : quotes && !hasQuotes ? (
             <div className="list-none list-none-quotes">
               <p className="list-none-title">{t('list.quotesEmptyTitle')}</p>
               <p>{t('list.quotesEmptyText')}</p>
@@ -350,6 +447,7 @@ export default function InvoiceList() {
                     const s = r.quote ? quoteRowStatus(r, t) : rowStatus(inv, st, today, t, settle)
                     const recurringDraft = inv.status === 'draft' && !!inv.recurringRuleId
                     const current = selected?.inv.id === inv.id
+                    const hit = hits.get(inv.id)
                     return (
                       <li key={inv.id}>
                         <Link
@@ -360,10 +458,12 @@ export default function InvoiceList() {
                           tabIndex={inv.id === tabStop ? 0 : -1}
                           onFocus={() => setFocusId(inv.id)}
                         >
-                          <span className="row-client">{inv.buyer.name || <span className="muted">{t('list.noClient')}</span>}</span>
-                          <span className="row-amount tnum">{formatMoney(gross, inv.currency)}</span>
+                          <span className="row-client">
+                            {inv.buyer.name ? <Highlight text={inv.buyer.name} query={hit?.field === 'client' ? query : ''} /> : <span className="muted">{t('list.noClient')}</span>}
+                          </span>
+                          <span className="row-amount tnum">{hit?.field === 'amount' ? <mark className="hit">{formatMoney(gross, inv.currency)}</mark> : formatMoney(gross, inv.currency)}</span>
                           <span className="row-number">
-                            {inv.number || t('list.noNumber')}
+                            {inv.number ? <Highlight text={inv.number} query={hit?.field === 'number' ? query : ''} /> : t('list.noNumber')}
                             {inv.type === 'prepayment' && <span className="row-type"> · {t('invoice.type.prepayment')}</span>}
                             {recurringDraft && (
                               <span className="row-type row-recurring" title={t('list.recurringMarkerTitle')}>
@@ -374,6 +474,12 @@ export default function InvoiceList() {
                             )}
                           </span>
                           <span className={`row-status tone-${s.tone}`}>{s.text}</span>
+                          {hit && HIDDEN_FIELD[hit.field] && (
+                            <span className="row-hit">
+                              {t(HIDDEN_FIELD[hit.field]!)}:{' '}
+                              {hit.amount !== undefined ? <mark className="hit">{formatMoney(hit.amount, inv.currency)}</mark> : <Highlight text={hit.text} query={query} />}
+                            </span>
+                          )}
                         </Link>
                       </li>
                     )

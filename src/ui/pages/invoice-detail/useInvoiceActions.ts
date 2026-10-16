@@ -119,9 +119,10 @@ function remainderLabel(inv: Invoice, rate: number, multipleRates: boolean): str
 
 /**
  * The document actions of the selected invoice (same behaviour as in the editor). `invoice` is the stored record,
- * `effective` the one to render (drafts take the current company profile).
+ * `effective` the one to render (drafts take the current company profile). `onShared` is called after the document
+ * left the app in a way the app cannot follow (PDF or XML downloaded, printed, saved to Drive).
  */
-export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
+export function useInvoiceActions(invoice: Invoice, effective: Invoice, opts: { onShared?: () => void } = {}) {
   const app = useApp()
   const { t, profile, settings } = app
   const toast = useToast()
@@ -155,7 +156,13 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
     }
   }
 
-  const downloadPdf = () => act('pdf', async () => downloadBlob(await renderPdf(), invoiceFileName(effective, 'pdf')))
+  const shared = () => opts.onShared?.()
+
+  const downloadPdf = () =>
+    act('pdf', async () => {
+      downloadBlob(await renderPdf(), invoiceFileName(effective, 'pdf'))
+      shared()
+    })
 
   const print = () =>
     act('print', async () => {
@@ -168,11 +175,13 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
       })
       if (!w) {
         downloadBlob(blob, invoiceFileName(effective, 'pdf'))
+        shared()
         return
       }
       const url = URL.createObjectURL(blob)
       w.location.href = url
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      shared()
     })
 
   const downloadXml = () =>
@@ -187,6 +196,7 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
       const xml = buildUblXml(invoice, pdf ? { pdf } : {})
       downloadBlob(new Blob([xml], { type: 'application/xml' }), invoiceFileName(invoice, 'xml'))
       toast.success(t('einvoice.downloaded'))
+      shared()
     })
 
   const saveToDrive = () =>
@@ -202,6 +212,7 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
       const blob = await renderPdf()
       const res = await uploadToDrive(clientId, blob, invoiceFileName(effective, 'pdf'), driveFolderRef(settings, 'pdf'))
       toast.success(t('drive.saved', { folder: driveFolderLabel(settings, 'pdf') }), res.webViewLink ? { label: t('drive.open'), href: res.webViewLink } : undefined)
+      shared()
     })
 
   const openCopy = (inv: Invoice, msg: string) =>

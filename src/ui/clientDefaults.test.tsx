@@ -90,7 +90,6 @@ describe('per-client defaults in the editor', () => {
   })
 
   // The e-mail dialog is owned by another workstream: it prefills its CC field with clientEmailCc() once wired.
-  it.todo('prefill the CC address when e-mailing the client')
 })
 
 describe('client card', () => {

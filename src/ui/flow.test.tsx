@@ -59,7 +59,7 @@ function renderAt(hash: string, repo: ReturnType<typeof createMemoryRepo>) {
 describe('keyboard shortcuts', () => {
   it('"/" focuses the list search and "N" opens a new invoice, but not while typing', async () => {
     renderAt('#/', createMemoryRepo({ profile, invoices: [issued('2026-0001')] }))
-    const search = await screen.findByRole('searchbox', { name: 'Otsi numbri või kliendi järgi' })
+    const search = await screen.findByRole('searchbox', { name: 'Otsi numbri, kliendi, summa või rea järgi' })
     fireEvent.keyDown(document.body, { key: '/' })
     expect(search).toHaveFocus()
     // Typing "n" into the search box must not navigate away.

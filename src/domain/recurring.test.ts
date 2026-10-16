@@ -7,9 +7,12 @@ import {
   firstOccurrence,
   monthsBetween,
   nextOccurrence,
+  nextRecurring,
   prepareRecurringDrafts,
   recurringDraft,
   recurringDraftId,
+  recurringOverview,
+  resumeRule,
   ruleForInvoice,
   stopRulesFor,
   upcomingOccurrence,
@@ -231,5 +234,41 @@ describe('helpers', () => {
     expect(ruleForInvoice(rules, 'src')?.id).toBe('cur')
     expect(ruleForInvoice(rules.slice(0, 1), 'src')?.id).toBe('old')
     expect(ruleForInvoice(rules, 'none')).toBeUndefined()
+  })
+})
+
+describe('recurring overview', () => {
+  const invoices = [
+    source(),
+    source({ id: 'b', buyer: { ...source().buyer, name: 'Teine AS' } }),
+    source({ id: 'void', status: 'cancelled' }),
+    source({ id: 'draft', status: 'draft', number: '' }),
+  ]
+
+  it('lists active rules by the next draft date, then paused ones that can still be resumed', () => {
+    const rules = [
+      rule({ id: 'late', sourceInvoiceId: 'b', nextDate: '2026-12-01' }),
+      rule({ id: 'soon', nextDate: '2026-11-01' }),
+      rule({ id: 'paused', sourceInvoiceId: 'b', active: false }),
+      rule({ id: 'stoppedOnCancel', sourceInvoiceId: 'void', active: false }),
+      rule({ id: 'ofDraft', sourceInvoiceId: 'draft' }),
+      rule({ id: 'orphan', sourceInvoiceId: 'gone' }),
+    ]
+    const { active, paused } = recurringOverview(rules, invoices)
+    expect(active.map((e) => e.rule.id)).toEqual(['soon', 'late'])
+    expect(active[0].source.id).toBe('src')
+    expect(paused.map((e) => e.rule.id)).toEqual(['paused'])
+  })
+
+  it('names the next draft, skipping a rule still active on a cancelled invoice', () => {
+    const rules = [rule({ id: 'v', sourceInvoiceId: 'void', nextDate: '2026-10-20' }), rule({ id: 'b', sourceInvoiceId: 'b', nextDate: '2026-11-05' })]
+    expect(nextRecurring(rules, invoices)?.rule.id).toBe('b')
+    expect(nextRecurring([], invoices)).toBeUndefined()
+  })
+
+  it('resumes from the next date still ahead, or from the next date of the series without catching up', () => {
+    expect(resumeRule(rule({ active: false, nextDate: '2026-11-30' }), source(), '2026-10-16', NOW)).toMatchObject({ active: true, nextDate: '2026-11-30', updatedAt: NOW })
+    // Paused since spring: the series of the 31st goes on after today, the missed months are not prepared.
+    expect(resumeRule(rule({ active: false, nextDate: '2026-04-30' }), source(), '2026-10-16', NOW)).toMatchObject({ active: true, nextDate: '2026-10-31' })
   })
 })
