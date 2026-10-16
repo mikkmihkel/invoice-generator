@@ -5,6 +5,7 @@ import type { Repository } from './storage'
 import { AppProvider, useApp } from './ui/AppContext'
 import { ConfirmProvider } from './ui/components/Dialog'
 import { ErrorBoundary } from './ui/ErrorBoundary'
+import { DriveConnectProvider } from './ui/google/DriveConnect'
 import { NavGuardProvider } from './ui/navGuard'
 import { BootSkeleton, Layout } from './ui/Layout'
 import ClientsPage from './ui/pages/ClientsPage'
@@ -75,7 +76,9 @@ function Providers({ children }: { children: ReactNode }) {
   return (
     <ToastProvider closeLabel={t('common.close')}>
       <ConfirmProvider closeLabel={t('common.close')}>
-        <NavGuardProvider>{children}</NavGuardProvider>
+        <NavGuardProvider>
+          <DriveConnectProvider>{children}</DriveConnectProvider>
+        </NavGuardProvider>
       </ConfirmProvider>
     </ToastProvider>
   )

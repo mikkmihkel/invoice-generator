@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { computeTotals, isVoided, quoteStatus, type Invoice, type QuoteStatus } from '../../domain'
 import { useApp } from '../AppContext'
 import { EmptyState, SearchField, Segmented } from '../components/ui'
+import { DriveNudge } from '../google/DriveNudge'
 import { formatDate, formatMoney } from '../format'
 import { daysBetween, displayStatus, getLastBackupAt, isUnpaid, localTodayISO, normalizeInvoice, sumByCurrency, type DisplayStatus } from '../util'
 import { InvoiceDetail } from './invoice-detail/InvoiceDetail'
@@ -158,6 +159,7 @@ export default function InvoiceList() {
   if (invoices.length === 0) {
     return (
       <div className="page page-empty">
+        <DriveNudge />
         <EmptyState
           headingLevel={1}
           icon={<ReceiptIcon size={28} />}
@@ -239,6 +241,7 @@ export default function InvoiceList() {
           <h1 id="arved-title" className="visually-hidden">
             {quotes ? t('list.kind.quotes') : t('nav.invoices')}
           </h1>
+          <DriveNudge />
           <div className="list-kind">
             <Segmented<Kind>
               label={t('list.kindLabel')}

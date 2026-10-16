@@ -15,9 +15,10 @@ export type ToastAction = { label: string; href: string } | { label: string; onC
 
 export interface ToastApi {
   success(message: string, action?: Toast['action']): void
-  error(message: string | unknown): void
+  /** An action here is typically "Try again". */
+  error(message: string | unknown, action?: Toast['action']): void
   info(message: string, action?: Toast['action']): void
-  warning(message: string): void
+  warning(message: string, action?: Toast['action']): void
 }
 
 const ToastContext = createContext<ToastApi | null>(null)
@@ -48,8 +49,8 @@ export function ToastProvider({ children, closeLabel = 'Close' }: { children: Re
     () => ({
       success: (m, a) => push('success', m, a),
       info: (m, a) => push('info', m, a),
-      warning: (m) => push('warning', m),
-      error: (m) => push('error', typeof m === 'string' ? m : errorMessage(m)),
+      warning: (m, a) => push('warning', m, a),
+      error: (m, a) => push('error', typeof m === 'string' ? m : errorMessage(m), a),
     }),
     [push],
   )
