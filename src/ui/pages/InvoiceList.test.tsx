@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../../App'
-import { newId, type Invoice } from '../../domain'
+import { newId, type Invoice, type RecurringRule } from '../../domain'
 import { addDaysISO, localTodayISO } from '../util'
 import { createMemoryRepo, sampleProfile } from '../testing/memoryRepo'
 
@@ -250,5 +250,81 @@ describe('list search', () => {
     root = await search('kohvik')
     expect(root.querySelector('.row-client mark')).toHaveTextContent('Kohvik')
     expect(root.querySelector('.row-hit')).toBeNull()
+  })
+})
+
+describe('recurring overview', () => {
+  const now = new Date().toISOString()
+  const rule = (patch: Partial<RecurringRule>): RecurringRule => ({ id: 'r', sourceInvoiceId: '', interval: 'monthly', nextDate: addDaysISO(today, 30), active: true, createdAt: now, updatedAt: now, ...patch })
+  const named = (name: string) => ({ ...invoice().buyer, name })
+
+  function setup() {
+    const a = invoice({ buyer: named('Kuuklient OÜ') })
+    const b = invoice({ buyer: named('Kvartaliklient OÜ') })
+    const c = invoice({ buyer: named('Peatatud OÜ'), issueDate: addDaysISO(today, -100) })
+    const rules = [
+      rule({ id: 'ra', sourceInvoiceId: a.id, nextDate: addDaysISO(today, 12) }),
+      rule({ id: 'rb', sourceInvoiceId: b.id, interval: 'quarterly', nextDate: addDaysISO(today, 40) }),
+      rule({ id: 'rc', sourceInvoiceId: c.id, active: false, nextDate: addDaysISO(today, -20) }),
+    ]
+    const repo = createMemoryRepo({ profile, invoices: [a, b, c, invoice({ buyer: named('Muu OÜ') })], recurringRules: rules })
+    renderAt('#/', repo)
+    return { a, b, c, rules, repo }
+  }
+  const panel = async () => (await screen.findByRole('region', { name: 'Korduvarved' })) as HTMLElement
+  const fmt = (iso: string) => iso.split('-').reverse().join('.')
+
+  it('names the next recurring draft in the list header and opens the overview from it', async () => {
+    const { a } = setup()
+    const root = await list()
+    const hint = within(root).getByRole('button', { name: `Järgmine korduvarve ${fmt(addDaysISO(today, 12))}: Kuuklient OÜ` })
+    fireEvent.click(hint)
+    const box = await panel()
+    const rows = within(box).getAllByRole('listitem')
+    expect(rows.map((r) => r.querySelector('.row-client')?.textContent)).toEqual(['Kuuklient OÜ', 'Kvartaliklient OÜ', 'Peatatud OÜ'])
+    expect(rows[0]).toHaveTextContent(`Iga kuu, järgmine mustand ${fmt(addDaysISO(today, 12))}`)
+    expect(rows[0]).toHaveTextContent(/124,00/)
+    expect(rows[1]).toHaveTextContent('Iga kvartal, järgmine mustand')
+    expect(rows[2]).toHaveTextContent('Iga kuu, peatatud')
+    expect(within(rows[0]).getByRole('link')).toHaveAttribute('href', `#/?id=${a.id}`)
+    // Also under "More filters".
+    expect(within(root).getByRole('combobox', { name: 'Rohkem filtreid' })).toHaveValue('recurring')
+  })
+
+  it('pauses a rule with undo, resumes a paused one without catching up, and stops one', async () => {
+    const { rules, repo } = setup()
+    const root = await list()
+    fireEvent.change(within(root).getByRole('combobox', { name: 'Rohkem filtreid' }), { target: { value: 'recurring' } })
+    const box = await panel()
+    await act(async () => {
+      fireEvent.click(within(box).getByRole('button', { name: 'Peata korduvarve: Kuuklient OÜ' }))
+    })
+    expect(repo.saveRecurringRule).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'ra', active: false }))
+    expect(await screen.findByText('Korduvarve on peatatud: Kuuklient OÜ. Uusi mustandeid ei koostata.')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Võta tagasi' }))
+    })
+    expect(repo.saveRecurringRule).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'ra', active: true, nextDate: rules[0].nextDate }))
+
+    await act(async () => {
+      fireEvent.click(within(box).getByRole('button', { name: 'Jätka korduvarvet: Peatatud OÜ' }))
+    })
+    const resumed = repo.saveRecurringRule.mock.lastCall![0] as RecurringRule
+    expect(resumed).toMatchObject({ id: 'rc', active: true })
+    expect(resumed.nextDate > today).toBe(true)
+
+    await act(async () => {
+      fireEvent.click(within(box).getByRole('button', { name: 'Lõpeta korduvarve: Kvartaliklient OÜ' }))
+    })
+    expect(repo.deleteRecurringRule).toHaveBeenCalledWith('rb')
+    expect(await screen.findByText('Korduvarve on lõpetatud: Kvartaliklient OÜ. Varem koostatud arved jäävad alles.')).toBeInTheDocument()
+    expect(within(box).queryByText('Kvartaliklient OÜ')).not.toBeInTheDocument()
+  })
+
+  it('shows no hint and no filter without recurring invoices', async () => {
+    renderAt('#/', createMemoryRepo({ profile, invoices: [invoice()] }))
+    const root = await list()
+    expect(within(root).queryByRole('button', { name: /^Järgmine korduvarve/ })).not.toBeInTheDocument()
+    expect(within(root).queryByRole('option', { name: 'Korduvarved' })).not.toBeInTheDocument()
   })
 })

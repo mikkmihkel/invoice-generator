@@ -68,6 +68,87 @@
   flex-wrap: wrap;
 }
 
+/* "Järgmine korduvarve 15.11.2026: Klient" under the receivables sentence. */
+.recurring-next {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: calc(var(--s-1) * -1);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.recurring-next svg {
+  flex: none;
+  color: var(--text-3);
+}
+.recurring-next .sum-link {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Recurring overview in place of the rows. */
+.rec-panel .month-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.rec-note {
+  padding: 0 var(--s-6) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.rec-rows {
+  margin: 0 0 var(--s-2);
+  padding: 0;
+  list-style: none;
+}
+.rec-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 6px var(--s-4) 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.rec-main {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--s-3);
+  row-gap: 2px;
+  padding: 4px var(--s-2) 4px var(--s-6);
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--r-sm);
+}
+.rec-main:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.rec-main[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+}
+.rec-when {
+  grid-column: 1 / -1;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.rec-paused .row-client,
+.rec-paused .row-amount {
+  color: var(--text-2);
+}
+.rec-actions {
+  display: flex;
+  gap: 2px;
+}
+
 /* "Vajab tähelepanu": one quiet line per kind of task, above the filters. */
 .attention {
   background: var(--surface);
@@ -821,6 +902,24 @@ tr:focus-within .row-actions,
     padding: var(--s-4) var(--s-4) var(--s-2);
   }
   .attention-item {
+    min-height: 44px;
+  }
+  .rec-row {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px var(--s-4);
+  }
+  .rec-main {
+    margin: 0 calc(var(--s-2) * -1);
+    padding-left: var(--s-2);
+  }
+  .rec-main[aria-current='true']::before {
+    display: none;
+  }
+  .rec-note {
+    padding-left: var(--s-4);
+    padding-right: var(--s-4);
+  }
+  .rec-actions .btn {
     min-height: 44px;
   }
   .attention-head .icon-btn {

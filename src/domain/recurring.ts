@@ -170,6 +170,43 @@ export function recurringDraft(source: Invoice, rule: Pick<RecurringRule, 'id'>,
   return draft
 }
 
+/** A rule with the invoice it repeats, for the overview of recurring invoices. */
+export interface RecurringEntry {
+  rule: RecurringRule
+  source: Invoice
+}
+
+/**
+ * The rules to show in the overview: active ones by the date of the next draft, then paused (inactive) ones whose
+ * invoice can still be repeated. Rules whose source invoice is missing or a draft are left out, and so are
+ * paused rules of a cancelled invoice (they can no longer be resumed).
+ */
+export function recurringOverview(rules: readonly RecurringRule[], invoices: readonly Invoice[]): { active: RecurringEntry[]; paused: RecurringEntry[] } {
+  const byId = new Map(invoices.map((i) => [i.id, i]))
+  const entries = rules
+    .map((rule) => ({ rule, source: byId.get(rule.sourceInvoiceId) }))
+    .filter((e): e is RecurringEntry => !!e.source && e.source.status !== 'draft' && isRecurrenceInterval(e.rule.interval))
+  const byNext = (a: RecurringEntry, b: RecurringEntry) => a.rule.nextDate.localeCompare(b.rule.nextDate)
+  return {
+    active: entries.filter((e) => e.rule.active).sort(byNext),
+    paused: entries.filter((e) => !e.rule.active && e.source.status !== 'cancelled').sort((a, b) => b.rule.updatedAt.localeCompare(a.rule.updatedAt)),
+  }
+}
+
+/** The next draft an active rule will prepare (for an invoice that is not cancelled), if any. */
+export function nextRecurring(rules: readonly RecurringRule[], invoices: readonly Invoice[]): RecurringEntry | undefined {
+  return recurringOverview(rules, invoices).active.find((e) => e.source.status !== 'cancelled')
+}
+
+/**
+ * A paused rule switched on again. The series goes on from its next date when that is still ahead; otherwise from
+ * the first date of the series after `today`, so the paused periods are not caught up.
+ */
+export function resumeRule(rule: RecurringRule, source: Pick<Invoice, 'issueDate'>, today: ISODate, now = new Date().toISOString()): RecurringRule {
+  const nextDate = rule.nextDate > today ? rule.nextDate : upcomingOccurrence(source, rule.interval, today)
+  return { ...rule, active: true, nextDate, updatedAt: now }
+}
+
 function structuredCopy<T>(v: T): T {
   if (v === undefined || v === null || typeof v !== 'object') return v
   return typeof structuredClone === 'function' ? structuredClone(v) : JSON.parse(JSON.stringify(v))

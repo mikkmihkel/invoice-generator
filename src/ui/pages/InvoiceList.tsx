@@ -1,7 +1,7 @@
 import { ArrowsClockwiseIcon, FileTextIcon, PlusIcon, ReceiptIcon, UserPlusIcon } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { computeTotals, isVoided, quoteStatus, type Invoice, type QuoteStatus } from '../../domain'
+import { computeTotals, isVoided, nextRecurring, quoteStatus, recurringOverview, type Invoice, type QuoteStatus } from '../../domain'
 import { useApp } from '../AppContext'
 import type { MessageKey } from '../i18n'
 import { EmptyState, SearchField, Segmented } from '../components/ui'
@@ -13,11 +13,12 @@ import { interpolate, joinSums } from './invoice-detail/text'
 import { attentionGroups, type AttentionGroup, type AttentionKey } from './list/attention'
 import { AttentionStrip } from './list/AttentionStrip'
 import { Highlight } from './list/Highlight'
+import { RecurringPanel } from './list/RecurringPanel'
 import { searchInvoice, type SearchField as HitField, type SearchHit } from './list/search'
 
 type Kind = 'invoices' | 'quotes'
 type MainFilter = 'all' | 'unpaid' | 'overdue' | 'draft'
-type ExtraFilter = 'overdue' | 'paid' | 'cancelled'
+type ExtraFilter = 'overdue' | 'paid' | 'cancelled' | 'recurring'
 type QuoteMain = 'all' | 'sent' | 'draft'
 type QuoteExtra = 'accepted' | 'expired' | 'cancelled'
 /** Filters set from the "needs attention" strip (drafts use the ordinary drafts filter). */
@@ -95,7 +96,7 @@ function usePhone(): boolean {
 
 /** Arved: the receivables sentence, a quiet filter, month-grouped rows and the selected invoice beside them. */
 export default function InvoiceList() {
-  const { t, lang, invoices, invoiceEvents } = useApp()
+  const { t, lang, invoices, invoiceEvents, recurringRules } = useApp()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const today = localTodayISO()
@@ -128,6 +129,9 @@ export default function InvoiceList() {
   const kindRows = useMemo(() => rows.filter((r) => (kind === 'quotes') === !!r.quote), [rows, kind])
   const invoiceRows = useMemo(() => rows.filter((r) => !r.quote), [rows])
 
+  const recurring = useMemo(() => recurringOverview(recurringRules, invoices), [recurringRules, invoices])
+  const nextRule = useMemo(() => nextRecurring(recurringRules, invoices), [recurringRules, invoices])
+  const recurringIds = useMemo(() => new Set([...recurring.active, ...recurring.paused].map((e) => e.source.id)), [recurring])
   const attention = useMemo(() => attentionGroups(rows.map((r) => r.inv), invoiceEvents, today), [rows, invoiceEvents, today])
   const attentionIdsBy = useMemo(() => new Map(attention.map((g) => [ATTENTION_FILTER[g.key], new Set(g.docs.map((d) => d.id))])), [attention])
 
@@ -163,10 +167,12 @@ export default function InvoiceList() {
         hits.set(r.inv.id, hit)
       }
       if (ATTENTION_FILTERS.includes(status)) return !!attentionIdsBy.get(status)?.has(r.inv.id)
+      // The recurring overview: its invoices, for the selection beside it.
+      if (status === 'recurring') return recurringIds.has(r.inv.id)
       return matches(r, status)
     })
     return { filtered, hits }
-  }, [kindRows, year, query, status, attentionIdsBy])
+  }, [kindRows, year, query, status, attentionIdsBy, recurringIds])
 
   const groups = useMemo(() => {
     const out: { key: string; label: string; rows: Row[] }[] = []
@@ -228,7 +234,8 @@ export default function InvoiceList() {
   const quotes = kind === 'quotes'
   // Overdue invoices get their own chip while there are any; otherwise "overdue" stays under "More filters".
   const overdueChip = !quotes && summary.overdueCount > 0
-  const invoiceExtras = overdueChip ? EXTRA.filter((s) => s !== 'overdue') : EXTRA
+  const invoiceExtras = [...(overdueChip ? EXTRA.filter((s) => s !== 'overdue') : EXTRA), ...(recurringIds.size > 0 || status === 'recurring' ? (['recurring'] as const) : [])]
+  const showRecurring = !quotes && status === 'recurring'
   const extras: StatusFilter[] = quotes ? QUOTE_EXTRA : invoiceExtras
   const isExtra = extras.includes(status)
   const extraValue = isExtra ? status : year !== 'all' ? `y:${year}` : ''
@@ -354,6 +361,14 @@ export default function InvoiceList() {
                 })}
           </p>
           )}
+          {!quotes && nextRule && (
+            <p className="recurring-next">
+              <ArrowsClockwiseIcon size={14} aria-hidden="true" />
+              <button type="button" className="sum-link" onClick={() => showStatus('recurring')}>
+                {t('recurring.nextHint', { date: formatDate(nextRule.rule.nextDate), client: nextRule.source.buyer.name || t('list.noClient') })}
+              </button>
+            </p>
+          )}
           <AttentionStrip groups={attention} active={activeAttention ?? null} onOpen={openAttention} />
           <div className="list-filters">
             <Segmented<StatusFilter | ''>
@@ -393,7 +408,9 @@ export default function InvoiceList() {
         </div>
 
         <div className="list-scroll" onKeyDown={onListKey}>
-          {quotes && !hasQuotes ? (
+          {showRecurring ? (
+            <RecurringPanel active={recurring.active} paused={recurring.paused} selectedId={selected?.inv.id} />
+          ) : quotes && !hasQuotes ? (
             <div className="list-none list-none-quotes">
               <p className="list-none-title">{t('list.quotesEmptyTitle')}</p>
               <p>{t('list.quotesEmptyText')}</p>
