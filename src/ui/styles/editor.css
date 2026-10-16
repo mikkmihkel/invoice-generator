@@ -16,6 +16,14 @@
 .ed .num {
   font-variant-numeric: tabular-nums;
 }
+/*
+ * Fields reached with Tab (or scrolled to on focus) stop clear of the sticky top bar and of the bottom bar while it
+ * is pinned (--ed-bar-live is set only then), so the focused field is never hidden behind them (WCAG 2.4.11).
+ */
+:root:has(.ed-draft) {
+  scroll-padding-top: calc(var(--topbar-h) + var(--s-2));
+  scroll-padding-bottom: calc(var(--ed-bar-live, 0px) + var(--tabbar-h) + var(--s-2));
+}
 
 .ed-layout {
   display: flex;
@@ -1497,12 +1505,24 @@ html.ed-sheet-open {
 }
 
 @media (max-width: 767px) {
+  /*
+   * Phones: the draft editor has its own bottom bar (check, amount, Issue), so the app's tab bar is hidden there
+   * to give the form room; "← Arved" and the company name in the top bar lead back. --tabbar-h is 0 for everything
+   * that sits above the tab bar (toasts, sticky actions, scroll padding).
+   */
+  :root:has(.ed-draft) {
+    --tabbar-h: 0px;
+  }
+  .shell:has(.ed-draft) .main-nav {
+    display: none;
+  }
+  .ed-draft .back-link {
+    min-height: 44px;
+    margin-top: -12px;
+    margin-bottom: 0;
+  }
   .ed {
     --ed-bar-h: 120px;
-  }
-  .ed-draft .ed-side {
-    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
-    padding-bottom: var(--s-3);
   }
   .shell:has(.ed-draft) .footer {
     padding-bottom: calc(var(--ed-bar-live, 120px) + var(--s-4));
