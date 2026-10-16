@@ -286,6 +286,21 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* Search: the matched text, and a matching field the row does not show. */
+mark.hit {
+  padding: 0 1px;
+  color: inherit;
+  background: var(--warning-soft);
+  border-radius: 2px;
+}
+.row-hit {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .row-status {
   justify-self: end;
   font-size: var(--fs-sm);

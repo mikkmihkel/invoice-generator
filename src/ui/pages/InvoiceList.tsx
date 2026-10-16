@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { computeTotals, isVoided, quoteStatus, type Invoice, type QuoteStatus } from '../../domain'
 import { useApp } from '../AppContext'
+import type { MessageKey } from '../i18n'
 import { EmptyState, SearchField, Segmented } from '../components/ui'
 import { formatDate, formatMoney } from '../format'
 import { daysBetween, displayStatus, getLastBackupAt, isUnpaid, localTodayISO, normalizeInvoice, sumByCurrency, type DisplayStatus } from '../util'
@@ -11,6 +12,8 @@ import { rowStatus, settlementOf, type Settlement } from './invoice-detail/statu
 import { interpolate, joinSums } from './invoice-detail/text'
 import { attentionGroups, type AttentionGroup, type AttentionKey } from './list/attention'
 import { AttentionStrip } from './list/AttentionStrip'
+import { Highlight } from './list/Highlight'
+import { searchInvoice, type SearchField as HitField, type SearchHit } from './list/search'
 
 type Kind = 'invoices' | 'quotes'
 type MainFilter = 'all' | 'unpaid' | 'overdue' | 'draft'
@@ -25,12 +28,23 @@ const ATTENTION_FILTERS: readonly StatusFilter[] = ['remind', 'unsent', 'expirin
 const EXTRA: ExtraFilter[] = ['overdue', 'paid', 'cancelled']
 const QUOTE_EXTRA: QuoteExtra[] = ['accepted', 'expired', 'cancelled']
 
+/** Fields not visible in a row: a search hit in one of them is shown under the row with this label. */
+const HIDDEN_FIELD: Partial<Record<HitField, MessageKey>> = {
+  registryCode: 'field.registryCode',
+  reference: 'field.referenceNumber',
+  orderReference: 'field.orderReference',
+  email: 'field.email',
+  line: 'search.line',
+  net: 'totals.net',
+}
+
 interface Row {
   inv: Invoice
   status: DisplayStatus
   /** Quotes only. */
   quote?: QuoteStatus
   gross: number
+  net: number
   /** Credit notes against the row's invoice and what is still owed after them. */
   settle: Settlement
   unpaid: boolean
@@ -100,7 +114,7 @@ export default function InvoiceList() {
       inv,
       status: displayStatus(inv, today, all),
       quote: inv.type === 'quote' ? quoteStatus(inv, today, all) : undefined,
-      gross: computeTotals(inv).gross,
+      ...(({ gross, net }) => ({ gross, net }))(computeTotals(inv)),
       settle: settlementOf(inv, all),
       unpaid: isUnpaid(inv, all),
     }))
@@ -137,13 +151,22 @@ export default function InvoiceList() {
     }
   }, [rows, invoiceRows, thisYear])
 
-  const q = query.trim().toLowerCase()
-  const filtered = kindRows.filter((r) => {
-    if (year !== 'all' && !r.inv.issueDate.startsWith(year)) return false
-    if (q && ![r.inv.number, r.inv.buyer.name, r.inv.orderReference, r.inv.buyer.registryCode].some((s) => s?.toLowerCase().includes(q))) return false
-    if (ATTENTION_FILTERS.includes(status)) return !!attentionIdsBy.get(status)?.has(r.inv.id)
-    return matches(r, status)
-  })
+  // The rows shown, and which field each one matched the search in (to show it under the row).
+  const { filtered, hits } = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const hits = new Map<string, SearchHit>()
+    const filtered = kindRows.filter((r) => {
+      if (year !== 'all' && !r.inv.issueDate.startsWith(year)) return false
+      if (q) {
+        const hit = searchInvoice(r.inv, q, r)
+        if (!hit) return false
+        hits.set(r.inv.id, hit)
+      }
+      if (ATTENTION_FILTERS.includes(status)) return !!attentionIdsBy.get(status)?.has(r.inv.id)
+      return matches(r, status)
+    })
+    return { filtered, hits }
+  }, [kindRows, year, query, status, attentionIdsBy])
 
   const groups = useMemo(() => {
     const out: { key: string; label: string; rows: Row[] }[] = []
@@ -366,7 +389,7 @@ export default function InvoiceList() {
               )}
             </select>
           </div>
-          <SearchField value={query} onChange={setQuery} label={t('list.search')} shortcutHint={t('common.searchShortcut')} />
+          <SearchField value={query} onChange={setQuery} label={t('list.searchWide')} shortcutHint={t('common.searchShortcut')} />
         </div>
 
         <div className="list-scroll" onKeyDown={onListKey}>
@@ -404,6 +427,7 @@ export default function InvoiceList() {
                     const s = r.quote ? quoteRowStatus(r, t) : rowStatus(inv, st, today, t, settle)
                     const recurringDraft = inv.status === 'draft' && !!inv.recurringRuleId
                     const current = selected?.inv.id === inv.id
+                    const hit = hits.get(inv.id)
                     return (
                       <li key={inv.id}>
                         <Link
@@ -414,10 +438,12 @@ export default function InvoiceList() {
                           tabIndex={inv.id === tabStop ? 0 : -1}
                           onFocus={() => setFocusId(inv.id)}
                         >
-                          <span className="row-client">{inv.buyer.name || <span className="muted">{t('list.noClient')}</span>}</span>
-                          <span className="row-amount tnum">{formatMoney(gross, inv.currency)}</span>
+                          <span className="row-client">
+                            {inv.buyer.name ? <Highlight text={inv.buyer.name} query={hit?.field === 'client' ? query : ''} /> : <span className="muted">{t('list.noClient')}</span>}
+                          </span>
+                          <span className="row-amount tnum">{hit?.field === 'amount' ? <mark className="hit">{formatMoney(gross, inv.currency)}</mark> : formatMoney(gross, inv.currency)}</span>
                           <span className="row-number">
-                            {inv.number || t('list.noNumber')}
+                            {inv.number ? <Highlight text={inv.number} query={hit?.field === 'number' ? query : ''} /> : t('list.noNumber')}
                             {inv.type === 'prepayment' && <span className="row-type"> · {t('invoice.type.prepayment')}</span>}
                             {recurringDraft && (
                               <span className="row-type row-recurring" title={t('list.recurringMarkerTitle')}>
@@ -428,6 +454,12 @@ export default function InvoiceList() {
                             )}
                           </span>
                           <span className={`row-status tone-${s.tone}`}>{s.text}</span>
+                          {hit && HIDDEN_FIELD[hit.field] && (
+                            <span className="row-hit">
+                              {t(HIDDEN_FIELD[hit.field]!)}:{' '}
+                              {hit.amount !== undefined ? <mark className="hit">{formatMoney(hit.amount, inv.currency)}</mark> : <Highlight text={hit.text} query={query} />}
+                            </span>
+                          )}
                         </Link>
                       </li>
                     )

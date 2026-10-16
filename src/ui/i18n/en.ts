@@ -1045,5 +1045,7 @@ export const en: Record<keyof typeof et, string> = {
   'attention.draftRecurringOne': '{client}, recurring draft made today',
   'attention.recurringTodayOne': '1 of them a recurring draft made today',
   'attention.recurringToday': '{count} of them recurring drafts made today',
+  'list.searchWide': 'Search by number, client, amount or line',
+  'search.line': 'Line',
   // ---- end of Workstream B ----
 }

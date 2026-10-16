@@ -206,3 +206,49 @@ describe('needs attention strip', () => {
     expect(await strip()).toBeInTheDocument()
   })
 })
+
+describe('list search', () => {
+  const hosting = () =>
+    invoice({
+      buyer: { ...invoice().buyer, name: 'Tartu Kohvik OÜ', email: 'arved@tartukohvik.ee' },
+      lines: [{ id: 'l', description: 'Veebimajutus aastaks', quantity: 1, unit: 'tk', unitPrice: 1000, vatRate: 24 }],
+    })
+
+  async function search(text: string) {
+    const root = await list()
+    fireEvent.change(within(root).getByRole('searchbox', { name: 'Otsi numbri, kliendi, summa või rea järgi' }), { target: { value: text } })
+    return root
+  }
+
+  it('finds an invoice by its amount however it is typed, and marks the amount', async () => {
+    renderAt('#/', createMemoryRepo({ profile, invoices: [hosting(), invoice()] }))
+    for (const text of ['1240', '1 240,00', '1240.0', '1 240 €']) {
+      const root = await search(text)
+      expect(rowNames(root)).toEqual(['Tartu Kohvik OÜ'])
+      expect(root.querySelector('.row-amount mark')).toHaveTextContent(/1\s240,00/)
+    }
+  })
+
+  it('finds line descriptions and the buyer e-mail, and shows which field matched', async () => {
+    renderAt('#/', createMemoryRepo({ profile, invoices: [hosting(), invoice()] }))
+    let root = await search('majutus')
+    expect(rowNames(root)).toEqual(['Tartu Kohvik OÜ'])
+    expect(root.querySelector('.row-hit')).toHaveTextContent('Rida: Veebimajutus aastaks')
+    expect(root.querySelector('.row-hit mark')).toHaveTextContent('majutus')
+    root = await search('tartukohvik.ee')
+    expect(root.querySelector('.row-hit')).toHaveTextContent('E-post: arved@tartukohvik.ee')
+    root = await search('1000')
+    expect(root.querySelector('.row-hit')).toHaveTextContent(/^Summa käibemaksuta: 1\s000,00\s€$/)
+  })
+
+  it('finds the reference number and marks a matching client name in the row', async () => {
+    const inv = hosting()
+    renderAt('#/', createMemoryRepo({ profile, invoices: [inv, invoice()] }))
+    let root = await search(inv.referenceNumber!)
+    expect(rowNames(root)).toEqual(['Tartu Kohvik OÜ'])
+    expect(root.querySelector('.row-hit')).toHaveTextContent(`Viitenumber: ${inv.referenceNumber}`)
+    root = await search('kohvik')
+    expect(root.querySelector('.row-client mark')).toHaveTextContent('Kohvik')
+    expect(root.querySelector('.row-hit')).toBeNull()
+  })
+})

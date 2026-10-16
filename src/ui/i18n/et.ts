@@ -1043,5 +1043,7 @@ export const et = {
   'attention.draftRecurringOne': '{client}, täna koostatud korduvarve',
   'attention.recurringTodayOne': 'neist 1 täna koostatud korduvarve',
   'attention.recurringToday': 'neist {count} täna koostatud korduvarvet',
+  'list.searchWide': 'Otsi numbri, kliendi, summa või rea järgi',
+  'search.line': 'Rida',
   // ---- end of Workstream B ----
 }
