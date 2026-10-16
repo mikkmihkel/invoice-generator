@@ -1050,5 +1050,9 @@ export const et = {
   'shortcuts.issueTitle': 'Kiirklahv {keys}',
   'appearance.change': 'Muuda',
   'appearance.changeLabel': 'Muuda kujundust',
+  'actions.copyPayment': 'Kopeeri makseandmed',
+  'payment.detailsCopied': 'Makseandmed on kopeeritud. Kleebi need sõnumisse.',
+  'payment.detailsCopyFailed': 'Makseandmeid ei õnnestunud kopeerida.',
+  'payment.detailsHint': 'Summa, IBAN, viitenumber ja tähtaeg tekstina, nt vestlusesse saatmiseks.',
   // ---- end of Workstream C ----
 }

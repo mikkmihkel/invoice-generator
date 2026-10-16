@@ -5,6 +5,7 @@ import {
   BellRingingIcon,
   CaretRightIcon,
   CheckIcon,
+  ClipboardTextIcon,
   CloudArrowUpIcon,
   CopyIcon,
   DownloadSimpleIcon,
@@ -81,6 +82,7 @@ import { useFixedBarHeight } from './editor/useFixedBarHeight'
 import { useMediaQuery } from './editor/useMediaQuery'
 import { DeleteInvoiceDialog, IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
 import { LockNote } from './invoice-detail/LockNote'
+import { hasPaymentDetails, useCopyPaymentDetails } from './invoice-detail/paymentDetails'
 import { reopenRuleKey, useCanReopen, useDeleteDocument } from './invoice-detail/useInvoiceActions'
 import { TextRows } from './editor/TextRows'
 import { useAutosave } from './editor/useAutosave'
@@ -282,6 +284,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
   const { markDirty } = autosave
   const deleteDocument = useDeleteDocument()
+  const copyPayment = useCopyPaymentDetails()
   const canReopen = useCanReopen(invoice ?? REOPEN_PLACEHOLDER)
   const isDraft = invoice?.status === 'draft'
   const edit = useCallback(
@@ -386,6 +389,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       : undefined
   const clientForNew = savedClientOf(invoice, clients)
   const termFromClient = !ro && pickedClient?.paymentTermDays !== undefined && term === clientPaymentTermDays(profile, pickedClient)
+  const payable = hasPaymentDetails(invoice, app.invoices)
   const appearanceCollapsed = !ro && !appearanceOpen && appearanceMatchesDefaults(invoice, profile, pickedClient)
   // Issued invoices read as a document: optional fields that were left empty are not shown.
   const shown = (v: unknown) => !ro || (v !== undefined && v !== null && v !== '')
@@ -642,6 +646,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     { key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void saveToDrive() },
     ...(supportsEInvoice(invoice) ? [{ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void downloadXml() }] : []),
     { key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void print() },
+    ...(payable ? [{ key: 'copyPayment', label: t('actions.copyPayment'), icon: <ClipboardTextIcon />, onSelect: () => void copyPayment(effective) }] : []),
     ...(canReopen ? [{ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void reopen() }] : []),
     { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void duplicate() },
     ...(clientForNew ? [{ key: 'newForClient', label: t('actions.newForClient'), icon: <FilePlusIcon />, onSelect: () => newForClient(clientForNew) }] : []),
@@ -753,6 +758,15 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               onDrive={() => void saveToDrive()}
               onDismiss={() => setJustIssued(false)}
             />
+          )}
+          {ro && justIssued && payable && (
+            <p className="next-copy">
+              <button type="button" className="ed-text-btn" onClick={() => void copyPayment(effective)}>
+                <ClipboardTextIcon />
+                {t('actions.copyPayment')}
+              </button>
+              <span className="next-copy-hint">{t('payment.detailsHint')}</span>
+            </p>
           )}
 
           {reopened && (

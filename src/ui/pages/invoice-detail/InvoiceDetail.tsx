@@ -5,6 +5,7 @@ import {
   BellRingingIcon,
   CalendarCheckIcon,
   CheckIcon,
+  ClipboardTextIcon,
   CloudArrowUpIcon,
   CopyIcon,
   DownloadSimpleIcon,
@@ -34,6 +35,7 @@ import { RecurringControl } from '../editor/RecurringControl'
 import { CancelInvoiceDialog, DeleteInvoiceDialog, MarkPaidDialog } from '../editor/StatusDialogs'
 import { QuoteActions } from '../quotes/QuoteActions'
 import { useInvoiceEvents } from './events'
+import { hasPaymentDetails, useCopyPaymentDetails } from './paymentDetails'
 import { PdfPage } from './PdfPage'
 import { detailStatus, docNoun, quoteDetailStatus, settlementOf } from './status'
 import { interpolate } from './text'
@@ -77,6 +79,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   const effective = useMemo(() => effectiveInvoice(invoice, profile), [invoice, profile])
   const totals = useMemo(() => computeTotals(invoice), [invoice])
   const actions = useInvoiceActions(invoice, effective)
+  const copyPayment = useCopyPaymentDetails()
   const history = useInvoiceEvents(invoice.id)
   const sentAt = history.sentAt
   const today = localTodayISO()
@@ -127,6 +130,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   if (!draft) items.push({ key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void actions.saveToDrive() })
   if (!draft && !quote) items.push({ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void actions.downloadXml() })
   items.push({ key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void actions.print() })
+  if (hasPaymentDetails(invoice, invoices)) items.push({ key: 'copyPayment', label: t('actions.copyPayment'), icon: <ClipboardTextIcon />, onSelect: () => void copyPayment(effective) })
   if (canReopen) items.push({ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void actions.reopen() })
   items.push({ key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void actions.duplicate() })
   const client = savedClientOf(invoice, clients)

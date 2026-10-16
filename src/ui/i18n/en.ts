@@ -1052,5 +1052,9 @@ export const en: Record<keyof typeof et, string> = {
   'shortcuts.issueTitle': 'Shortcut {keys}',
   'appearance.change': 'Change',
   'appearance.changeLabel': 'Change the appearance',
+  'actions.copyPayment': 'Copy payment details',
+  'payment.detailsCopied': 'Payment details copied. Paste them into your message.',
+  'payment.detailsCopyFailed': 'Could not copy the payment details.',
+  'payment.detailsHint': 'Amount, IBAN, reference number and due date as text, e.g. to send in a chat.',
   // ---- end of Workstream C ----
 }

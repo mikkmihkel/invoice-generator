@@ -1629,6 +1629,24 @@ html.ed-sheet-open {
   transform: none;
 }
 
+/* "Kopeeri makseandmed" right under the just-issued card. */
+.next-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-3);
+  margin: calc(var(--s-6) * -1) 0 var(--s-8);
+}
+.next-copy-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+@media (max-width: 640px) {
+  .next-copy .ed-text-btn {
+    min-height: 44px;
+  }
+}
+
 /* Appearance that follows the company defaults: one line and "Muuda". */
 .ed-appearance-summary {
   display: flex;
