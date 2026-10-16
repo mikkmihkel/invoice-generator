@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeClient, makeInvoice, makeProfile } from '../../../storage/testFixtures'
-import { copyLines, creditNoteFor, duplicateInvoice, linesAreBlank, monthLabel, savedClientOf } from './builders'
+import { clientEmailCc, copyLines, creditNoteFor, duplicateInvoice, linesAreBlank, monthLabel, savedClientOf } from './builders'
 
 describe('copies of a reopened document', () => {
   const reopened = makeInvoice('src', { number: 'A-001', status: 'draft', reopenedAt: '2026-03-11T10:00:00.000Z', reopenedIssueDate: '2026-03-10' })
@@ -66,5 +66,11 @@ describe('savedClientOf', () => {
     expect(savedClientOf(byCode, clients)?.id).toBe('c2')
     const manual = makeInvoice('i', { buyer: { kind: 'person', name: 'Mari Maasikas', address: { street: '', city: '', postalCode: '', country: 'EE' } } })
     expect(savedClientOf(manual, clients)).toBeUndefined()
+  })
+
+  it('gives the client card CC addresses for e-mailing', () => {
+    const withCc = [makeClient('c1', { emailCc: ' raamatupidaja@ostja.ee ' })]
+    expect(clientEmailCc(makeInvoice('i'), withCc)).toBe('raamatupidaja@ostja.ee')
+    expect(clientEmailCc(makeInvoice('i'), clients)).toBe('')
   })
 })

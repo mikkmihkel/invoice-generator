@@ -137,3 +137,8 @@ export function savedClientOf(inv: Pick<Invoice, 'buyer'>, clients: readonly Cli
   const code = buyer.registryCode?.trim()
   return code ? clients.find((c) => c.registryCode?.trim() === code) : undefined
 }
+
+/** Copy recipients from the client card, for the CC field when e-mailing this document ('' when none). */
+export function clientEmailCc(inv: Pick<Invoice, 'buyer'>, clients: readonly Client[]): string {
+  return savedClientOf(inv, clients)?.emailCc?.trim() ?? ''
+}
