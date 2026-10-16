@@ -7,6 +7,7 @@ import { findOrCreateAppFolder, listDriveBackups, type DriveBackupFile } from '.
 import { getAccessToken, googleSignIn } from '../../integrations/googleAuth'
 import {
   availableScopes,
+  chosenDriveFolder,
   DRIVE_APP_FOLDER_NAME,
   DRIVE_BACKUP_SUBFOLDER,
   DRIVE_PDF_SUBFOLDER,
@@ -74,7 +75,7 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
   const adoptFolder = useCallback(
     async (folder: DriveFolderChoice, message: string) => {
       const s = latest.current.settings
-      const patch: Partial<AppSettings> = { driveFolder: { id: folder.id, name: folder.name } }
+      const patch: Partial<AppSettings> = { driveFolder: { id: folder.id, name: folder.name, clientId: effectiveClientId(s) } }
       // Signed in with a folder: automatic backup is on unless the user decided about it before.
       if (!s.autoBackup) patch.autoBackup = { ...normalizeAutoBackup(undefined), enabled: true }
       await saveSettings(patch)
@@ -100,7 +101,7 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
       }
       return new Promise<ConnectResult>((resolve) => {
         done.current = resolve
-        if (options.chooseFolder || !s.driveFolder) setPhase({ kind: 'folder' })
+        if (options.chooseFolder || !chosenDriveFolder(s)) setPhase({ kind: 'folder' })
         else {
           toast.success(t('google.connected'))
           void offerRestore(s)

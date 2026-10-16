@@ -5,6 +5,7 @@ import {
   availableScopes,
   builtInGoogleConfig,
   canSendWithGmail,
+  chosenDriveFolder,
   driveFolderLabel,
   driveFolderRef,
   driveFolderUrl,
@@ -108,7 +109,8 @@ describe('Drive folders', () => {
   })
 
   it('stores the chosen folder by ID and puts PDFs and backups in fixed subfolders', () => {
-    const s = settings({ driveFolderName: 'Minu arved', driveFolder: { id: 'folder-123456', name: 'Firma' } })
+    env({ clientId: BUILT_IN })
+    const s = settings({ driveFolderName: 'Minu arved', driveFolder: { id: 'folder-123456', name: 'Firma', clientId: BUILT_IN } })
     expect(driveFolderRef(s, 'pdf')).toEqual({ parentId: 'folder-123456', name: 'Arved' })
     expect(driveFolderRef(s, 'backup')).toEqual({ parentId: 'folder-123456', name: 'Varukoopiad' })
     expect(driveFolderLabel(s, 'pdf')).toBe('Firma / Arved')
@@ -118,11 +120,25 @@ describe('Drive folders', () => {
 
   it('saves PDFs automatically only with a chosen folder, a client and the option not switched off', () => {
     env({ clientId: BUILT_IN })
-    const folder = { id: 'folder-123456', name: 'Firma' }
+    const folder = { id: 'folder-123456', name: 'Firma', clientId: BUILT_IN }
     expect(autoSavePdfEnabled(settings())).toBe(false)
     expect(autoSavePdfEnabled(settings({ driveFolder: folder }))).toBe(true)
     expect(autoSavePdfEnabled(settings({ driveFolder: folder, autoSavePdf: false }))).toBe(false)
     env({})
     expect(autoSavePdfEnabled(settings({ driveFolder: folder }))).toBe(false)
+  })
+
+  it('counts a folder as chosen only with the client it was chosen with (drive.file is per client)', () => {
+    env({ clientId: BUILT_IN })
+    const folder = { id: 'folder-123456', name: 'Firma', clientId: BUILT_IN }
+    expect(chosenDriveFolder(settings({ driveFolder: folder }))).toEqual(folder)
+    // Switched to an own client: back to the named folder, nothing fails with "folder not found".
+    const own = settings({ driveFolder: folder, googleClientId: OWN, driveFolderName: 'Minu arved' })
+    expect(chosenDriveFolder(own)).toBeUndefined()
+    expect(driveFolderRef(own, 'backup')).toBe('Minu arved')
+    expect(driveFolderLabel(own, 'pdf')).toBe('Minu arved')
+    expect(autoSavePdfEnabled(own)).toBe(false)
+    // A folder stored without its client counts as not chosen.
+    expect(chosenDriveFolder(settings({ driveFolder: { id: 'folder-123456', name: 'Firma' } }))).toBeUndefined()
   })
 })

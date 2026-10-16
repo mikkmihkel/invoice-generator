@@ -44,7 +44,7 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
     }
     setBusy(true)
     try {
-      const res = await repo.importBackup(keepDriveFolder(importClientId ? backup : keepClientId(backup, settings.googleClientId), settings.driveFolder), mode)
+      const res = await repo.importBackup(keepDriveFolder(importClientId ? backup : keepClientId(backup, settings.googleClientId), settings), mode)
       // The deletions recorded here belong to the data that was just replaced.
       if (mode === 'replace') clearDeletedDocuments()
       await reload()

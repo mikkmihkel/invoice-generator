@@ -369,6 +369,11 @@ export interface DriveFolderChoice {
   id: string
   /** Its name when chosen (for display only; the folder may be renamed or moved in Drive). */
   name: string
+  /**
+   * OAuth client the folder was chosen with. drive.file access is granted per client (Cloud project), so with
+   * another client the folder counts as not chosen.
+   */
+  clientId?: string
 }
 
 export interface AutoBackupSettings {

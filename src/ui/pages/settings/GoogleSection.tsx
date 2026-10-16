@@ -1,8 +1,9 @@
 import { ArrowSquareOutIcon, CaretRightIcon, CheckCircleIcon, CircleIcon, FolderOpenIcon, SignInIcon, SignOutIcon } from '@phosphor-icons/react'
 import { useState } from 'react'
+import type { AppSettings } from '../../../domain'
 import { normalizeAutoBackup } from '../../../integrations/autoBackup'
 import { googleSignOut } from '../../../integrations/googleAuth'
-import { canSendWithGmail, driveFolderLabel, driveFolderUrl } from '../../../integrations/googleClient'
+import { canSendWithGmail, chosenDriveFolder, driveFolderLabel, driveFolderUrl, effectiveClientId } from '../../../integrations/googleClient'
 import { useApp } from '../../AppContext'
 import { CheckboxField, TextField } from '../../components/fields'
 import { Section } from '../../components/misc'
@@ -29,7 +30,11 @@ function OwnClient({ showFolderName }: { showFolderName: boolean }) {
     }
     setBusy(true)
     try {
-      await saveSettings({ googleClientId: clientId.trim() || undefined, driveFolderName: folder.trim() || settings.driveFolderName })
+      const googleClientId = clientId.trim() || undefined
+      const patch: Partial<AppSettings> = { googleClientId, driveFolderName: folder.trim() || settings.driveFolderName }
+      // A folder chosen with one client cannot be opened with another (drive.file is per client): choose again.
+      if (settings.driveFolder && effectiveClientId({ googleClientId }) !== effectiveClientId(settings)) patch.driveFolder = undefined
+      await saveSettings(patch)
       toast.success(t('common.saved'))
     } catch (e) {
       toast.error(errorMessage(e))
@@ -80,7 +85,7 @@ export function GoogleSection() {
   const toast = useToast()
   const account = useGoogleAccount()
   const { connect, busy } = useDriveConnect()
-  const folder = settings.driveFolder
+  const folder = chosenDriveFolder(settings)
   const backup = normalizeAutoBackup(settings.autoBackup)
   // Open when there is nothing else to use, or the user already set their own client.
   const [advancedOpen] = useState(() => !account.available || !!settings.googleClientId)

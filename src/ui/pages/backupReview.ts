@@ -1,5 +1,6 @@
 import { BackupFormatError, parseBackup } from '../../storage'
-import { formatIban, normalizeIban, normalizeVatNumber, type AppSettings, type BackupFile, type CompanyProfile, type DriveFolderChoice } from '../../domain'
+import { formatIban, normalizeIban, normalizeVatNumber, type AppSettings, type BackupFile, type CompanyProfile } from '../../domain'
+import { chosenDriveFolder } from '../../integrations/googleClient'
 import { formatDateTime } from '../format'
 import type { Translate } from '../i18n'
 
@@ -61,12 +62,25 @@ export function keepClientId(backup: BackupFile, currentClientId: string | undef
 }
 
 /**
- * The backup with this browser's chosen Drive folder instead of the imported one, when a folder is chosen here (the
- * folder belongs to the Google account signed in here). Without one, the backup's folder is taken over.
+ * The backup's Drive settings adjusted to this browser (apply after keepClientId). A folder chosen here wins, with
+ * this browser's automatic-PDF choice. Otherwise the backup's folder is taken over only when it was chosen with the
+ * client used here (drive.file access is per client), and it does not switch on automatic PDF uploads in a browser
+ * that never opted in: they stay off until the folder is chosen here.
  */
-export function keepDriveFolder(backup: BackupFile, current: DriveFolderChoice | undefined): BackupFile {
-  if (!backup.settings || !current) return backup
-  return { ...backup, settings: { ...backup.settings, driveFolder: current } }
+export function keepDriveFolder(backup: BackupFile, current: Pick<AppSettings, 'driveFolder' | 'googleClientId' | 'autoSavePdf'>): BackupFile {
+  if (!backup.settings) return backup
+  const settings: AppSettings = { ...backup.settings }
+  const here = chosenDriveFolder(current)
+  if (here) {
+    settings.driveFolder = here
+    if (current.autoSavePdf === undefined) delete settings.autoSavePdf
+    else settings.autoSavePdf = current.autoSavePdf
+  } else if (!chosenDriveFolder(settings)) {
+    delete settings.driveFolder
+  } else {
+    settings.autoSavePdf = current.autoSavePdf ?? false
+  }
+  return { ...backup, settings }
 }
 
 /** Parse a backup file's text; a malformed file yields the specific problem (record / field) in the UI language. */

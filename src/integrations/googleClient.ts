@@ -4,7 +4,7 @@
 // Google Picker). It asks only for non-sensitive scopes (openid, email, drive.file). A user may paste their own
 // client ID in Settings ("advanced"); it overrides the built-in one and is the only way to send mail through Gmail
 // (gmail.send is a sensitive scope that the shared client never requests).
-import type { AppSettings } from '../domain'
+import type { AppSettings, DriveFolderChoice } from '../domain'
 import type { DriveFolderRef } from './drive'
 import type { GoogleScope } from './googleAuth'
 
@@ -79,20 +79,30 @@ export const DRIVE_PDF_SUBFOLDER = 'Arved'
 /** Subfolder of the chosen folder for backups (fixed Estonian name). */
 export const DRIVE_BACKUP_SUBFOLDER = 'Varukoopiad'
 
-type FolderSettings = Pick<AppSettings, 'driveFolder' | 'driveFolderName'>
+type FolderSettings = Pick<AppSettings, 'driveFolder' | 'driveFolderName' | 'googleClientId'>
 export type DriveFileKind = 'pdf' | 'backup'
+
+/**
+ * The chosen Drive folder, if it was chosen with the client now in use. The app may only open it through that
+ * client (drive.file access is per client), so with another client (or none recorded) it counts as not chosen.
+ */
+export function chosenDriveFolder(settings: Pick<AppSettings, 'driveFolder' | 'googleClientId'>): DriveFolderChoice | undefined {
+  const folder = settings.driveFolder
+  const clientId = effectiveClientId(settings)
+  return folder?.id && clientId && folder.clientId === clientId ? folder : undefined
+}
 
 /** Where PDFs or backups go: a subfolder of the chosen folder, or the folder named in settings (earlier versions). */
 export function driveFolderRef(settings: FolderSettings, kind: DriveFileKind): DriveFolderRef {
-  const chosen = settings.driveFolder
-  if (chosen?.id) return { parentId: chosen.id, name: kind === 'pdf' ? DRIVE_PDF_SUBFOLDER : DRIVE_BACKUP_SUBFOLDER }
+  const chosen = chosenDriveFolder(settings)
+  if (chosen) return { parentId: chosen.id, name: kind === 'pdf' ? DRIVE_PDF_SUBFOLDER : DRIVE_BACKUP_SUBFOLDER }
   return settings.driveFolderName?.trim() || DRIVE_PDF_SUBFOLDER
 }
 
 /** Human-readable location, e.g. "Arveldaja / Arved", or the legacy folder name. */
 export function driveFolderLabel(settings: FolderSettings, kind: DriveFileKind): string {
   const ref = driveFolderRef(settings, kind)
-  return typeof ref === 'string' ? ref : `${settings.driveFolder!.name} / ${ref.name}`
+  return typeof ref === 'string' ? ref : `${chosenDriveFolder(settings)!.name} / ${ref.name}`
 }
 
 /** Link to a folder in the Drive web app. */
@@ -102,5 +112,5 @@ export function driveFolderUrl(folderId: string): string {
 
 /** Whether issued invoices' PDFs are uploaded automatically (a chosen folder and the option not switched off). */
 export function autoSavePdfEnabled(settings: Pick<AppSettings, 'driveFolder' | 'autoSavePdf' | 'googleClientId'>): boolean {
-  return !!settings.driveFolder?.id && settings.autoSavePdf !== false && !!effectiveClientId(settings)
+  return !!chosenDriveFolder(settings) && settings.autoSavePdf !== false
 }

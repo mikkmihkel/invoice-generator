@@ -415,6 +415,7 @@ function checkSettings(r: Record<string, unknown>): Text | null {
       c.optMatch('id', { et: 'Drive’i kausta ID', en: 'Drive folder ID' }, DRIVE_ID, f)
     }
     if (f) c.str('name', { et: 'Drive’i kausta nimi', en: 'Drive folder name' }, true, f)
+    if (f) c.optMatch('clientId', { et: 'Drive’i kausta kliendi ID', en: 'Drive folder client ID' }, GOOGLE_CLIENT_ID, f)
   }
   c.optBool('autoSavePdf', { et: 'PDF-failide automaatne salvestamine', en: 'automatic PDF saving' })
   c.optBool('registryLiveLookup', { et: 'registri otsingu seade', en: 'registry lookup setting' })

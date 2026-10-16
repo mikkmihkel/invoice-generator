@@ -1,5 +1,5 @@
 import { ArrowRightIcon, CheckCircleIcon, CheckIcon, FolderOpenIcon, SignInIcon } from '@phosphor-icons/react'
-import { driveFolderLabel } from '../../integrations/googleClient'
+import { chosenDriveFolder, driveFolderLabel } from '../../integrations/googleClient'
 import { useApp } from '../AppContext'
 import { useDriveConnect } from './driveConnectContext'
 import { useGoogleAccount } from './useGoogleAccount'
@@ -19,7 +19,7 @@ export function OnboardingDriveStep({ onNext }: { onNext: () => void }) {
   }
 
   if (account.signedIn) {
-    const folder = settings.driveFolder
+    const folder = chosenDriveFolder(settings)
     return (
       <div className="panel onb-drive">
         <p className="status-line status-ok">

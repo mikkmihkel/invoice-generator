@@ -272,6 +272,9 @@ describe('validateBackup – values that reach URLs or CSS', () => {
       expect(() => validateBackup({ ...base(), settings: { ...settings, driveFolder } })).toThrow(BackupFormatError)
     }
     expect(() => validateBackup({ ...base(), settings: { ...settings, autoSavePdf: 'yes' } })).toThrow(BackupFormatError)
+    const withClient = { id: '1AbC-dEf_123456789', name: 'Firma', clientId: '123-abc.apps.googleusercontent.com' }
+    expect(validateBackup({ ...base(), settings: { ...settings, driveFolder: withClient } }).settings).toMatchObject({ driveFolder: withClient })
+    expect(() => validateBackup({ ...base(), settings: { ...settings, driveFolder: { ...withClient, clientId: 'evil' } } })).toThrow(BackupFormatError)
   })
 })
 

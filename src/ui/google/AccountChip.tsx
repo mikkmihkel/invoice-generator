@@ -1,6 +1,6 @@
 import { ArrowsClockwiseIcon, FolderOpenIcon, GearSixIcon, SignOutIcon, UserCircleIcon } from '@phosphor-icons/react'
 import { googleSignOut } from '../../integrations/googleAuth'
-import { driveFolderUrl } from '../../integrations/googleClient'
+import { chosenDriveFolder, driveFolderUrl } from '../../integrations/googleClient'
 import { useApp } from '../AppContext'
 import { Menu, type MenuItem } from '../components/ui'
 import { useGuardedNavigation } from '../navGuard'
@@ -21,7 +21,7 @@ export function AccountChip() {
   if (!account.available || !account.connected) return null
 
   const email = account.email ?? t('gdrive.account')
-  const folder = settings.driveFolder
+  const folder = chosenDriveFolder(settings)
   const items: MenuItem[] = [{ key: 'who', label: email, icon: <UserCircleIcon />, onSelect: () => {}, disabled: true }]
   if (!account.signedIn) items.push({ key: 'reconnect', label: t('gdrive.reconnect'), icon: <ArrowsClockwiseIcon />, onSelect: () => void connect() })
   if (folder) {

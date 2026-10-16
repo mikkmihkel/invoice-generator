@@ -39,7 +39,7 @@ vi.mock('../../integrations/picker', () => ({ pickDriveFolder: vi.fn() }))
 
 const BUILT_IN = '111-shared.apps.googleusercontent.com'
 const OWN = '222-own.apps.googleusercontent.com'
-const FOLDER = { id: 'folder-123456', name: 'Firma' }
+const FOLDER = { id: 'folder-123456', name: 'Firma', clientId: BUILT_IN }
 
 /** Fake Google Identity Services (token model) answering every request with the requested scopes. */
 let gisRequests: GisTokenClientConfig[]
@@ -154,7 +154,7 @@ describe('onboarding: Google Drive step', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Loo kaust „Arveldaja“' }))
     })
     expect(findOrCreateAppFolder).toHaveBeenCalledWith(BUILT_IN, 'Arveldaja')
-    expect(lastSaved(repo)).toMatchObject({ driveFolder: { id: 'app-folder-1', name: 'Arveldaja' }, autoBackup: { enabled: true } })
+    expect(lastSaved(repo)).toMatchObject({ driveFolder: { id: 'app-folder-1', name: 'Arveldaja', clientId: BUILT_IN }, autoBackup: { enabled: true } })
     // Looks for backups in the new folder's backup subfolder (none here), then goes on to the company.
     expect(listDriveBackups).toHaveBeenCalledWith(BUILT_IN, { parentId: 'app-folder-1', name: 'Varukoopiad' })
     expect(await screen.findByRole('heading', { level: 2, name: 'Ettevõte' })).toBeInTheDocument()
@@ -353,6 +353,30 @@ describe('Settings → Google', () => {
       fireEvent.click(pdf)
     })
     expect(lastSaved(repo)).toMatchObject({ autoSavePdf: false })
+  })
+})
+
+describe('folder and client', () => {
+  it('forgets a folder chosen with the built-in client when the user saves an own client ID', async () => {
+    env({ clientId: BUILT_IN })
+    const repo = createMemoryRepo({ profile: sampleProfile(), settings: settings({ driveFolder: FOLDER }) })
+    renderAt('#/settings', repo)
+    const section = (await screen.findByRole('heading', { name: 'Google’i konto ja Drive' })).closest('section')!
+    expect(within(section).getByText('PDF-failid: Firma / Arved · varukoopiad: Firma / Varukoopiad')).toBeInTheDocument()
+    fireEvent.change(within(section).getByLabelText(/^OAuth-kliendi ID/), { target: { value: OWN } })
+    await act(async () => {
+      fireEvent.click(within(section).getByRole('button', { name: 'Salvesta' }))
+    })
+    expect(lastSaved(repo)).toMatchObject({ googleClientId: OWN, driveFolder: undefined })
+    expect(await within(section).findByText('Kausta pole valitud. Seni kasutatakse kausta „Arved“.')).toBeInTheDocument()
+  })
+
+  it('treats a folder chosen with another client as not chosen instead of failing', async () => {
+    env({ clientId: BUILT_IN })
+    renderAt('#/settings', createMemoryRepo({ profile: sampleProfile(), settings: settings({ driveFolder: { ...FOLDER, clientId: OWN } }) }))
+    const section = (await screen.findByRole('heading', { name: 'Google’i konto ja Drive' })).closest('section')!
+    expect(within(section).getByText('Kausta pole valitud. Seni kasutatakse kausta „Arved“.')).toBeInTheDocument()
+    expect(within(section).getByRole('checkbox', { name: /Salvesta väljastatud arvete PDF-failid automaatselt Drive’i/ })).toBeDisabled()
   })
 })
 
