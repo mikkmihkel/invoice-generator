@@ -1179,5 +1179,6 @@ export const en: Record<keyof typeof et, string> = {
   'recurring.resumed': 'Recurring invoice resumed: {client}. Next draft {date}.',
   'recurring.stopped': 'Recurring invoice stopped: {client}. Invoices already made stay.',
   'recurring.restored': 'Recurring invoice restored: {client}.',
+  'recurring.undoStale': 'This can no longer be undone: the recurring invoice ({client}) has changed since.',
   // ---- end of Workstream B ----
 }

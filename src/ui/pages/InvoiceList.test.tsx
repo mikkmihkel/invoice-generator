@@ -321,6 +321,42 @@ describe('recurring overview', () => {
     expect(within(box).queryByText('Kvartaliklient OÜ')).not.toBeInTheDocument()
   })
 
+  it("lets an older toast's undo take back only its own change", async () => {
+    const { rules, repo } = setup()
+    const root = await list()
+    fireEvent.change(within(root).getByRole('combobox', { name: 'Rohkem filtreid' }), { target: { value: 'recurring' } })
+    const box = await panel()
+    const undoIn = async (text: string | RegExp) => within((await screen.findByText(text)).closest('.toast') as HTMLElement).getByRole('button', { name: 'Võta tagasi' })
+
+    await act(async () => {
+      fireEvent.click(within(box).getByRole('button', { name: 'Peata korduvarve: Kuuklient OÜ' }))
+    })
+    const undoPause = await undoIn('Korduvarve on peatatud: Kuuklient OÜ. Uusi mustandeid ei koostata.')
+    // Changed elsewhere afterwards (e.g. another tab): quarterly from now on.
+    await act(async () => {
+      await repo.saveRecurringRule({ ...rules[0], active: false, interval: 'quarterly' })
+    })
+    await act(async () => {
+      fireEvent.click(undoPause)
+    })
+    expect(repo.saveRecurringRule).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'ra', active: true, interval: 'quarterly' }))
+
+    // Resumed, then paused again: the resume's undo has nothing left to take back.
+    await act(async () => {
+      fireEvent.click(within(box).getByRole('button', { name: 'Jätka korduvarvet: Peatatud OÜ' }))
+    })
+    const undoResume = await undoIn(/^Korduvarve jätkub: Peatatud OÜ/)
+    await act(async () => {
+      fireEvent.click(within(box).getByRole('button', { name: 'Peata korduvarve: Peatatud OÜ' }))
+    })
+    const saves = repo.saveRecurringRule.mock.calls.length
+    await act(async () => {
+      fireEvent.click(undoResume)
+    })
+    expect(await screen.findByText('Seda ei saa enam tagasi võtta: korduvarvet (Peatatud OÜ) on vahepeal muudetud.')).toBeInTheDocument()
+    expect(repo.saveRecurringRule.mock.calls.length).toBe(saves)
+  })
+
   it('shows no hint and no filter without recurring invoices', async () => {
     renderAt('#/', createMemoryRepo({ profile, invoices: [invoice()] }))
     const root = await list()

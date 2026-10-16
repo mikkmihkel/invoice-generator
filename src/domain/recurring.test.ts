@@ -13,6 +13,9 @@ import {
   recurringDraftId,
   recurringOverview,
   resumeRule,
+  undoPause,
+  undoResume,
+  undoStop,
   ruleForInvoice,
   stopRulesFor,
   upcomingOccurrence,
@@ -270,6 +273,26 @@ describe('recurring overview', () => {
     expect(resumeRule(rule({ active: false, nextDate: '2026-11-30' }), source(), '2026-10-16', NOW)).toMatchObject({ active: true, nextDate: '2026-11-30', updatedAt: NOW })
     // Paused since spring: the series of the 31st goes on after today, the missed months are not prepared.
     expect(resumeRule(rule({ active: false, nextDate: '2026-04-30' }), source(), '2026-10-16', NOW)).toMatchObject({ active: true, nextDate: '2026-10-31' })
+  })
+
+  it('undoes only what each action changed, on the rule as it is now', () => {
+    const paused = rule({ active: false })
+    // Pausing undone: switched on with the interval and date changed meanwhile, not the old copy.
+    expect(undoPause([{ ...paused, interval: 'quarterly', nextDate: '2027-01-31' }], paused, NOW)).toMatchObject({ active: true, interval: 'quarterly', nextDate: '2027-01-31' })
+    expect(undoPause([{ ...paused, active: true }], paused, NOW)).toBeNull()
+    expect(undoPause([], paused, NOW)).toBeNull()
+
+    const before = rule({ active: false, nextDate: '2026-04-30' })
+    const resumed = { ...before, active: true, nextDate: '2026-10-31' }
+    expect(undoResume([resumed], before, resumed, NOW)).toMatchObject({ active: false, nextDate: '2026-04-30' })
+    // The next date was changed after resuming: pausing again keeps that change.
+    expect(undoResume([{ ...resumed, nextDate: '2026-11-15' }], before, resumed, NOW)).toMatchObject({ active: false, nextDate: '2026-11-15' })
+    expect(undoResume([{ ...resumed, active: false }], before, resumed, NOW)).toBeNull()
+
+    const stopped = rule({ id: 'gone' })
+    expect(undoStop([], stopped, NOW)).toMatchObject({ id: 'gone', active: true, updatedAt: NOW })
+    // The invoice was given a new rule meanwhile: the old one is not brought back beside it.
+    expect(undoStop([rule({ id: 'new' })], stopped, NOW)).toBeNull()
   })
 
   it("keeps today's draft when resuming on the day it is due", () => {

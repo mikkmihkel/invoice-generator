@@ -212,6 +212,29 @@ export function resumeRule(rule: RecurringRule, source: Pick<Invoice, 'issueDate
   return { ...rule, active: true, nextDate, updatedAt: now }
 }
 
+// Undo of the overview's actions. Each one takes back only what its own action changed, applied to the rule as it
+// is now (`rules` read afresh), so an older toast's undo never rolls back a later change. Null: nothing to take back
+// (the rule changed in a way that already undid it, or was removed).
+
+/** Undo "pause": switch the rule on again, keeping its current interval and next date. */
+export function undoPause(rules: readonly RecurringRule[], paused: RecurringRule, now = new Date().toISOString()): RecurringRule | null {
+  const current = rules.find((r) => r.id === paused.id)
+  return current && !current.active ? { ...current, active: true, updatedAt: now } : null
+}
+
+/** Undo "resume": pause the rule again; its next date goes back too unless it was changed after resuming. */
+export function undoResume(rules: readonly RecurringRule[], before: RecurringRule, resumed: RecurringRule, now = new Date().toISOString()): RecurringRule | null {
+  const current = rules.find((r) => r.id === resumed.id)
+  if (!current || !current.active) return null
+  return { ...current, active: false, nextDate: current.nextDate === resumed.nextDate ? before.nextDate : current.nextDate, updatedAt: now }
+}
+
+/** Undo "stop" (the rule was removed): put it back, unless the invoice has been given another active rule since. */
+export function undoStop(rules: readonly RecurringRule[], stopped: RecurringRule, now = new Date().toISOString()): RecurringRule | null {
+  if (rules.some((r) => r.id === stopped.id || (r.sourceInvoiceId === stopped.sourceInvoiceId && r.active))) return null
+  return { ...stopped, updatedAt: now }
+}
+
 function structuredCopy<T>(v: T): T {
   if (v === undefined || v === null || typeof v !== 'object') return v
   return typeof structuredClone === 'function' ? structuredClone(v) : JSON.parse(JSON.stringify(v))
