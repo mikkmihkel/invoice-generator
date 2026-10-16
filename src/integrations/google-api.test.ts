@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { backupToDrive, downloadDriveFile, DRIVE_BACKUP_FILE_NAME, LEGACY_DRIVE_BACKUP_FILE_NAME, findOrCreateFolder, listDriveBackups, restoreFromDrive, trashDriveFile, uploadBackupVersion, uploadToDrive } from './drive'
+import { backupToDrive, downloadDriveFile, DRIVE_BACKUP_FILE_NAME, LEGACY_DRIVE_BACKUP_FILE_NAME, driveFolderKey, findOrCreateAppFolder, findOrCreateFolder, listDriveBackups, restoreFromDrive, trashDriveFile, uploadBackupVersion, uploadToDrive } from './drive'
 import { GoogleApiError } from './errors'
 import { buildGmailRaw, sendViaGmail } from './gmail'
 import { getAccessToken, invalidateToken } from './googleAuth'
@@ -209,6 +209,65 @@ describe('Drive backup versions', () => {
     stubFetch(json({ files: [] }))
     await listDriveBackups(CLIENT, 'Arved', { interactive: false })
     expect(getAccessToken).toHaveBeenCalledWith(CLIENT, ['drive'], { interactive: false })
+  })
+})
+
+describe('Drive folder chosen by ID', () => {
+  const chosen = { parentId: 'chosen-folder-1', name: 'Arved' }
+
+  it('creates the subfolder inside the chosen folder and uploads into it', async () => {
+    stubFetch(
+      json({ files: [] }), // no "Arved" subfolder yet
+      json({ id: 'sub1' }),
+      json({ files: [] }), // no file with that name
+      json({ id: 'file1', webViewLink: 'https://drive.google.com/file/d/file1/view' }),
+    )
+    const res = await uploadToDrive(CLIENT, new Blob(['%PDF'], { type: 'application/pdf' }), 'Arve_1.pdf', chosen)
+    expect(res.id).toBe('file1')
+    expect(query(calls[0].url).get('q')).toBe("mimeType='application/vnd.google-apps.folder' and name='Arved' and 'chosen-folder-1' in parents and trashed=false")
+    expect(JSON.parse(String(calls[1].init.body))).toEqual({ name: 'Arved', mimeType: 'application/vnd.google-apps.folder', parents: ['chosen-folder-1'] })
+    expect(await bodyText(calls[3].init.body)).toContain('"parents":["sub1"]')
+  })
+
+  it('uploads in the background only with a token already in memory', async () => {
+    stubFetch(json({ files: [{ id: 'sub1' }] }), json({ files: [] }), json({ id: 'file1' }))
+    await uploadToDrive(CLIENT, new Blob(['%PDF'], { type: 'application/pdf' }), 'Arve_1.pdf', chosen, { interactive: false })
+    expect(vi.mocked(getAccessToken).mock.calls.every((c) => (c[2] as { interactive?: boolean } | undefined)?.interactive === false)).toBe(true)
+    expect(getAccessToken).toHaveBeenCalledTimes(3)
+  })
+
+  it('reports a chosen folder that no longer exists', async () => {
+    stubFetch(json({ files: [] }), json({ error: { code: 404, message: 'File not found: chosen-folder-1.' } }, 404))
+    await expect(uploadBackupVersion(CLIENT, { parentId: 'chosen-folder-1', name: 'Varukoopiad' }, 'b.json', '{}', false)).rejects.toMatchObject({
+      code: 'folder_not_found',
+    })
+  })
+
+  it('lists backups of the backup subfolder without creating it', async () => {
+    stubFetch(json({ files: [] }))
+    expect(await listDriveBackups(CLIENT, { parentId: 'chosen-folder-1', name: 'Varukoopiad' })).toEqual([])
+    expect(calls).toHaveLength(1)
+    expect(query(calls[0].url).get('q')).toContain("'chosen-folder-1' in parents")
+  })
+
+  it('shares one subfolder lookup between concurrent uploads', async () => {
+    stubFetch(json({ files: [] }), json({ id: 'sub1' }), json({ files: [] }), json({ files: [] }), json({ id: 'a' }), json({ id: 'b' }))
+    const pdf = new Blob(['%PDF'], { type: 'application/pdf' })
+    await Promise.all([uploadToDrive(CLIENT, pdf, 'A.pdf', chosen), uploadToDrive(CLIENT, pdf, 'B.pdf', chosen)])
+    expect(calls.filter((c) => c.init.method === 'POST' && String(c.init.body).includes('vnd.google-apps.folder'))).toHaveLength(1)
+  })
+
+  it('finds the app’s own folder (also one created on another computer) before creating it', async () => {
+    stubFetch(json({ files: [{ id: 'app1', name: 'Arveldaja' }] }))
+    expect(await findOrCreateAppFolder(CLIENT, 'Arveldaja')).toEqual({ id: 'app1', name: 'Arveldaja', created: false })
+    stubFetch(json({ files: [] }), json({ id: 'app2', name: 'Arveldaja' }))
+    expect(await findOrCreateAppFolder(CLIENT, 'Arveldaja')).toEqual({ id: 'app2', name: 'Arveldaja', created: true })
+    expect(JSON.parse(String(calls.at(-1)!.init.body))).toEqual({ name: 'Arveldaja', mimeType: 'application/vnd.google-apps.folder' })
+  })
+
+  it('keys bookkeeping by folder name or chosen folder', () => {
+    expect(driveFolderKey(' Arved ')).toBe('Arved')
+    expect(driveFolderKey({ parentId: 'p1', name: 'Varukoopiad' })).toBe('p1/Varukoopiad')
   })
 })
 

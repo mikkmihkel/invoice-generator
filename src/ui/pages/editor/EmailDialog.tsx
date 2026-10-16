@@ -2,6 +2,7 @@ import { AppWindowIcon, EnvelopeSimpleIcon, PaperclipIcon, ShareNetworkIcon } fr
 import { useEffect, useMemo, useState } from 'react'
 import { outstandingAmount, type Invoice } from '../../../domain'
 import { buildMailtoUrl, canShareFiles, downloadBlob, googleSignIn, sendViaGmail, shareFiles, type EmailDraft } from '../../../integrations'
+import { canSendWithGmail, ownClientId } from '../../../integrations/googleClient'
 import { invoiceFileName, renderInvoicePdf } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { Dialog } from '../../components/Dialog'
@@ -117,10 +118,12 @@ export function EmailDialog({
 
   const gmail = () =>
     run('gmail', async () => {
-      if (!settings.googleClientId) return
+      // Gmail only with the user's own client: the site's shared client never asks for gmail.send.
+      const clientId = ownClientId(settings)
+      if (!clientId) return
       // Sign in first: the consent popup must open directly from the click.
-      await googleSignIn(settings.googleClientId, ['gmail'])
-      await sendViaGmail(settings.googleClientId, draft())
+      await googleSignIn(clientId, ['gmail'])
+      await sendViaGmail(clientId, draft())
       toast.success(t('email.sent', { to: recipients.join(', ') }))
       await sent()
       onClose()
@@ -146,7 +149,7 @@ export function EmailDialog({
       onClose()
     })
 
-  const hasGmail = !!settings.googleClientId
+  const hasGmail = canSendWithGmail(settings)
   const addressesOk = toList.invalid.length === 0 && ccList.invalid.length === 0
   const ready = !!pdf && recipients.length > 0 && addressesOk && busy === null
 

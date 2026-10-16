@@ -259,6 +259,18 @@ describe('validateBackup – values that reach URLs or CSS', () => {
     expect(() => validateBackup({ ...base(), settings: { ...settings, googleClientId: 'evil' } })).toThrow(BackupFormatError)
     expect(validateBackup({ ...base(), settings: { ...settings, googleClientId: '123-abc.apps.googleusercontent.com' } }).settings).toBeTruthy()
   })
+
+  it('accepts a chosen Drive folder by ID and the PDF option, and rejects IDs that are not Drive IDs', () => {
+    const settings = { uiLanguage: 'et', driveFolderName: 'Arved', registryLiveLookup: true, updatedAt: '' }
+    const ok = validateBackup({ ...base(), settings: { ...settings, driveFolder: { id: '1AbC-dEf_123456789', name: 'Firma' }, autoSavePdf: false } })
+    expect(ok.settings).toMatchObject({ driveFolder: { id: '1AbC-dEf_123456789', name: 'Firma' }, autoSavePdf: false })
+    // Settings of earlier versions (name only) stay valid.
+    expect(validateBackup({ ...base(), settings }).settings).toEqual(settings)
+    for (const driveFolder of [{ id: "x' or name contains '", name: 'a' }, { id: '', name: 'a' }, { name: 'a' }, 'folder-id-123', { id: '1AbC-dEf_123456789' }]) {
+      expect(() => validateBackup({ ...base(), settings: { ...settings, driveFolder } })).toThrow(BackupFormatError)
+    }
+    expect(() => validateBackup({ ...base(), settings: { ...settings, autoSavePdf: 'yes' } })).toThrow(BackupFormatError)
+  })
 })
 
 describe('validateBackup – version 2 data', () => {

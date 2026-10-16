@@ -8,15 +8,20 @@ import { defineConfig, type Plugin } from 'vite'
  * - 'unsafe-inline' styles: the blob: PDF viewer inherits this policy and uses inline styles; GIS injects a <style>.
  * - Not applied in dev: the React refresh preamble is an inline script.
  * - frame-ancestors cannot be set from a <meta> tag (GitHub Pages sends no custom headers).
+ * - Google Picker (choosing the Drive folder), loaded only when the user picks a folder: its loader
+ *   https://apis.google.com/js/api.js fetches the picker module as further scripts from apis.google.com
+ *   (script-src), and the picker itself is an iframe served from docs.google.com (frame-src). It talks to that
+ *   frame with postMessage, so connect-src needs nothing new. If this is ever too narrow, the picker does not
+ *   load and the app offers to create the folder instead (see src/integrations/picker.ts).
  */
 const CSP = [
   "default-src 'none'",
-  "script-src 'self' https://accounts.google.com/gsi/client",
+  "script-src 'self' https://accounts.google.com/gsi/client https://apis.google.com",
   "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "connect-src 'self' https://ariregister.rik.ee https://data-api.ecb.europa.eu https://ec.europa.eu/taxation_customs/vies/rest-api/ms/ https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://accounts.google.com/gsi/",
-  'frame-src blob: https://accounts.google.com/gsi/',
+  'frame-src blob: https://accounts.google.com/gsi/ https://docs.google.com',
   "worker-src 'none'",
   "manifest-src 'self'",
   "object-src 'none'",

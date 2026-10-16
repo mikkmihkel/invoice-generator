@@ -332,6 +332,15 @@ describe('runAutoBackup', () => {
     expect(deletedSinceBackup(CLIENT, 'Arved')).toBe(0)
   })
 
+  it('keeps deletion bookkeeping per destination: a folder name or the chosen folder’s backup subfolder', () => {
+    const chosen = { parentId: 'chosen-folder-1', name: 'Varukoopiad' }
+    noteDeletedDocuments(2, CLIENT, chosen)
+    expect(deletedSinceBackup(CLIENT, { ...chosen })).toBe(2)
+    expect(deletedSinceBackup(CLIENT, 'Arved')).toBe(0)
+    expect(deletedSinceBackup(CLIENT, { parentId: 'other-folder', name: 'Varukoopiad' })).toBe(0)
+    noteDeletedDocuments(-2, CLIENT, chosen)
+  })
+
   it('keeps deletions made while a backup runs for the next one', async () => {
     const mine = { ...auto('mine', '2026-10-14T10:00:00Z'), device: getBackupDeviceId(), issued: 2 }
     vi.mocked(listDriveBackups).mockResolvedValue([mine])

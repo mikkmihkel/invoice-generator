@@ -51,6 +51,7 @@ import {
 } from '../../domain'
 import { buildUblXml, eInvoiceIssues, supportsEInvoice } from '../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../integrations'
+import { driveFolderLabel, driveFolderRef, effectiveClientId } from '../../integrations/googleClient'
 import { invoiceFileName, preloadPdfMake, renderInvoicePdf, renderInvoicePdfBase64 } from '../../pdf'
 import { useApp } from '../AppContext'
 import { BrandColors, TemplatePicker } from '../components/Appearance'
@@ -378,7 +379,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     ro && invoice.type !== 'credit-note' && invoice.number
       ? app.invoices.filter((i) => i.type === 'credit-note' && i.id !== invoice.id && i.status !== 'cancelled' && i.creditedInvoiceNumber?.trim() === invoice.number)
       : []
-  const hasGoogle = !!settings.googleClientId
+  const hasGoogle = !!effectiveClientId(settings)
   // The saved client behind the buyer: its internal note is shown while writing, never printed.
   const pickedClient = invoice.buyer.clientId ? clients.find((c) => c.id === invoice.buyer.clientId) : undefined
   const clientNote = !ro ? pickedClient?.notes?.trim() : undefined
@@ -486,16 +487,17 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
   const saveToDrive = () =>
     act('drive', async () => {
-      if (!settings.googleClientId) {
+      const clientId = effectiveClientId(settings)
+      if (!clientId) {
         toast.info(t('google.needClientId'))
         navigate('/settings')
         return
       }
       // Sign in first: the consent popup must open directly from the click.
-      await googleSignIn(settings.googleClientId, ['drive'])
+      await googleSignIn(clientId, ['drive'])
       const blob = await renderPdf()
-      const res = await uploadToDrive(settings.googleClientId, blob, invoiceFileName(effective, 'pdf'), settings.driveFolderName)
-      toast.success(t('drive.saved', { folder: settings.driveFolderName }), res.webViewLink ? { label: t('drive.open'), href: res.webViewLink } : undefined)
+      const res = await uploadToDrive(clientId, blob, invoiceFileName(effective, 'pdf'), driveFolderRef(settings, 'pdf'))
+      toast.success(t('drive.saved', { folder: driveFolderLabel(settings, 'pdf') }), res.webViewLink ? { label: t('drive.open'), href: res.webViewLink } : undefined)
     })
 
   const issue = async (useToday: boolean) => {
@@ -752,7 +754,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               invoice={effective}
               busy={busy}
               hasGoogle={hasGoogle}
-              folder={settings.driveFolderName}
+              folder={driveFolderLabel(settings, 'pdf')}
               onEmail={() => setDialog('email')}
               onPdf={() => void downloadPdf()}
               onDrive={() => void saveToDrive()}

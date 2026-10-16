@@ -7,6 +7,9 @@ import { useApp } from './AppContext'
 import { useGuardedNavigation } from './navGuard'
 import { ShortcutSheet } from './components/ShortcutSheet'
 import { Skeleton } from './components/ui'
+import { AccountChip } from './google/AccountChip'
+import { DriveNudge } from './google/DriveNudge'
+import { useAutoSavePdf } from './google/useAutoSavePdf'
 import { useAutoBackup } from './useAutoBackup'
 import { useRecurringDrafts } from './useRecurringDrafts'
 import { logoImageSrc } from './util'
@@ -83,11 +86,14 @@ export function Layout({ children }: { children: ReactNode }) {
   useShortcuts(openShortcuts)
   useRecurringDrafts()
   const autoBackupPrompt = useAutoBackup()
+  useAutoSavePdf()
   const backupWaiting = useSyncExternalStore(subscribeAutoBackupStatus, getAutoBackupStatus).phase === 'pending'
 
   // Arved is a full-bleed two-pane screen; its list pane carries the "data stays in this browser" note itself.
   const home = location.pathname === '/'
   const onInvoices = home || location.pathname.startsWith('/invoices')
+  // The Drive nudge sits in the list pane at home; not while editing, nor in Settings (its Google section says it).
+  const nudge = !home && !onInvoices && location.pathname !== '/settings'
   const nav = [
     { to: '/', label: t('nav.invoices'), icon: <FileTextIcon size={20} />, active: onInvoices },
     { to: '/clients', label: t('nav.clients'), icon: <UsersIcon size={20} /> },
@@ -128,6 +134,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </NavLink>
             ))}
           </nav>
+          <AccountChip />
           <Link to="/invoices/new?type=quote" onClick={onLinkClick('/invoices/new?type=quote')} className="btn new-quote">
             {t('quote.new')}
           </Link>
@@ -138,6 +145,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main id="main" tabIndex={-1} className={home ? 'main-flush' : undefined}>
+        {nudge && <DriveNudge />}
         {children}
       </main>
       {autoBackupPrompt}

@@ -2,7 +2,7 @@
 // and the session-only passphrase. UI-independent; the React side lives in src/ui/useAutoBackup.ts.
 import { holdsNumber, type AutoBackupSettings, type BackupFile } from '../domain'
 import { encryptText } from './backupCrypto'
-import { listDriveBackups, trashDriveFile, uploadBackupVersion, type DriveBackupFile, type DriveCallOptions } from './drive'
+import { listDriveBackups, trashDriveFile, uploadBackupVersion, type DriveBackupFile, type DriveCallOptions, type DriveFolderRef } from './drive'
 import { GoogleApiError } from './errors'
 import { hasAccessToken } from './googleAuth'
 
@@ -89,7 +89,7 @@ function readDeleted(): { dest: string; count: number } | null {
 }
 
 /** Issued documents deleted in this browser since its last backup uploaded to this destination. */
-export function deletedSinceBackup(clientId: string, folderName: string): number {
+export function deletedSinceBackup(clientId: string, folderName: DriveFolderRef): number {
   const v = readDeleted()
   return v && v.dest === destination(clientId, folderName) ? v.count : 0
 }
@@ -99,7 +99,7 @@ export function deletedSinceBackup(clientId: string, folderName: string): number
  * backup to this destination is not held back for having fewer documents than the previous one. The uploaded
  * backup subtracts what it accounted for.
  */
-export function noteDeletedDocuments(delta: number, clientId: string, folderName: string): void {
+export function noteDeletedDocuments(delta: number, clientId: string, folderName: DriveFolderRef): void {
   const dest = destination(clientId, folderName)
   const count = Math.max(0, deletedSinceBackup(clientId, folderName) + Math.trunc(delta))
   sessionDeleted = count ? { dest, count } : null
@@ -243,12 +243,13 @@ export async function backupFingerprint(backup: BackupFile): Promise<string> {
 
 const FINGERPRINT_KEY = 'invoice-generator:autoBackupFingerprint'
 
-function destination(clientId: string, folderName: string) {
-  return `${clientId.trim()}|${folderName.trim()}`
+function destination(clientId: string, folder: DriveFolderRef) {
+  // Same key as drive.ts driveFolderKey (a name, or "<chosen folder id>/<subfolder>").
+  return `${clientId.trim()}|${typeof folder === 'string' ? folder.trim() : `${folder.parentId}/${folder.name}`}`
 }
 
 /** Fingerprint of the last backup uploaded to this destination (shared by all tabs). */
-export function readLastFingerprint(clientId: string, folderName: string): string | null {
+export function readLastFingerprint(clientId: string, folderName: DriveFolderRef): string | null {
   try {
     const v = JSON.parse(localStorage.getItem(FINGERPRINT_KEY) ?? 'null') as { dest?: unknown; hash?: unknown } | null
     return v && v.dest === destination(clientId, folderName) && typeof v.hash === 'string' ? v.hash : null
@@ -257,7 +258,7 @@ export function readLastFingerprint(clientId: string, folderName: string): strin
   }
 }
 
-function writeLastFingerprint(clientId: string, folderName: string, hash: string) {
+function writeLastFingerprint(clientId: string, folderName: DriveFolderRef, hash: string) {
   try {
     localStorage.setItem(FINGERPRINT_KEY, JSON.stringify({ dest: destination(clientId, folderName), hash }))
   } catch {
@@ -361,7 +362,8 @@ function withBackupLock<T>(fn: () => Promise<T>): Promise<T> {
 
 export interface AutoBackupRunOptions {
   clientId: string
-  folderName: string
+  /** Destination folder: a name (earlier versions) or the backup subfolder of the chosen folder. */
+  folderName: DriveFolderRef
   settings: AutoBackupSettings
   exportBackup: () => Promise<BackupFile>
   serialize: (backup: BackupFile) => string
@@ -454,7 +456,7 @@ export function runAutoBackup(opts: AutoBackupRunOptions): Promise<AutoBackupRes
 }
 
 /** Move the plaintext automatic versions superseded by an encrypted one (plaintextVersions) to the Drive trash. */
-export function trashPlaintextVersions(clientId: string, folderName: string): Promise<number> {
+export function trashPlaintextVersions(clientId: string, folderName: DriveFolderRef): Promise<number> {
   return withBackupLock(async () => {
     const files = await listDriveBackups(clientId, folderName)
     let trashed = 0

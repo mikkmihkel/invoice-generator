@@ -1,5 +1,5 @@
 import { BackupFormatError, parseBackup } from '../../storage'
-import { formatIban, normalizeIban, normalizeVatNumber, type AppSettings, type BackupFile, type CompanyProfile } from '../../domain'
+import { formatIban, normalizeIban, normalizeVatNumber, type AppSettings, type BackupFile, type CompanyProfile, type DriveFolderChoice } from '../../domain'
 import { formatDateTime } from '../format'
 import type { Translate } from '../i18n'
 
@@ -48,6 +48,15 @@ export function keepClientId(backup: BackupFile, currentClientId: string | undef
   if (currentClientId) settings.googleClientId = currentClientId
   else delete settings.googleClientId
   return { ...backup, settings }
+}
+
+/**
+ * The backup with this browser's chosen Drive folder instead of the imported one, when a folder is chosen here (the
+ * folder belongs to the Google account signed in here). Without one, the backup's folder is taken over.
+ */
+export function keepDriveFolder(backup: BackupFile, current: DriveFolderChoice | undefined): BackupFile {
+  if (!backup.settings || !current) return backup
+  return { ...backup, settings: { ...backup.settings, driveFolder: current } }
 }
 
 /** Parse a backup file's text; a malformed file yields the specific problem (record / field) in the UI language. */

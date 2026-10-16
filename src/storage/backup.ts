@@ -80,6 +80,8 @@ export const LOGO_DATA_URL = /^data:image\/(png|jpe?g);base64,[A-Za-z0-9+/=]+$/
 /** Only plain hex colours: anything else (e.g. url(...)) would reach CSS custom properties. */
 export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
 export const GOOGLE_CLIENT_ID = /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/
+/** A Google Drive file or folder ID. */
+export const DRIVE_ID = /^[A-Za-z0-9_-]{8,128}$/
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -406,6 +408,15 @@ function checkSettings(r: Record<string, unknown>): Text | null {
   c.optOneOf('theme', { et: 'välimus', en: 'theme' }, ['auto', 'light', 'dark'])
   c.optMatch('googleClientId', { et: 'Google’i kliendi ID', en: 'Google client ID' }, GOOGLE_CLIENT_ID)
   c.optStr('driveFolderName', { et: 'Drive’i kausta nimi', en: 'Drive folder name' })
+  if (!absent(r.driveFolder)) {
+    const f = c.obj('driveFolder', { et: 'Drive’i kaust', en: 'Drive folder' })
+    // The ID ends up in Drive queries and links: plain Drive ID characters only.
+    if (f && c.str('id', { et: 'Drive’i kausta ID', en: 'Drive folder ID' }, false, f)) {
+      c.optMatch('id', { et: 'Drive’i kausta ID', en: 'Drive folder ID' }, DRIVE_ID, f)
+    }
+    if (f) c.str('name', { et: 'Drive’i kausta nimi', en: 'Drive folder name' }, true, f)
+  }
+  c.optBool('autoSavePdf', { et: 'PDF-failide automaatne salvestamine', en: 'automatic PDF saving' })
   c.optBool('registryLiveLookup', { et: 'registri otsingu seade', en: 'registry lookup setting' })
   c.optStr('updatedAt', { et: 'muutmise aeg', en: 'modification time' })
   if (!absent(r.autoBackup)) {
