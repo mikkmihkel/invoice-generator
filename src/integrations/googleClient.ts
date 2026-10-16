@@ -65,7 +65,8 @@ export function canSendWithGmail(settings: ClientSettings): boolean {
  */
 export function pickerConfig(settings: ClientSettings): { apiKey: string; appId: string } | null {
   const b = builtInGoogleConfig()
-  if (!usesBuiltInClient(settings) || !b.apiKey || !b.appId) return null
+  // The client in use decides, so the built-in ID pasted into Settings still gets the Picker.
+  if (!isBuiltInClientId(effectiveClientId(settings)) || !b.apiKey || !b.appId) return null
   return { apiKey: b.apiKey, appId: b.appId }
 }
 

@@ -89,6 +89,8 @@ describe('picker configuration', () => {
     expect(pickerConfig(settings())).toEqual({ apiKey: 'AIza-key', appId: '123456' })
     // The built-in key and app ID belong to another project than the user's own client.
     expect(pickerConfig(settings({ googleClientId: OWN }))).toBeNull()
+    // The built-in ID pasted into Settings is still the built-in client.
+    expect(pickerConfig(settings({ googleClientId: ` ${BUILT_IN} ` }))).toEqual({ apiKey: 'AIza-key', appId: '123456' })
     env({ clientId: BUILT_IN, apiKey: 'AIza-key' })
     expect(pickerConfig(settings())).toBeNull()
     env({ apiKey: 'AIza-key', appId: '123456' })
