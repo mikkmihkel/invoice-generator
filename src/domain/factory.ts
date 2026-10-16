@@ -1,4 +1,5 @@
 import { isColorMode, isHexColor } from './brand'
+import { clientLateInterest, clientPaymentTermDays } from './clientDefaults'
 import { STANDARD_VAT_RATE } from './law'
 import { DEFAULT_QUOTE_NUMBERING } from './numbering'
 import type {
@@ -177,7 +178,7 @@ export function createEmptyInvoice(profile: CompanyProfile, client?: Client): In
     type: 'invoice',
     status: 'draft',
     issueDate,
-    dueDate: addDays(issueDate, defaults.paymentTermDays),
+    dueDate: addDays(issueDate, clientPaymentTermDays(profile, client)),
     seller: draftSellerSnapshot(profile),
     buyer: client
       ? buyerSnapshot(client)
@@ -192,9 +193,8 @@ export function createEmptyInvoice(profile: CompanyProfile, client?: Client): In
     createdAt: now,
     updatedAt: now,
   }
-  if (defaults.lateInterestPercentPerDay !== undefined) {
-    invoice.lateInterestPercentPerDay = defaults.lateInterestPercentPerDay
-  }
+  const lateInterest = clientLateInterest(profile, client)
+  if (lateInterest !== undefined) invoice.lateInterestPercentPerDay = lateInterest
   if (defaults.footerNote) invoice.footerNote = defaults.footerNote
   if (defaults.paymentQr) invoice.paymentQr = true
   const textBefore = textRows(defaults.textBefore)

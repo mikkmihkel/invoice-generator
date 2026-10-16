@@ -344,6 +344,10 @@ function checkClient(r: Record<string, unknown>): Text | null {
   c.oneOf('kind', { et: 'kliendi liik', en: 'client kind' }, CLIENT_KINDS)
   c.address('address', { et: 'aadress', en: 'address' })
   c.optStr('createdAt', { et: 'loomise aeg', en: 'creation time' })
+  // Per-client invoice defaults (optional; older backups have none).
+  c.optNum('paymentTermDays', { et: 'kliendi maksetingimus', en: 'client payment term' })
+  c.optNum('lateInterestPercentPerDay', { et: 'kliendi viivis', en: 'client late interest' })
+  c.optStr('emailCc', { et: 'kliendi e-kirja koopia (CC)', en: 'client e-mail CC' })
   return c.problem
 }
 

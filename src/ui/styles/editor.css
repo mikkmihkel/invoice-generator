@@ -1563,3 +1563,31 @@ html.ed-sheet-open {
 .doc-text-after {
   margin: var(--s-4) 0 0;
 }
+
+/* ---------- Workstream C: editor helpers ---------- */
+
+/* The client card's internal note, shown under the buyer while writing (never printed). */
+.ed-client-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: var(--s-3);
+  padding: 10px 12px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.ed-client-note-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+.ed-client-note-label {
+  color: var(--text-2);
+}
+.ed-client-note-text {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}

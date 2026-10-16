@@ -12,6 +12,7 @@ import {
   EyeIcon,
   FileCodeIcon,
   LockSimpleIcon,
+  NoteIcon,
   PencilSimpleIcon,
   PrinterIcon,
   ProhibitIcon,
@@ -20,6 +21,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  applyClientTerms,
+  clientPaymentTermDays,
   computeTotals,
   holdsNumber,
   newId,
@@ -347,6 +350,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       ? app.invoices.filter((i) => i.type === 'credit-note' && i.id !== invoice.id && i.status !== 'cancelled' && i.creditedInvoiceNumber?.trim() === invoice.number)
       : []
   const hasGoogle = !!settings.googleClientId
+  // The saved client behind the buyer: its internal note is shown while writing, never printed.
+  const pickedClient = invoice.buyer.clientId ? clients.find((c) => c.id === invoice.buyer.clientId) : undefined
+  const clientNote = !ro ? pickedClient?.notes?.trim() : undefined
+  const termFromClient = !ro && pickedClient?.paymentTermDays !== undefined && term === clientPaymentTermDays(profile, pickedClient)
   // Issued invoices read as a document: optional fields that were left empty are not shown.
   const shown = (v: unknown) => !ro || (v !== undefined && v !== null && v !== '')
 
@@ -548,13 +555,16 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   }
 
   const onPickClient = (c: Client) =>
-    edit((inv) =>
-      withVatScheme(
-        { ...inv, buyer: buyerFromClient(c), language: c.defaultLanguage ?? inv.language },
+    edit((inv) => {
+      // Payment term and late interest follow the client card unless the user already changed them in this draft.
+      const previous = inv.buyer.clientId ? clients.find((x) => x.id === inv.buyer.clientId) : undefined
+      const withTerms = applyClientTerms(inv, profile, previous, c)
+      return withVatScheme(
+        { ...withTerms, buyer: buyerFromClient(c), language: c.defaultLanguage ?? inv.language },
         effectiveVatScheme(profile, c.defaultVatScheme ?? inv.vatScheme),
         profile.defaults.defaultVatRate,
-      ),
-    )
+      )
+    })
 
   const setTerm = (days: number) => set({ dueDate: addDaysISO(invoice.issueDate, Math.max(0, Math.round(days))) })
   // A quote's due date mirrors its validity date (see asQuote).
@@ -735,6 +745,15 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
             <EdSection id="sec-buyer" title={t('editor.buyer')}>
               <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} />
+              {clientNote && (
+                <div className="ed-client-note" role="note" aria-label={t('editor.clientNote')}>
+                  <NoteIcon size={16} className="ed-client-note-icon" aria-hidden="true" />
+                  <div>
+                    <p className="ed-client-note-label">{t('editor.clientNote')}</p>
+                    <p className="ed-client-note-text">{clientNote}</p>
+                  </div>
+                </div>
+              )}
             </EdSection>
 
             <EdSection
@@ -822,10 +841,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   {...dateLimit}
                 />
                 <TextField label={t('field.dueDate')} type="date" path="dueDate" value={invoice.dueDate} onChange={(v) => v && set({ dueDate: v })} min={invoice.issueDate} required />
-                <FieldShell id={fieldId('paymentTerm')} label={t('field.paymentTerm')} className="span-2">
+                <FieldShell id={fieldId('paymentTerm')} label={t('field.paymentTerm')} className="span-2" hint={termFromClient ? t('editor.termFromClient') : undefined}>
                   <div className="term-row">
                     <div className="input-suffix term-days">
-                      <DecimalInput id={fieldId('paymentTerm')} className="num" value={term} onChange={(v) => setTerm(v ?? 0)} />
+                      <DecimalInput id={fieldId('paymentTerm')} className="num" value={term} onChange={(v) => setTerm(v ?? 0)} aria-describedby={termFromClient ? fieldId('paymentTerm') + '-hint' : undefined} />
                       <span aria-hidden="true">{t('common.days')}</span>
                     </div>
                     {!ro && (

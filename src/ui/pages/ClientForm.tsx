@@ -3,12 +3,14 @@ import type { Client, InvoiceLanguage, VatScheme } from '../../domain'
 import { useApp } from '../AppContext'
 import { CompanySearch } from '../components/CompanySearch'
 import { Dialog } from '../components/Dialog'
-import { SelectField, TextAreaField, TextField } from '../components/fields'
+import { NumberField, SelectField, TextAreaField, TextField } from '../components/fields'
 import { PartyFields } from '../components/PartyFields'
 import { Segmented } from '../components/ui'
 import { languageOptions, vatSchemeOptions } from '../options'
 import { useToast } from '../Toasts'
 import { clientFromRegistry, errorMessage, newClient } from '../util'
+import { parseRecipients } from './editor/email'
+import { formatNumber } from '../format'
 
 /**
  * Create/edit a client in a dialog. Saves through the repository and returns the saved client. With
@@ -27,16 +29,19 @@ export function ClientDialog({
   withSearch?: boolean
   offerInvoice?: boolean
 }) {
-  const { t, saveClient, clients } = useApp()
+  const { t, saveClient, clients, profile } = useApp()
   const toast = useToast()
   const [client, setClient] = useState<Client>(() => initial ?? newClient())
   const [saving, setSaving] = useState(false)
   const [showError, setShowError] = useState(false)
   const isNew = !clients.some((c) => c.id === client.id)
+  const ccInvalid = parseRecipients(client.emailCc ?? '').invalid
+  const companyTerm = profile?.defaults.paymentTermDays ?? 14
+  const companyInterest = profile?.defaults.lateInterestPercentPerDay
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!client.name.trim()) {
+    if (!client.name.trim() || ccInvalid.length) {
       setShowError(true)
       return
     }
@@ -107,8 +112,39 @@ export function ClientDialog({
             onChange={(v) => setClient({ ...client, defaultVatScheme: v || undefined })}
             options={[{ value: '', label: t('clients.useCompanyDefault') }, ...vatSchemeOptions(t)]}
           />
+          <NumberField
+            label={t('clients.paymentTerm')}
+            path="client.paymentTermDays"
+            value={client.paymentTermDays}
+            onChange={(v) => setClient({ ...client, paymentTermDays: v == null ? undefined : Math.max(0, Math.round(v)) })}
+            allowEmpty
+            suffix={t('common.days')}
+            placeholder={String(companyTerm)}
+            hint={t('clients.paymentTermHint', { days: companyTerm })}
+          />
+          <NumberField
+            label={t('clients.lateInterest')}
+            path="client.lateInterestPercentPerDay"
+            value={client.lateInterestPercentPerDay}
+            onChange={(v) => setClient({ ...client, lateInterestPercentPerDay: v == null ? undefined : Math.max(0, v) })}
+            allowEmpty
+            suffix={t('common.percentPerDay')}
+            placeholder={companyInterest ? formatNumber(companyInterest) : undefined}
+            hint={companyInterest ? t('clients.lateInterestHint', { rate: formatNumber(companyInterest) }) : t('clients.lateInterestHintNone')}
+          />
+          <TextField
+            className="span-2"
+            label={t('clients.emailCc')}
+            path="client.emailCc"
+            inputMode="email"
+            autoComplete="off"
+            value={client.emailCc}
+            onChange={(v) => setClient({ ...client, emailCc: v.trim() ? v : undefined })}
+            hint={t('clients.emailCcHint')}
+            error={showError && ccInvalid.length ? t('email.invalidAddress', { list: ccInvalid.join(', ') }) : undefined}
+          />
         </div>
-        <TextAreaField label={t('clients.notes')} value={client.notes} onChange={(v) => setClient({ ...client, notes: v || undefined })} rows={2} hint={t('clients.notesHint')} />
+        <TextAreaField label={t('clients.notes')} value={client.notes} onChange={(v) => setClient({ ...client, notes: v || undefined })} rows={2} hint={t('clients.internalNoteHint')} />
       </form>
     </Dialog>
   )

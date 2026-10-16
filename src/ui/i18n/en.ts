@@ -1016,4 +1016,17 @@ export const en: Record<keyof typeof et, string> = {
   'editor.skipToIssue': 'Skip to issuing',
   'company.leaveConfirm': 'Your company details have unsaved changes. They will be lost if you leave this page.',
   'common.keepEditing': 'Keep editing',
+
+  // ---- Workstream C: invoice editor and client defaults ----
+  'clients.paymentTerm': 'Payment term for this client',
+  'clients.paymentTermHint': 'Leave empty to use the company default ({days} days).',
+  'clients.lateInterest': 'Late payment interest for this client',
+  'clients.lateInterestHint': 'Leave empty to use the company default ({rate}% per day). 0 means no late interest.',
+  'clients.lateInterestHintNone': 'Leave empty to print no late interest.',
+  'clients.emailCc': 'E-mail copy recipients (Cc)',
+  'clients.emailCcHint': 'Added as Cc when you e-mail this client an invoice or a reminder. Separate several addresses with commas.',
+  'clients.internalNoteHint': 'Only for you: shown while you write an invoice, never printed.',
+  'editor.clientNote': 'Client notes, not printed',
+  'editor.termFromClient': 'Payment term from the client card.',
+  // ---- end of Workstream C ----
 }

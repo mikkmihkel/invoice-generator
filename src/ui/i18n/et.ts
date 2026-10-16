@@ -1014,4 +1014,17 @@ export const et = {
   'editor.skipToIssue': 'Liigu väljastamise juurde',
   'company.leaveConfirm': 'Ettevõtte andmetes on salvestamata muudatusi. Kui lehelt lahkud, lähevad need kaduma.',
   'common.keepEditing': 'Jätka muutmist',
+
+  // ---- Workstream C: invoice editor and client defaults ----
+  'clients.paymentTerm': 'Selle kliendi maksetingimus',
+  'clients.paymentTermHint': 'Kui jätad välja tühjaks, kehtib ettevõtte vaikeseade ({days} päeva).',
+  'clients.lateInterest': 'Selle kliendi viivis',
+  'clients.lateInterestHint': 'Kui jätad välja tühjaks, kehtib ettevõtte vaikeseade ({rate}% päevas). 0 tähendab, et viivist ei arvestata.',
+  'clients.lateInterestHintNone': 'Kui jätad välja tühjaks, viivist arvele ei märgita.',
+  'clients.emailCc': 'E-kirja koopia saajad (CC)',
+  'clients.emailCcHint': 'Lisatakse koopia saajaks, kui saadad sellele kliendile arve või meeldetuletuse. Mitu aadressi eralda komaga.',
+  'clients.internalNoteHint': 'Ainult sinu jaoks: näed seda arve koostamisel, arvele seda ei trükita.',
+  'editor.clientNote': 'Kliendi märkmed, arvele ei trükita',
+  'editor.termFromClient': 'Kliendikaardil määratud maksetingimus.',
+  // ---- end of Workstream C ----
 }

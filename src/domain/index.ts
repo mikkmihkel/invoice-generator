@@ -83,6 +83,7 @@ export {
   textRows,
 } from './factory'
 export { withVatScheme } from './scheme'
+export { applyClientTerms, clientLateInterest, clientPaymentTermDays } from './clientDefaults'
 export { selectedBankAccounts } from './accounts'
 export { COLOR_MODES, HEX_COLOR_PATTERN, MIN_TEXT_CONTRAST, colorModeOf, contrastRatio, hexOr, isColorMode, isHexColor, relativeLuminance } from './brand'
 export { creditNotesFor, creditedAmount, outstandingAmount, isVoided } from './settlement'
