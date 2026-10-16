@@ -4,6 +4,7 @@ import App from '../../../App'
 import { createDefaultSettings, newId, reopenBlocker, type Invoice, type InvoiceEvent } from '../../../domain'
 import { addDaysISO, localTodayISO } from '../../util'
 import { createMemoryRepo, sampleProfile } from '../../testing/memoryRepo'
+import * as integrations from '../../../integrations'
 import { canMarkSent, sentPromptKey } from './markSent'
 
 vi.mock('../../../registry', async () => (await import('../../testing/mocks')).registryMock())
@@ -104,6 +105,7 @@ describe('canMarkSent', () => {
     expect(sentPromptKey('prepayment')).toBe('sent.prompt')
     expect(sentPromptKey('credit-note')).toBe('sent.promptCredit')
     expect(sentPromptKey('quote')).toBe('sent.promptQuote')
+    expect(sentPromptKey('invoice', 'reminder')).toBe('sent.promptReminder')
   })
 })
 
@@ -229,5 +231,73 @@ describe('mark as sent in the editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rohkem' }))
     expect(screen.queryByRole('menuitem', { name: 'Märgi saadetuks' })).not.toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Ava muutmiseks' })).not.toBeInTheDocument()
+  })
+})
+
+describe('e-mail handed to the mail app or the share sheet', () => {
+  it('does not record the invoice as sent, even without a recipient, but asks', async () => {
+    const inv = invoice({ buyer: { kind: 'company', name: 'Kalda Puutöö OÜ', address: { street: '', city: '', postalCode: '', country: 'EE' } } })
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt(`#/?id=${inv.id}`, repo)
+    const article = await doc()
+    fireEvent.click(within(actions(article)).getByRole('button', { name: 'Saada e-kirjaga' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Saada arve 2026-0004' })
+    const mailApp = within(dialog).getByRole('button', { name: 'Ava e-posti rakendus' })
+    await waitFor(() => expect(mailApp).toBeEnabled())
+    await act(async () => {
+      fireEvent.click(mailApp)
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(repo.addInvoiceEvent).not.toHaveBeenCalled()
+    // Still unsent: e-mail stays the next step and the invoice can still be reopened.
+    expect(within(actions(article)).getByRole('button', { name: 'Saada e-kirjaga' })).toHaveClass('btn-primary')
+    expect(within(article).getByRole('button', { name: 'muutmiseks avada' })).toBeInTheDocument()
+    const prompt = (await within(article).findByText('Kas saatsid arve kliendile?')).closest('.sent-prompt') as HTMLElement
+    await act(async () => {
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Märgi saadetuks' }))
+    })
+    expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'sent' }))
+  })
+
+  it('asks after sharing instead of recording it', async () => {
+    vi.mocked(integrations.canShareFiles).mockReturnValue(true)
+    try {
+      const inv = invoice()
+      const repo = createMemoryRepo({ profile, invoices: [inv] })
+      renderAt(`#/?id=${inv.id}`, repo)
+      const article = await doc()
+      fireEvent.click(within(actions(article)).getByRole('button', { name: 'Saada e-kirjaga' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Saada arve 2026-0004' })
+      const share = await within(dialog).findByRole('button', { name: 'Jaga…' })
+      await waitFor(() => expect(share).toBeEnabled())
+      await act(async () => {
+        fireEvent.click(share)
+      })
+      expect(integrations.shareFiles).toHaveBeenCalled()
+      expect(repo.addInvoiceEvent).not.toHaveBeenCalled()
+      expect(await within(article).findByText('Kas saatsid arve kliendile?')).toBeInTheDocument()
+    } finally {
+      vi.mocked(integrations.canShareFiles).mockReturnValue(false)
+    }
+  })
+
+  it('asks with a toast in the editor, whose action records the sent event', async () => {
+    const inv = invoice()
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt(`#/invoices/${inv.id}`, repo)
+    await screen.findByRole('heading', { level: 1, name: 'Arve 2026-0004' })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Saada e-kirjaga' })[0])
+    const dialog = await screen.findByRole('dialog', { name: 'Saada arve 2026-0004' })
+    const mailApp = within(dialog).getByRole('button', { name: 'Ava e-posti rakendus' })
+    await waitFor(() => expect(mailApp).toBeEnabled())
+    await act(async () => {
+      fireEvent.click(mailApp)
+    })
+    expect(repo.addInvoiceEvent).not.toHaveBeenCalled()
+    const toast = (await screen.findByText('Kas saatsid arve kliendile?')).closest('.toast') as HTMLElement
+    await act(async () => {
+      fireEvent.click(within(toast).getByRole('button', { name: 'Märgi saadetuks' }))
+    })
+    expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'sent' }))
   })
 })

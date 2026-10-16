@@ -179,6 +179,12 @@ describe('selected invoice', () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Ava e-posti rakendus' }))
     })
+    // The mail app may not have sent it: the detail asks instead of recording the reminder by itself.
+    expect(repo.addInvoiceEvent).not.toHaveBeenCalled()
+    const prompt = (await within(article).findByText('Kas saatsid meeldetuletuse kliendile?')).closest('.sent-prompt') as HTMLElement
+    await act(async () => {
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Märgi saadetuks' }))
+    })
     expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'reminder' }))
     expect(await within(article).findByText(/^Meeldetuletused: \d{2}\.\d{2}\.\d{4}, \d{2}\.\d{2}\.\d{4}$/)).toBeInTheDocument()
     // Just reminded: the main action is the payment again, another reminder stays under "More".
@@ -204,16 +210,20 @@ describe('selected invoice', () => {
     const repo = createMemoryRepo({ profile, invoices: [inv], events: [{ id: 's', invoiceId: inv.id, kind: 'sent', at: new Date().toISOString() }] })
     renderAt('#/', repo)
     const article = await doc()
+    // The sent event loads after the first render; only then is "Mark paid" the main action.
+    const paid = await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }, { timeout: 3000 })
     await act(async () => {
-      fireEvent.click(await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }))
+      fireEvent.click(paid)
     })
+    const undo = await screen.findByRole('button', { name: 'Võta tagasi' })
     await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Võta tagasi' }))
+      fireEvent.click(undo)
     })
     expect(repo.markInvoiceUnpaid).toHaveBeenCalledWith(inv.id)
     expect(await screen.findByText('Arve 2026-0004 on jälle tasumata.')).toBeInTheDocument()
+    const again = await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }, { timeout: 3000 })
     await act(async () => {
-      fireEvent.click(await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }))
+      fireEvent.click(again)
     })
     fireEvent.click(await within(article).findByRole('button', { name: 'muuda kuupäeva' }))
     const dialog = await screen.findByRole('dialog', { name: 'Arve 2026-0004 laekumise kuupäev' })

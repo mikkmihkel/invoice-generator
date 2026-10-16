@@ -10,24 +10,30 @@ import { useToast } from '../../Toasts'
 import { lateInterest } from '../../../domain/interest'
 import { errorMessage, localTodayISO } from '../../util'
 import { recordInvoiceEvent, useInvoiceEvents } from '../invoice-detail/events'
+import { canMarkSent, sentPromptKey, useMarkSent, type SentKind } from '../invoice-detail/markSent'
 import { emailTemplates, fillEmailText, parseRecipients, reminderTemplates, type EmailKind, type ReminderInterest } from './email'
 
 /**
  * Send the invoice PDF by e-mail; `kind="reminder"` starts from the payment reminder text instead (with the late
- * interest when the invoice has a rate, and a firmer text once `previousReminders` > 0). A successful send is
- * recorded as a 'sent' or 'reminder' event of the invoice.
+ * interest when the invoice has a rate, and a firmer text once `previousReminders` > 0). A send through Gmail is
+ * recorded as a 'sent' or 'reminder' event of the invoice. Handing the e-mail to the mail app or the share sheet
+ * does not say it was sent, so it is not recorded: `onHandedOff` is called to ask the user (without it, a toast
+ * asks), and "Mark as sent" records it.
  */
 export function EmailDialog({
   invoice,
   onClose,
   kind = 'invoice',
   onSent,
+  onHandedOff,
   previousReminders,
 }: {
   invoice: Invoice
   onClose: () => void
   kind?: EmailKind
   onSent?: () => void
+  /** The e-mail went to the mail app or the share sheet; the caller asks whether it was sent. */
+  onHandedOff?: (kind: SentKind) => void
   /** Reminders sent before this one; read from the invoice's history when not given. */
   previousReminders?: number
 }) {
@@ -35,6 +41,7 @@ export function EmailDialog({
   const history = useInvoiceEvents(invoice.id)
   const second = (previousReminders ?? history.reminders.length) > 0
   const toast = useToast()
+  const markSent = useMarkSent()
   const company = invoice.seller.name || profile?.name || ''
   // A reminder asks for what is still owed after credit notes, not the original total.
   const amount = kind === 'reminder' ? outstandingAmount(invoice, invoices) : undefined
@@ -103,6 +110,14 @@ export function EmailDialog({
     onSent?.()
   }
 
+  /** Mail app or share sheet: the app cannot tell whether the e-mail went out, so it asks instead of recording it. */
+  const handedOff = () => {
+    const event: SentKind = kind === 'reminder' ? 'reminder' : 'sent'
+    if (invoice.status === 'draft' || (event === 'sent' && !canMarkSent(invoice, history.events))) return
+    if (onHandedOff) onHandedOff(event)
+    else toast.info(t(sentPromptKey(invoice.type, event)), { label: t('sent.mark'), onClick: () => void markSent(invoice, event) })
+  }
+
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key)
     try {
@@ -131,7 +146,7 @@ export function EmailDialog({
       const shared = await shareFiles(draft())
       if (!shared) return // dismissed by the user
       toast.success(t('email.shared'))
-      await sent()
+      handedOff()
       onClose()
     })
 
@@ -142,7 +157,7 @@ export function EmailDialog({
       // mailto: only takes bare addresses (RFC 6068).
       window.location.href = buildMailtoUrl({ ...rest, to: toList.valid.map((r) => r.address), cc: ccList.valid.map((r) => r.address) })
       toast.info(t('email.attachHint', { file: fileName }))
-      await sent()
+      handedOff()
       onClose()
     })
 

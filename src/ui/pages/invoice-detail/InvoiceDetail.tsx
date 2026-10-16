@@ -38,7 +38,7 @@ import { PdfPage } from './PdfPage'
 import { detailStatus, docNoun, quoteDetailStatus, settlementOf } from './status'
 import { interpolate } from './text'
 import { LockNote } from './LockNote'
-import { canMarkSent, sentPromptKey, useMarkSent } from './markSent'
+import { canMarkSent, sentPromptKey, useMarkSent, type SentKind } from './markSent'
 import { useCanReopen, useInvoiceActions } from './useInvoiceActions'
 
 const PAGE_KEY = 'invoice-generator:detailPage'
@@ -77,18 +77,19 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   const [showPage, setShowPage] = useState(initialShowPage)
   const effective = useMemo(() => effectiveInvoice(invoice, profile), [invoice, profile])
   const totals = useMemo(() => computeTotals(invoice), [invoice])
-  // After a download, print or Drive save the app cannot tell whether the client got it: ask (one line, no dialog).
-  const [askSent, setAskSent] = useState(false)
-  const actions = useInvoiceActions(invoice, effective, { onShared: () => setAskSent(true) })
+  // After a download, print, Drive save or the mail app the app cannot tell whether the client got it: ask (one line,
+  // no dialog).
+  const [ask, setAsk] = useState<SentKind | null>(null)
+  const actions = useInvoiceActions(invoice, effective, { onShared: () => setAsk('sent') })
   const history = useInvoiceEvents(invoice.id)
   const sentAt = history.sentAt
   const sendable = canMarkSent(invoice, history.events)
   const markSentNow = useMarkSent()
   const [marking, setMarking] = useState(false)
-  const markSent = async () => {
+  const markSent = async (kind: SentKind = 'sent') => {
     setMarking(true)
     try {
-      if (await markSentNow(invoice)) setAskSent(false)
+      if (await markSentNow(invoice, kind)) setAsk(null)
     } finally {
       setMarking(false)
     }
@@ -318,16 +319,16 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           {t(quote ? 'quote.showPage' : 'detail.showPage')}
         </button>
       </div>
-      {askSent && sendable && (
+      {(ask === 'reminder' || (ask === 'sent' && sendable)) && (
         <div className="sent-prompt" role="status">
           <PaperPlaneTiltIcon className="sent-prompt-icon" />
           <p>
-            {t(sentPromptKey(invoice.type))}{' '}
-            <button type="button" className="link-btn" onClick={() => void markSent()} disabled={busy}>
+            {t(sentPromptKey(invoice.type, ask))}{' '}
+            <button type="button" className="link-btn" onClick={() => void markSent(ask)} disabled={busy}>
               {t('sent.mark')}
             </button>
           </p>
-          <IconButton label={t('common.close')} icon={<XIcon size={14} />} className="icon-btn-sm" onClick={() => setAskSent(false)} />
+          <IconButton label={t('common.close')} icon={<XIcon size={14} />} className="icon-btn-sm" onClick={() => setAsk(null)} />
         </div>
       )}
 
@@ -499,6 +500,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           invoice={effective}
           kind={dialog === 'reminder' ? 'reminder' : 'invoice'}
           previousReminders={history.reminders.length}
+          onHandedOff={setAsk}
           onClose={() => setDialog(null)}
         />
       )}

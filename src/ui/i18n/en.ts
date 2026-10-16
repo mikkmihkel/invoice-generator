@@ -1024,5 +1024,8 @@ export const en: Record<keyof typeof et, string> = {
   'sent.prompt': 'Did you send the invoice to the client?',
   'sent.promptCredit': 'Did you send the credit note to the client?',
   'sent.promptQuote': 'Did you send the quote to the client?',
+  'sent.promptReminder': 'Did you send the reminder to the client?',
+  'sent.reminderMarked': 'Reminder about invoice {number} marked as sent.',
+  'sent.reminderUnmarked': 'Reminder about invoice {number} is no longer marked as sent.',
   // ---- end of Workstream B ----
 }

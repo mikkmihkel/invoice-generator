@@ -1022,5 +1022,8 @@ export const et = {
   'sent.prompt': 'Kas saatsid arve kliendile?',
   'sent.promptCredit': 'Kas saatsid kreeditarve kliendile?',
   'sent.promptQuote': 'Kas saatsid hinnapakkumise kliendile?',
+  'sent.promptReminder': 'Kas saatsid meeldetuletuse kliendile?',
+  'sent.reminderMarked': 'Meeldetuletus arve {number} kohta on märgitud saadetuks.',
+  'sent.reminderUnmarked': 'Meeldetuletus arve {number} kohta ei ole enam märgitud saadetuks.',
   // ---- end of Workstream B ----
 }
