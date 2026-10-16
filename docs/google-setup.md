@@ -190,7 +190,8 @@ Changes to origins can take a few minutes, and occasionally longer, to take effe
   named `arvegeneraator-backup-…` by earlier versions are still listed, restored and pruned the same way.
 - Automatic backups (Settings → Automatic backup to Google Drive) are separate, dated files in the backup
   folder (`Varukoopiad`, or the named folder of earlier versions). Choosing a folder switches them on
-  unless they were switched off before. They are optionally encrypted with a passphrase. Each browser keeps its own newest versions (at least 3) and
+  ("Back up automatically to this folder", ticked by default unless switched off before; the dialog recommends
+  setting a passphrase). They are optionally encrypted with a passphrase. Each browser keeps its own newest versions (at least 3) and
   moves only its own older versions to the Drive trash; copies made on other devices are never touched. If
   Drive already holds a backup with more issued documents than this browser, automatic backup pauses and
   offers to restore it first. Documents you delete on purpose do not trigger this pause.

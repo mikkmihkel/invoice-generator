@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import App from '../../App'
 import { createDefaultSettings, newId, type AppSettings, type BackupFile, type Invoice } from '../../domain'
 import { googleSignIn as barrelSignIn, uploadToDrive } from '../../integrations'
+import { getBackupPassphrase, setBackupPassphrase } from '../../integrations/autoBackup'
 import { findOrCreateAppFolder, listDriveBackups, downloadDriveFile, type DriveBackupFile } from '../../integrations/drive'
 import type { GisTokenClientConfig, GoogleGlobal } from '../../integrations/gis-types'
 import { __resetGoogleAuthForTests, SCOPE_URLS } from '../../integrations/googleAuth'
@@ -76,6 +77,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   localStorage.clear()
+  setBackupPassphrase(null)
   __resetGoogleAuthForTests()
   __resetNudgeForTests()
   installFakeGis()
@@ -154,7 +156,7 @@ describe('onboarding: Google Drive step', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Loo kaust „Arveldaja“' }))
     })
     expect(findOrCreateAppFolder).toHaveBeenCalledWith(BUILT_IN, 'Arveldaja')
-    expect(lastSaved(repo)).toMatchObject({ driveFolder: { id: 'app-folder-1', name: 'Arveldaja', clientId: BUILT_IN }, autoBackup: { enabled: true } })
+    expect(lastSaved(repo)).toMatchObject({ driveFolder: { id: 'app-folder-1', name: 'Arveldaja', clientId: BUILT_IN }, autoBackup: { enabled: true, encrypt: false }, autoSavePdf: true })
     // Looks for backups in the new folder's backup subfolder (none here), then goes on to the company.
     expect(listDriveBackups).toHaveBeenCalledWith(BUILT_IN, { parentId: 'app-folder-1', name: 'Varukoopiad' })
     expect(await screen.findByRole('heading', { level: 2, name: 'Ettevõte' })).toBeInTheDocument()
@@ -208,6 +210,55 @@ describe('onboarding: Google Drive step', () => {
     fireEvent.click(within(await screen.findByRole('dialog', { name: 'Drive’ist leiti varukoopiad' })).getByRole('button', { name: 'Alusta tühjalt' }))
     expect(await screen.findByRole('heading', { level: 2, name: 'Ettevõte' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('folder dialog options', () => {
+  async function openFolderDialog(repo: ReturnType<typeof createMemoryRepo>) {
+    renderAt('#/', repo)
+    fireEvent.click(await screen.findByRole('button', { name: 'Logi sisse Google’iga' }))
+    return screen.findByRole('dialog', { name: 'Vali Drive’i kaust' })
+  }
+
+  it('shows automatic backup as a ticked option with advice to encrypt, and saves what the user chose', async () => {
+    env({ clientId: BUILT_IN })
+    const repo = createMemoryRepo()
+    const dialog = await openFolderDialog(repo)
+    const backup = within(dialog).getByRole('checkbox', { name: /Varunda automaatselt sellesse kausta/ })
+    expect(backup).toBeChecked()
+    expect(within(dialog).getByText(/Varukoopiad on krüpteerimata/)).toBeInTheDocument()
+    const pdf = within(dialog).getByRole('checkbox', { name: 'Salvesta väljastatud arvete PDF-failid sellesse kausta' })
+    expect(pdf).toBeChecked()
+    fireEvent.click(backup)
+    fireEvent.click(pdf)
+    expect(within(dialog).queryByText(/Varukoopiad on krüpteerimata/)).not.toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Loo kaust „Arveldaja“' }))
+    })
+    expect(lastSaved(repo)).toMatchObject({ autoBackup: { enabled: false }, autoSavePdf: false })
+  })
+
+  it('sets a passphrase from the dialog, so the first backups are already encrypted', async () => {
+    env({ clientId: BUILT_IN })
+    const repo = createMemoryRepo()
+    const dialog = await openFolderDialog(repo)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Määra parool' }))
+    const pass = await screen.findByRole('dialog', { name: 'Varukoopiate parool' })
+    fireEvent.change(within(pass).getByLabelText('Parool'), { target: { value: 'pikk parool 1' } })
+    fireEvent.change(within(pass).getByLabelText('Korda parooli'), { target: { value: 'pikk parool 1' } })
+    fireEvent.click(within(pass).getByRole('button', { name: 'Kinnita' }))
+    expect(await within(dialog).findByText('Varukoopiad krüpteeritakse sinu parooliga.')).toBeInTheDocument()
+    expect(getBackupPassphrase()).toBe('pikk parool 1')
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Loo kaust „Arveldaja“' }))
+    })
+    expect(lastSaved(repo)).toMatchObject({ autoBackup: { enabled: true, encrypt: true } })
+  })
+
+  it('starts from the earlier decision when automatic backup was switched off before', async () => {
+    env({ clientId: BUILT_IN })
+    const dialog = await openFolderDialog(createMemoryRepo({ settings: settings({ autoBackup: { enabled: false, encrypt: false, keepVersions: 10 } }) }))
+    expect(within(dialog).getByRole('checkbox', { name: /Varunda automaatselt sellesse kausta/ })).not.toBeChecked()
   })
 })
 

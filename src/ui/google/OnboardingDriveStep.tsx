@@ -54,6 +54,7 @@ export function OnboardingDriveStep({ onNext }: { onNext: () => void }) {
           </li>
         ))}
       </ul>
+      <p className="field-hint">{t('gdrive.onbBackupNote')}</p>
       <div className="onb-drive-actions">
         <button type="button" className="btn btn-primary" onClick={() => void signIn()} disabled={busy} data-autofocus>
           <SignInIcon />

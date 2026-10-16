@@ -1,8 +1,8 @@
-import { FolderPlusIcon, FolderOpenIcon } from '@phosphor-icons/react'
+import { FolderPlusIcon, FolderOpenIcon, KeyIcon } from '@phosphor-icons/react'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppSettings, BackupFile, DriveFolderChoice } from '../../domain'
 // Submodules rather than the integrations barrel: UI tests replace the barrel with a small mock.
-import { normalizeAutoBackup } from '../../integrations/autoBackup'
+import { normalizeAutoBackup, setBackupPassphrase } from '../../integrations/autoBackup'
 import { findOrCreateAppFolder, listDriveBackups, type DriveBackupFile } from '../../integrations/drive'
 import { getAccessToken, googleSignIn } from '../../integrations/googleAuth'
 import {
@@ -19,7 +19,8 @@ import {
 import { pickDriveFolder } from '../../integrations/picker'
 import { useApp } from '../AppContext'
 import { Dialog } from '../components/Dialog'
-import { RestoreDialog } from '../pages/settings/BackupSection'
+import { CheckboxField } from '../components/fields'
+import { PassphraseDialog, RestoreDialog } from '../pages/settings/BackupSection'
 import { ImportBackupDialog } from '../pages/SettingsPage'
 import { useToast } from '../Toasts'
 import { errorMessage } from '../util'
@@ -33,6 +34,19 @@ type Phase =
   | { kind: 'restore'; files: DriveBackupFile[]; clientId: string }
   | { kind: 'import'; backup: BackupFile }
 
+/** What the folder dialog sets up with the folder: automatic backup (and its encryption) and automatic PDFs. */
+interface FolderOptions {
+  backup: boolean
+  encrypt: boolean
+  pdf: boolean
+}
+
+/** Defaults: automatic backup and PDFs on unless decided before; encryption as before. */
+function folderDefaults(s: AppSettings): FolderOptions {
+  const backup = normalizeAutoBackup(s.autoBackup)
+  return { backup: s.autoBackup ? backup.enabled : true, encrypt: backup.encrypt, pdf: s.autoSavePdf !== false }
+}
+
 /** Hosts the connect flow and its dialogs above the routes, so they survive the onboarding → app switch. */
 export function DriveConnectProvider({ children }: { children: ReactNode }) {
   const { t, settings, saveSettings, invoices, clients, lang } = useApp()
@@ -40,6 +54,8 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>(null)
   const [busy, setBusy] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [options, setOptions] = useState<FolderOptions>({ backup: true, encrypt: false, pdf: true })
+  const [askPassphrase, setAskPassphrase] = useState(false)
   const latest = useRef({ settings, empty: true })
   // Layout effect: a click right after a settings change must already see it.
   useLayoutEffect(() => {
@@ -73,11 +89,14 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
   )
 
   const adoptFolder = useCallback(
-    async (folder: DriveFolderChoice, message: string) => {
+    async (folder: DriveFolderChoice, message: string, chosen: FolderOptions) => {
       const s = latest.current.settings
-      const patch: Partial<AppSettings> = { driveFolder: { id: folder.id, name: folder.name, clientId: effectiveClientId(s) } }
-      // Signed in with a folder: automatic backup is on unless the user decided about it before.
-      if (!s.autoBackup) patch.autoBackup = { ...normalizeAutoBackup(undefined), enabled: true }
+      const patch: Partial<AppSettings> = {
+        driveFolder: { id: folder.id, name: folder.name, clientId: effectiveClientId(s) },
+        // What the user saw ticked in the folder dialog (automatic backup is on by default, visibly).
+        autoBackup: { ...normalizeAutoBackup(s.autoBackup), enabled: chosen.backup, encrypt: chosen.encrypt },
+        autoSavePdf: chosen.pdf,
+      }
       await saveSettings(patch)
       toast.success(message, { label: t('gdrive.openInDrive'), href: driveFolderUrl(folder.id) })
       await offerRestore({ ...s, ...patch })
@@ -101,7 +120,10 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
       }
       return new Promise<ConnectResult>((resolve) => {
         done.current = resolve
-        if (options.chooseFolder || !chosenDriveFolder(s)) setPhase({ kind: 'folder' })
+        if (options.chooseFolder || !chosenDriveFolder(s)) {
+          setOptions(folderDefaults(s))
+          setPhase({ kind: 'folder' })
+        }
         else {
           toast.success(t('google.connected'))
           void offerRestore(s)
@@ -122,7 +144,7 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
       const accessToken = await getAccessToken(clientId, ['drive'])
       const folder = await pickDriveFolder({ accessToken, ...cfg, locale: lang, title: t('gdrive.pickerTitle') })
       if (!folder) setPhase({ kind: 'folder' })
-      else await adoptFolder(folder, t('gdrive.folderChosen', { folder: folder.name }))
+      else await adoptFolder(folder, t('gdrive.folderChosen', { folder: folder.name }), options)
     } catch (e) {
       console.warn('Google Picker failed', e)
       setPhase({ kind: 'folder', pickerFailed: true })
@@ -135,7 +157,7 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
     setCreating(true)
     try {
       const folder = await findOrCreateAppFolder(clientId, DRIVE_APP_FOLDER_NAME)
-      await adoptFolder(folder, t(folder.created ? 'gdrive.folderCreated' : 'gdrive.folderFound', { folder: folder.name }))
+      await adoptFolder(folder, t(folder.created ? 'gdrive.folderCreated' : 'gdrive.folderFound', { folder: folder.name }), options)
     } catch (e) {
       toast.error(errorMessage(e))
     } finally {
@@ -179,8 +201,40 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
               {t('gdrive.pickerFailed', { name: DRIVE_APP_FOLDER_NAME })}
             </p>
           )}
+          <CheckboxField
+            label={t('gdrive.optBackup')}
+            hint={t('gdrive.optBackupHint', { backup: DRIVE_BACKUP_SUBFOLDER })}
+            checked={options.backup}
+            onChange={(backup) => setOptions((o) => ({ ...o, backup }))}
+            disabled={creating}
+          />
+          {options.backup && (
+            <div className={`notice ${options.encrypt ? 'notice-info' : 'notice-warn'} stack-sm`}>
+              <p>{t(options.encrypt ? 'gdrive.encryptOn' : 'gdrive.encryptAdvice')}</p>
+              {!options.encrypt && (
+                <div className="btn-row">
+                  <button type="button" className="btn btn-sm" onClick={() => setAskPassphrase(true)} disabled={creating}>
+                    <KeyIcon />
+                    {t('gdrive.setPassphrase')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <CheckboxField label={t('gdrive.optPdf')} checked={options.pdf} onChange={(pdf) => setOptions((o) => ({ ...o, pdf }))} disabled={creating} />
           <p className="muted small">{t('gdrive.createFolderHint')}</p>
         </Dialog>
+      )}
+      {askPassphrase && (
+        <PassphraseDialog
+          mode="new"
+          onClose={() => setAskPassphrase(false)}
+          onSubmit={(passphrase) => {
+            setAskPassphrase(false)
+            setBackupPassphrase(passphrase)
+            setOptions((o) => ({ ...o, encrypt: true }))
+          }}
+        />
       )}
       {phase?.kind === 'picking' && (
         <p className="drive-picking" role="status">

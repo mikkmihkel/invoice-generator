@@ -99,7 +99,8 @@ npm run registry:build
 - **Without signing in** nothing goes to Google, and the app keeps working: data stays in this browser.
 - **When you sign in with Google** your browser talks to Google directly; nothing passes through a server of ours, and the site owner cannot see your files.
   - The site's shared client asks only for `openid`, `email` (to show which account is signed in) and `drive.file`: the app sees only files and folders it created or that you picked in the Google folder picker, not the rest of your Drive.
-  - Invoice PDFs (if you keep the option on) and backups are written to the folder you chose, so they now also live in your Google account under Google's terms. Turn on backup encryption if you want them unreadable without your passphrase.
+  - Invoice PDFs (if you keep the option on) and backups are written to the folder you chose, so they now also live in your Google account under Google's terms.
+  - When you choose the folder, the dialog shows "Back up automatically to this folder" ticked by default, plus automatic PDF saving. Backups are **not encrypted** unless you set a passphrase there or later in Settings: without one, anyone with access to your Drive can read them. The app recommends a passphrase at that point.
   - The folder's ID and name are saved in this browser's settings and in your backups; the e-mail address of the last account is remembered in this browser until you sign out.
   - Access tokens are kept in memory only, never stored, and there is no refresh token. **Sign out** revokes the access; you can also remove the app at <https://myaccount.google.com/permissions>.
   - Gmail (`gmail.send`, send only, it cannot read your mail) is requested only with your own OAuth client from Settings → Google → Advanced.
