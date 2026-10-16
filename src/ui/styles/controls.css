@@ -179,6 +179,12 @@ label.btn {
   color: var(--accent-hover);
   text-decoration-color: currentColor;
 }
+/* Touch screens: a taller hit area around inline text buttons (inline padding does not move the text). */
+@media (pointer: coarse) {
+  .link-btn {
+    padding-block: 6px;
+  }
+}
 
 .kbd {
   display: inline-grid;
