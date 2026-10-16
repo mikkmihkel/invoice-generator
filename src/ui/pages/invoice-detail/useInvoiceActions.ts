@@ -5,6 +5,7 @@ import { remainingCreditLines } from '../../../domain/settlement'
 import { buildUblXml } from '../../../einvoice'
 import { downloadBlob, googleSignIn, uploadToDrive } from '../../../integrations'
 import { noteDeletedDocuments } from '../../../integrations/autoBackup'
+import { driveFolderLabel, driveFolderRef, effectiveClientId } from '../../../integrations/googleClient'
 import { invoiceFileName, renderInvoicePdf, renderInvoicePdfBase64 } from '../../../pdf'
 import { useApp } from '../../AppContext'
 import { useConfirm } from '../../components/Dialog'
@@ -26,8 +27,8 @@ export function useDeleteDocument() {
     async (invoice: Invoice): Promise<void> => {
       // Issued documents deleted on purpose: the next automatic backup may have fewer of them. Recorded before the
       // deletion, so a backup that runs meanwhile already knows, and taken back if the deletion fails.
-      const clientId = settings.googleClientId ?? ''
-      const folder = settings.driveFolderName
+      const clientId = effectiveClientId(settings) ?? ''
+      const folder = driveFolderRef(settings, 'backup')
       const expected = planDeletion(invoice, invoices, null, invoiceEvents).documents.filter(holdsNumber).length
       if (expected) noteDeletedDocuments(expected, clientId, folder)
       let deleted
@@ -61,7 +62,7 @@ export function useDeleteDocument() {
         },
       })
     },
-    [t, toast, invoices, invoiceEvents, settings.googleClientId, settings.driveFolderName, deleteInvoice, restoreDeletedInvoice],
+    [t, toast, invoices, invoiceEvents, settings, deleteInvoice, restoreDeletedInvoice],
   )
 }
 
@@ -190,16 +191,17 @@ export function useInvoiceActions(invoice: Invoice, effective: Invoice) {
 
   const saveToDrive = () =>
     act('drive', async () => {
-      if (!settings.googleClientId) {
+      const clientId = effectiveClientId(settings)
+      if (!clientId) {
         toast.info(t('google.needClientId'))
         navigate('/settings')
         return
       }
       // Sign in first: the consent popup must open directly from the click.
-      await googleSignIn(settings.googleClientId, ['drive'])
+      await googleSignIn(clientId, ['drive'])
       const blob = await renderPdf()
-      const res = await uploadToDrive(settings.googleClientId, blob, invoiceFileName(effective, 'pdf'), settings.driveFolderName)
-      toast.success(t('drive.saved', { folder: settings.driveFolderName }), res.webViewLink ? { label: t('drive.open'), href: res.webViewLink } : undefined)
+      const res = await uploadToDrive(clientId, blob, invoiceFileName(effective, 'pdf'), driveFolderRef(settings, 'pdf'))
+      toast.success(t('drive.saved', { folder: driveFolderLabel(settings, 'pdf') }), res.webViewLink ? { label: t('drive.open'), href: res.webViewLink } : undefined)
     })
 
   const openCopy = (inv: Invoice, msg: string) =>
