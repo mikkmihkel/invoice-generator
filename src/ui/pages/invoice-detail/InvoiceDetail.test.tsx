@@ -625,6 +625,6 @@ describe('recurring source cancelled', () => {
     await act(async () => {
       fireEvent.change(select, { target: { value: 'none' } })
     })
-    await waitFor(() => expect(repo.saveRecurringRule).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', active: false })))
+    await waitFor(() => expect(repo.deleteRecurringRule).toHaveBeenCalledWith('r1'))
   })
 })

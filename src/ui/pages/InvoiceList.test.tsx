@@ -357,6 +357,33 @@ describe('recurring overview', () => {
     expect(repo.saveRecurringRule.mock.calls.length).toBe(saves)
   })
 
+  it('"Ei kordu" on an invoice stops its rule (with undo), so only paused rules stay under "Peatatud"', async () => {
+    const { a, c, rules, repo } = setup()
+    window.location.hash = `#/?id=${a.id}`
+    const select = (await screen.findByLabelText('Kordumine')) as HTMLSelectElement
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'none' } })
+    })
+    expect(repo.deleteRecurringRule).toHaveBeenCalledWith('ra')
+    expect(repo.saveRecurringRule).not.toHaveBeenCalled()
+    const toast = (await screen.findByText('Korduvarve on lõpetatud: Kuuklient OÜ. Varem koostatud arved jäävad alles.')).closest('.toast') as HTMLElement
+    const root = await list()
+    fireEvent.change(within(root).getByRole('combobox', { name: 'Rohkem filtreid' }), { target: { value: 'recurring' } })
+    let box = await panel()
+    expect(within(box).queryByText('Kuuklient OÜ')).not.toBeInTheDocument()
+    // A rule switched off by an earlier version (inactive, not removed) still shows as paused.
+    expect(within(within(box).getByRole('list', { name: 'Peatatud' })).getByText('Peatatud OÜ')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(within(toast).getByRole('button', { name: 'Võta tagasi' }))
+    })
+    expect(repo.saveRecurringRule).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'ra', active: true, nextDate: rules[0].nextDate }))
+    box = await panel()
+    expect(await within(box).findByText('Kuuklient OÜ')).toBeInTheDocument()
+    // The paused rule's own invoice says it is paused.
+    window.location.hash = `#/?id=${c.id}`
+    expect(await screen.findByText('Kordamine on peatatud. Vali sagedus, et jätkata.')).toBeInTheDocument()
+  })
+
   it('shows no hint and no filter without recurring invoices', async () => {
     renderAt('#/', createMemoryRepo({ profile, invoices: [invoice()] }))
     const root = await list()

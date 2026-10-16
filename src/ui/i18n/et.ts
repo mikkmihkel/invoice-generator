@@ -1177,6 +1177,7 @@ export const et = {
   'recurring.resumed': 'Korduvarve jätkub: {client}. Järgmine mustand {date}.',
   'recurring.stopped': 'Korduvarve on lõpetatud: {client}. Varem koostatud arved jäävad alles.',
   'recurring.restored': 'Korduvarve on taastatud: {client}.',
+  'recurring.pausedHint': 'Kordamine on peatatud. Vali sagedus, et jätkata.',
   'recurring.undoStale': 'Seda ei saa enam tagasi võtta: korduvarvet ({client}) on vahepeal muudetud.',
   // ---- end of Workstream B ----
 }
