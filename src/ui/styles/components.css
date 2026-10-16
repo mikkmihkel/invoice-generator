@@ -564,3 +564,43 @@
   text-decoration: line-through;
   color: var(--text-3);
 }
+
+/* ---------- Workstream C: keyboard shortcut sheet ---------- */
+.shortcut-sheet {
+  display: grid;
+  gap: var(--s-5);
+}
+.shortcut-group {
+  margin-bottom: var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.shortcut-list {
+  display: grid;
+  gap: 0;
+}
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: var(--s-4);
+  align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-soft);
+}
+.shortcut-row dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-3);
+}
+.shortcut-row .kbd {
+  min-width: 22px;
+  height: 22px;
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+.shortcut-or {
+  padding: 0 2px;
+}

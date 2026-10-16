@@ -60,6 +60,7 @@ import { CheckboxField, DecimalInput, FieldShell, fieldId, NumberField, SelectFi
 import { IconButton, Menu, Skeleton, type MenuItem } from '../components/ui'
 import { formatDate, formatIban } from '../format'
 import { CURRENCIES, languageOptions, templateName, vatSchemeOptions } from '../options'
+import { issueKeys } from '../shortcuts'
 import { useToast } from '../Toasts'
 import { accentColor, addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isCreditSettled, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
@@ -185,6 +186,22 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     },
     [sheet],
   )
+  // A new invoice starts in the client search (not on phones, where focus would pop up the keyboard).
+  const [autoFocusBuyer] = useState(() => id === 'new' && !focusTitle && !sheet)
+  // Ctrl/⌘+Enter asks to issue; each blocked attempt reveals the checklist (counter as a signal).
+  const [checkReveal, setCheckReveal] = useState(0)
+  const issueKeyRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.repeat || e.defaultPrevented) return
+      const request = issueKeyRef.current
+      if (!request || document.querySelector('[role="dialog"], [role="menu"]')) return
+      e.preventDefault()
+      request()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   const persistedRef = useRef(false)
   const previewBtn = useRef<HTMLButtonElement>(null)
@@ -597,6 +614,13 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const setValidity = (days: number) => setValidUntil(addDaysISO(invoice.issueDate, Math.max(0, Math.round(days))))
 
   const busyAny = busy !== null
+  // Issue when the checks pass; otherwise open the checklist and move focus to it.
+  const requestIssue = () => {
+    if (busyAny) return
+    if (errors.length > 0) setCheckReveal((n) => n + 1)
+    else setDialog('issue')
+  }
+  issueKeyRef.current = ro ? null : requestIssue
   // One obvious action for an issued invoice; everything else lives in "Rohkem".
   const primary: null | 'email' | 'reminder' =
     !ro || justIssued || invoice.status === 'cancelled' || invoice.status === 'paid' || isCreditSettled(invoice, app.invoices) || (quote && qStatus !== 'sent')
@@ -770,7 +794,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             <legend className="visually-hidden">{title}</legend>
 
             <EdSection id="sec-buyer" title={t('editor.buyer')}>
-              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} />
+              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} autoFocus={autoFocusBuyer} />
               {clientNote && (
                 <div className="ed-client-note" role="note" aria-label={t('editor.clientNote')}>
                   <NoteIcon size={16} className="ed-client-note-icon" aria-hidden="true" />
@@ -1062,7 +1086,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         {!ro ? (
           <aside ref={barRef} id="ed-side" className="ed-side" aria-label={t('editor.sideLabel')} tabIndex={-1}>
             <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : quote ? t('totals.grossShort') : undefined} />
-            <ValidationPanel issues={checklist} summaryId="issue-summary" />
+            <ValidationPanel issues={checklist} summaryId="issue-summary" reveal={checkReveal} />
             {sheet && (
               <IconButton className="ed-bar-preview" label={t('preview.title')} icon={<EyeIcon size={20} />} aria-expanded={previewOpen} onClick={(e) => togglePreview(e.currentTarget)} />
             )}
@@ -1072,8 +1096,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                 className="btn btn-primary ed-issue-btn"
                 onClick={() => setDialog('issue')}
                 disabled={errors.length > 0 || busyAny}
-                title={errors.length ? t(quote ? 'quote.issueBlocked' : 'issue.blocked') : undefined}
+                title={errors.length ? t(quote ? 'quote.issueBlocked' : 'issue.blocked') : t('shortcuts.issueTitle', { keys: issueKeys() })}
                 aria-describedby={errors.length ? 'issue-summary' : 'issue-note'}
+                aria-keyshortcuts="Control+Enter Meta+Enter"
               >
                 {quote ? t('quote.issue') : t(credit ? 'actions.issueCredit' : 'actions.issue')}
               </button>

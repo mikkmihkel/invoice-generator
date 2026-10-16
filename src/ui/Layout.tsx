@@ -1,10 +1,11 @@
 import { BuildingsIcon, FileTextIcon, GearSixIcon, PackageIcon, PlusIcon, ReceiptIcon, UsersIcon } from '@phosphor-icons/react'
-import { useLayoutEffect, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import type { CompanyProfile } from '../domain'
 import { getAutoBackupStatus, subscribeAutoBackupStatus } from '../integrations/autoBackup'
 import { useApp } from './AppContext'
 import { useGuardedNavigation } from './navGuard'
+import { ShortcutSheet } from './components/ShortcutSheet'
 import { Skeleton } from './components/ui'
 import { useAutoBackup } from './useAutoBackup'
 import { useRecurringDrafts } from './useRecurringDrafts'
@@ -45,8 +46,8 @@ function isTyping(el: Element | null): boolean {
   return h.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)
 }
 
-/** "N" opens a new invoice, "/" focuses the list search, unless the user is typing or a dialog is open. */
-function useShortcuts() {
+/** "N" opens a new invoice, "/" focuses the list search, "?" lists the shortcuts, unless the user is typing or a dialog is open. */
+function useShortcuts(onHelp: () => void) {
   const { go } = useGuardedNavigation()
   // Layout effect, so the keys work as soon as the shell is on screen.
   useLayoutEffect(() => {
@@ -62,11 +63,14 @@ function useShortcuts() {
         e.preventDefault()
         search.focus()
         search.select()
+      } else if (e.key === '?') {
+        e.preventDefault()
+        onHelp()
       }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [go])
+  }, [go, onHelp])
 }
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -74,7 +78,9 @@ export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation()
   // Pages with unsaved changes (company details) are asked before the shell's links navigate away.
   const { onLinkClick } = useGuardedNavigation()
-  useShortcuts()
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), [])
+  useShortcuts(openShortcuts)
   useRecurringDrafts()
   const autoBackupPrompt = useAutoBackup()
   const backupWaiting = useSyncExternalStore(subscribeAutoBackupStatus, getAutoBackupStatus).phase === 'pending'
@@ -135,6 +141,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {children}
       </main>
       {autoBackupPrompt}
+      {shortcutsOpen && <ShortcutSheet onClose={() => setShortcutsOpen(false)} />}
       {!home && (
         <footer className="footer">
           <span>{t('footer.local')}</span>

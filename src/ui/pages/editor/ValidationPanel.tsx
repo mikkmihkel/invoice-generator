@@ -1,5 +1,5 @@
 import { ArrowRightIcon, CaretDownIcon, CheckCircleIcon, InfoIcon, WarningCircleIcon } from '@phosphor-icons/react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ValidationIssue } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { fieldId } from '../../components/fields'
@@ -36,12 +36,32 @@ function roomToExpand(): boolean {
  * The requirements check as one quiet line ("All required details are present. 1 suggestion") that expands
  * into the list of problems. Each problem focuses its field; seller problems link to the company page.
  */
-export function ValidationPanel({ issues, readOnly, summaryId }: { issues: ValidationIssue[]; readOnly?: boolean; summaryId?: string }) {
+export function ValidationPanel({
+  issues,
+  readOnly,
+  summaryId,
+  reveal = 0,
+}: {
+  issues: ValidationIssue[]
+  readOnly?: boolean
+  summaryId?: string
+  /** Increase to open the list and move focus to it (e.g. after a blocked attempt to issue). */
+  reveal?: number
+}) {
   const { t, lang } = useApp()
   const listId = useId()
+  const toggleRef = useRef<HTMLButtonElement>(null)
   const errors = issues.filter((i) => i.severity === 'error')
   const warnings = issues.filter((i) => i.severity === 'warning')
   const [open, setOpen] = useState(() => errors.length > 0 && roomToExpand())
+  const [revealed, setRevealed] = useState(reveal)
+  if (revealed !== reveal) {
+    setRevealed(reveal)
+    setOpen(true)
+  }
+  useEffect(() => {
+    if (reveal > 0) toggleRef.current?.focus()
+  }, [reveal])
 
   const suggestions = warnings.length === 1 ? t('editor.checkOneSuggestion') : t('editor.checkSuggestions', { count: warnings.length })
   const summary = errors.length > 0 ? t('issue.errorsSummary', { count: errors.length }) : t('validation.allGood')
@@ -58,6 +78,7 @@ export function ValidationPanel({ issues, readOnly, summaryId }: { issues: Valid
         </p>
       ) : (
         <button
+          ref={toggleRef}
           type="button"
           id={summaryId}
           className={`check-line check-toggle${errors.length ? ' check-has-errors' : ''}`}
