@@ -81,6 +81,13 @@
   background: var(--warning-soft);
   border-color: var(--warning-border);
 }
+/* Issue confirmation: the warnings themselves under the count. */
+.issue-warnings ul {
+  margin: 6px 0 0;
+}
+.issue-warnings li + li {
+  margin-top: 4px;
+}
 .notice-error {
   background: var(--danger-soft);
   border-color: var(--danger-border);

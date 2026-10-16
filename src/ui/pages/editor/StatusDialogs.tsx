@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { invoiceFromQuote, outstandingAmount, planDeletion, type Invoice } from '../../../domain'
+import { invoiceFromQuote, outstandingAmount, planDeletion, type Invoice, type ValidationIssue } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { Dialog } from '../../components/Dialog'
 import { CheckboxField, TextField } from '../../components/fields'
@@ -9,6 +9,7 @@ import { errorMessage, localTodayISO } from '../../util'
 import { eventDate } from '../invoice-detail/events'
 import { docNoun } from '../invoice-detail/status'
 import { useDeleteDocument } from '../invoice-detail/useInvoiceActions'
+import { IssueWarnings } from './IssueWarnings'
 
 /** Pick the payment date: marking paid on another day than today, or (`change`) correcting the date of a paid invoice. */
 export function MarkPaidDialog({
@@ -278,7 +279,7 @@ export function IssueDialog({
   predictedNumber: string
   /** A reopened document is issued again under its own number. */
   keepsNumber?: boolean
-  warnings: number
+  warnings: ValidationIssue[]
   stale?: StaleIssueDate | null
   onClose: () => void
   /** `useToday` = move the issue date to today before issuing. */
@@ -338,7 +339,7 @@ export function IssueDialog({
       <p>{t(keepsNumber ? 'reopen.issueNumber' : 'issue.number', { number })}</p>
       <p>{t('issue.lockExplain')}</p>
       <p className="muted small">{t('issue.creditHint')}</p>
-      {warnings > 0 && <p className="notice notice-warn">{t('issue.warnings', { count: warnings })}</p>}
+      <IssueWarnings warnings={warnings} summary={t('issue.warnings', { count: warnings.length })} />
     </Dialog>
   )
 }

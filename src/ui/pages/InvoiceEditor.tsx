@@ -1117,8 +1117,8 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         </div>
       </div>
 
-      {dialog === 'issue' && quote && <QuoteIssueDialog predictedNumber={predicted} keepsNumber={reopened} warnings={warnings.length} stale={staleQuote} onClose={() => setDialog(null)} onConfirm={issue} />}
-      {dialog === 'issue' && !quote && <IssueDialog credit={credit} predictedNumber={predicted} keepsNumber={reopened} warnings={warnings.length} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && quote && <QuoteIssueDialog predictedNumber={predicted} keepsNumber={reopened} warnings={warnings} stale={staleQuote} onClose={() => setDialog(null)} onConfirm={issue} />}
+      {dialog === 'issue' && !quote && <IssueDialog credit={credit} predictedNumber={predicted} keepsNumber={reopened} warnings={warnings} stale={stale} onClose={() => setDialog(null)} onConfirm={issue} />}
       {dialog === 'delete' && (
         <DeleteInvoiceDialog
           invoice={invoice}
