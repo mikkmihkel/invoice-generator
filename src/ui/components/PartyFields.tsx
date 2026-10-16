@@ -47,6 +47,7 @@ export function PartyFields<T extends Party>({
   showContacts = true,
   nameError,
   codeAsWarning,
+  vatAsWarning,
   vatExtra,
 }: {
   value: T
@@ -59,6 +60,8 @@ export function PartyFields<T extends Party>({
   nameError?: string
   /** A doubtful registry code is a warning, not an error (on an invoice it does not block issuing). */
   codeAsWarning?: boolean
+  /** Likewise for a doubtful VAT number, where the document's VAT scheme does not require one. */
+  vatAsWarning?: boolean
   /** Shown directly below the VAT number field (e.g. the VIES check). */
   vatExtra?: ReactNode
 }) {
@@ -66,6 +69,7 @@ export function PartyFields<T extends Party>({
   const set = (patch: Partial<Party>) => onChange({ ...value, ...patch })
   const p = pathPrefix ? pathPrefix + '.' : ''
   const codeProblem = registryCodeError(value.registryCode, value.address?.country, t('field.registryCodeInvalid'))
+  const vatProblem = vatNumberError(value.vatNumber, t('field.vatNumberInvalid'), t('field.vatNumberChecksum'))
   const vatField = (
     <TextField
       label={t('field.vatNumber')}
@@ -73,7 +77,8 @@ export function PartyFields<T extends Party>({
       value={value.vatNumber}
       onChange={(v) => set({ vatNumber: v.replace(/\s+/g, '').toUpperCase() || undefined })}
       placeholder="EE123456789"
-      error={vatNumberError(value.vatNumber, t('field.vatNumberInvalid'), t('field.vatNumberChecksum'))}
+      error={vatAsWarning ? undefined : vatProblem}
+      hint={vatAsWarning && vatProblem ? <span className="tone-warn">{vatProblem}</span> : undefined}
       disabled={disabled}
     />
   )

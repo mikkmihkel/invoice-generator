@@ -1,6 +1,6 @@
 import { ArrowsLeftRightIcon, MagnifyingGlassIcon, PencilSimpleIcon, UserPlusIcon } from '@phosphor-icons/react'
 import { Fragment, useId, useMemo, useRef, useState } from 'react'
-import type { BuyerSnapshot, Client, RegistryCompany } from '../../../domain'
+import { vatSchemeRequiresBuyerVat, type BuyerSnapshot, type Client, type RegistryCompany, type VatScheme } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { RegistryAttribution, RegistryResult, RegistryRetry } from '../../components/CompanySearch'
 import { fieldId, TextField } from '../../components/fields'
@@ -18,6 +18,8 @@ interface Props {
   disabled?: boolean
   /** Show the editable fields (e.g. when validation flags a buyer field). */
   forceEdit?: boolean
+  /** Decides whether a doubtful buyer VAT number blocks issuing, so the field shows it with the checklist's severity. */
+  vatScheme?: VatScheme
 }
 
 /** The chosen buyer as a short definition list, the way it will read on the invoice. */
@@ -205,7 +207,7 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
   )
 }
 
-export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdit }: Props) {
+export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdit, vatScheme }: Props) {
   const { t, lang, clients, saveClient } = useApp()
   const toast = useToast()
   const [newClient, setNewClient] = useState(false)
@@ -315,6 +317,7 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
             pathPrefix="buyer"
             person={buyer.kind === 'person'}
             codeAsWarning
+            vatAsWarning={!vatScheme || !vatSchemeRequiresBuyerVat(vatScheme)}
             vatExtra={buyer.vatNumber && <VatNumberCheck vatNumber={buyer.vatNumber} />}
           />
           <div className="grid">

@@ -734,7 +734,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             <legend className="visually-hidden">{title}</legend>
 
             <EdSection id="sec-buyer" title={t('editor.buyer')}>
-              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} />
+              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} vatScheme={invoice.vatScheme} />
             </EdSection>
 
             <EdSection
