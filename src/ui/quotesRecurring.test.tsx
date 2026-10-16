@@ -69,7 +69,9 @@ describe('invoice list: invoices and quotes', () => {
     const open = quote({ buyer: { kind: 'company', name: 'Avatud OÜ', address: profile.address } })
     const expired = quote({ number: 'HP-2026-002', validUntil: '2026-01-10', buyer: { kind: 'company', name: 'Aegunud OÜ', address: profile.address } })
     const accepted = quote({ number: 'HP-2026-003', quoteAcceptedAt: '2026-01-07T10:00:00Z', buyer: { kind: 'company', name: 'Nõus OÜ', address: profile.address } })
-    renderAt('#/', createMemoryRepo({ profile, invoices: [invoice, open, expired, accepted] }))
+    // Sent, so the "needs attention" strip does not name the client too.
+    const events = [{ id: 's', invoiceId: invoice.id, kind: 'sent' as const, at: new Date().toISOString() }]
+    renderAt('#/', createMemoryRepo({ profile, invoices: [invoice, open, expired, accepted], events }))
     await screen.findAllByText('Arve Klient OÜ')
     const list = () => within(document.querySelector<HTMLElement>('.arved-list')!)
     expect(list().getByText('Arve Klient OÜ')).toBeInTheDocument()

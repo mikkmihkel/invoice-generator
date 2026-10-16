@@ -126,3 +126,83 @@ describe('receivables and the overdue filter', () => {
     expect(within(root).queryByRole('radio', { name: /Üle tähtaja/ })).not.toBeInTheDocument()
   })
 })
+
+describe('needs attention strip', () => {
+  const strip = async () => (await screen.findByRole('region', { name: 'Vajab tähelepanu' })) as HTMLElement
+  const named = (name: string) => ({ ...invoice().buyer, name })
+
+  it('lists what to do today; a line with several documents filters the list', async () => {
+    const a = overdue({ buyer: named('Hiline A OÜ') })
+    const b = overdue({ buyer: named('Hiline B OÜ') })
+    const reminded = overdue({ buyer: named('Meeldetuletatud OÜ') })
+    const unsent = invoice({ buyer: named('Saatmata OÜ') })
+    const draft = invoice({ status: 'draft', number: '', issuedAt: undefined, buyer: named('Mustand OÜ') })
+    const events = [{ id: 'r', invoiceId: reminded.id, kind: 'reminder' as const, at: new Date().toISOString() }]
+    renderAt('#/', createMemoryRepo({ profile, invoices: [a, b, reminded, unsent, draft], events }))
+    const box = await strip()
+    const lines = within(box).getAllByRole('button').filter((el) => el.classList.contains('attention-item'))
+    expect(lines.map((l) => l.textContent)).toEqual([
+      'Üle tähtaja, meeldetuletus saatmata: 2 arvet',
+      'Väljastatud, aga saatmata: Saatmata OÜ',
+      'Pooleli mustand: Mustand OÜ',
+    ])
+    const root = await list()
+    fireEvent.click(lines[0])
+    expect(rowNames(root).sort()).toEqual(['Hiline A OÜ', 'Hiline B OÜ'])
+    expect(lines[0]).toHaveAttribute('aria-pressed', 'true')
+    // No main chip is selected while the strip's filter is on.
+    const statusChips = within(root).getByRole('radiogroup', { name: 'Olek' })
+    expect(within(statusChips).getAllByRole('radio').filter((r) => (r as HTMLInputElement).checked)).toHaveLength(0)
+  })
+
+  it('opens the document of a line with only one', async () => {
+    const unsent = invoice({ buyer: named('Saatmata OÜ') })
+    const sent = invoice({ buyer: named('Saadetud OÜ') })
+    renderAt('#/', createMemoryRepo({ profile, invoices: [unsent, sent], events: [{ id: 's', invoiceId: sent.id, kind: 'sent', at: new Date().toISOString() }] }))
+    const box = await strip()
+    fireEvent.click(within(box).getByRole('button', { name: 'Väljastatud, aga saatmata: Saatmata OÜ' }))
+    expect(window.location.hash).toBe(`#/?id=${unsent.id}`)
+    expect(await screen.findByRole('heading', { level: 2, name: `Arve ${unsent.number}` })).toBeInTheDocument()
+  })
+
+  it('shows quotes about to expire and switches to the quotes view for them', async () => {
+    const q1 = invoice({ type: 'quote', validUntil: addDaysISO(today, 1), dueDate: addDaysISO(today, 1), referenceNumber: undefined, buyer: named('Pakkumine A OÜ') })
+    const q2 = invoice({ type: 'quote', validUntil: addDaysISO(today, 3), dueDate: addDaysISO(today, 3), referenceNumber: undefined, buyer: named('Pakkumine B OÜ') })
+    const later = invoice({ type: 'quote', validUntil: addDaysISO(today, 20), dueDate: addDaysISO(today, 20), referenceNumber: undefined, buyer: named('Hiljem OÜ') })
+    const events = [q1, q2, later].map((q) => ({ id: `s-${q.id}`, invoiceId: q.id, kind: 'sent' as const, at: new Date().toISOString() }))
+    renderAt('#/', createMemoryRepo({ profile, invoices: [q1, q2, later], events }))
+    const box = await strip()
+    fireEvent.click(within(box).getByRole('button', { name: 'Hinnapakkumised aegumas: 2 pakkumist' }))
+    const root = await screen.findByRole('region', { name: 'Hinnapakkumised' })
+    expect(rowNames(root as HTMLElement).sort()).toEqual(['Pakkumine A OÜ', 'Pakkumine B OÜ'])
+  })
+
+  it('says how many drafts were prepared today from recurring rules', async () => {
+    const now = new Date().toISOString()
+    const drafts = [1, 2].map((n) => invoice({ id: `rec-${n}`, status: 'draft', number: '', issuedAt: undefined, recurringRuleId: `rule-${n}`, createdAt: now, updatedAt: now }))
+    renderAt('#/', createMemoryRepo({ profile, invoices: [...drafts, invoice({ status: 'draft', number: '', issuedAt: undefined })] }))
+    const box = await strip()
+    expect(within(box).getByRole('button', { name: 'Pooleli mustandid: 3 mustandit, neist 2 täna koostatud korduvarvet' })).toBeInTheDocument()
+  })
+
+  it('is hidden when there is nothing to do', async () => {
+    const sent = invoice()
+    renderAt('#/', createMemoryRepo({ profile, invoices: [sent], events: [{ id: 's', invoiceId: sent.id, kind: 'sent', at: new Date().toISOString() }] }))
+    await list()
+    expect(screen.queryByRole('region', { name: 'Vajab tähelepanu' })).not.toBeInTheDocument()
+  })
+
+  it('can be hidden for the session and comes back when something new needs attention', async () => {
+    const unsent = invoice()
+    const view = renderAt('#/', createMemoryRepo({ profile, invoices: [unsent] }))
+    fireEvent.click(within(await strip()).getByRole('button', { name: 'Peida' }))
+    expect(screen.queryByRole('region', { name: 'Vajab tähelepanu' })).not.toBeInTheDocument()
+    view.unmount()
+    const again = renderAt('#/', createMemoryRepo({ profile, invoices: [unsent] }))
+    await list()
+    expect(screen.queryByRole('region', { name: 'Vajab tähelepanu' })).not.toBeInTheDocument()
+    again.unmount()
+    renderAt('#/', createMemoryRepo({ profile, invoices: [unsent, overdue()] }))
+    expect(await strip()).toBeInTheDocument()
+  })
+})

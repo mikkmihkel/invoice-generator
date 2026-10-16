@@ -6,6 +6,9 @@ import { daysBetween, isUnpaid, type DisplayStatus } from '../../util'
 
 export type Tone = 'muted' | 'neutral' | 'warn' | 'danger' | 'success'
 
+/** After a reminder, wait this many days before offering the next one as the main action (or asking for it). */
+export const REMIND_AGAIN_DAYS = 7
+
 /** Due within this many days reads as "due soon" (amber). */
 export const DUE_SOON_DAYS = 3
 

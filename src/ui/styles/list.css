@@ -67,6 +67,91 @@
 .list-filters {
   flex-wrap: wrap;
 }
+
+/* "Vajab tähelepanu": one quiet line per kind of task, above the filters. */
+.attention {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.attention-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: 4px 4px 0 var(--s-3);
+}
+.attention-head h2 {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-2);
+}
+.attention ul {
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
+}
+.attention-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 32px;
+  padding: 4px var(--s-2) 4px var(--s-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.attention-item:hover {
+  background: var(--surface-2);
+}
+.attention-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.attention-item[aria-pressed='true'] {
+  background: var(--selected);
+}
+.attention-icon {
+  display: inline-flex;
+  color: var(--text-3);
+}
+.attention-overdue .attention-icon {
+  color: var(--danger);
+}
+.attention-quotes .attention-icon {
+  color: var(--warning);
+}
+/* Label, and under it the client or the count. */
+.attention-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+.attention-label,
+.attention-detail {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.attention-label {
+  font-weight: 500;
+}
+.attention-detail {
+  color: var(--text-2);
+}
+.attention-caret {
+  color: var(--text-3);
+}
 .list-filters {
   display: flex;
   align-items: center;
@@ -719,6 +804,14 @@ tr:focus-within .row-actions,
   }
   .list-head {
     padding: var(--s-4) var(--s-4) var(--s-2);
+  }
+  .attention-item {
+    min-height: 44px;
+  }
+  .attention-head .icon-btn {
+    width: 44px;
+    height: 44px;
+    margin: -8px -4px -8px 0;
   }
   .list-scroll {
     overflow: visible;

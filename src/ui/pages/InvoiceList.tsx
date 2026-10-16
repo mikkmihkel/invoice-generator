@@ -9,13 +9,19 @@ import { daysBetween, displayStatus, getLastBackupAt, isUnpaid, localTodayISO, n
 import { InvoiceDetail } from './invoice-detail/InvoiceDetail'
 import { rowStatus, settlementOf, type Settlement } from './invoice-detail/status'
 import { interpolate, joinSums } from './invoice-detail/text'
+import { attentionGroups, type AttentionGroup, type AttentionKey } from './list/attention'
+import { AttentionStrip } from './list/AttentionStrip'
 
 type Kind = 'invoices' | 'quotes'
 type MainFilter = 'all' | 'unpaid' | 'overdue' | 'draft'
 type ExtraFilter = 'overdue' | 'paid' | 'cancelled'
 type QuoteMain = 'all' | 'sent' | 'draft'
 type QuoteExtra = 'accepted' | 'expired' | 'cancelled'
-type StatusFilter = MainFilter | ExtraFilter | QuoteMain | QuoteExtra
+/** Filters set from the "needs attention" strip (drafts use the ordinary drafts filter). */
+type AttentionFilter = 'remind' | 'unsent' | 'expiring'
+type StatusFilter = MainFilter | ExtraFilter | QuoteMain | QuoteExtra | AttentionFilter
+const ATTENTION_FILTER: Record<AttentionKey, StatusFilter> = { overdue: 'remind', unsent: 'unsent', quotes: 'expiring', drafts: 'draft' }
+const ATTENTION_FILTERS: readonly StatusFilter[] = ['remind', 'unsent', 'expiring']
 const EXTRA: ExtraFilter[] = ['overdue', 'paid', 'cancelled']
 const QUOTE_EXTRA: QuoteExtra[] = ['accepted', 'expired', 'cancelled']
 
@@ -75,7 +81,7 @@ function usePhone(): boolean {
 
 /** Arved: the receivables sentence, a quiet filter, month-grouped rows and the selected invoice beside them. */
 export default function InvoiceList() {
-  const { t, lang, invoices } = useApp()
+  const { t, lang, invoices, invoiceEvents } = useApp()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const today = localTodayISO()
@@ -108,6 +114,9 @@ export default function InvoiceList() {
   const kindRows = useMemo(() => rows.filter((r) => (kind === 'quotes') === !!r.quote), [rows, kind])
   const invoiceRows = useMemo(() => rows.filter((r) => !r.quote), [rows])
 
+  const attention = useMemo(() => attentionGroups(rows.map((r) => r.inv), invoiceEvents, today), [rows, invoiceEvents, today])
+  const attentionIdsBy = useMemo(() => new Map(attention.map((g) => [ATTENTION_FILTER[g.key], new Set(g.docs.map((d) => d.id))])), [attention])
+
   const years = useMemo(() => [...new Set(kindRows.map((r) => r.inv.issueDate.slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))].sort().reverse(), [kindRows])
 
   const summary = useMemo(() => {
@@ -132,6 +141,7 @@ export default function InvoiceList() {
   const filtered = kindRows.filter((r) => {
     if (year !== 'all' && !r.inv.issueDate.startsWith(year)) return false
     if (q && ![r.inv.number, r.inv.buyer.name, r.inv.orderReference, r.inv.buyer.registryCode].some((s) => s?.toLowerCase().includes(q))) return false
+    if (ATTENTION_FILTERS.includes(status)) return !!attentionIdsBy.get(status)?.has(r.inv.id)
     return matches(r, status)
   })
 
@@ -210,6 +220,23 @@ export default function InvoiceList() {
       setYear('all')
       if (isExtra) setStatus('all')
     }
+  }
+  // The strip line whose filter is on (drafts only in the invoices view).
+  const activeAttention = (Object.keys(ATTENTION_FILTER) as AttentionKey[]).find(
+    (k) => ATTENTION_FILTER[k] === status && (k === 'quotes') === quotes,
+  )
+  const openAttention = (g: AttentionGroup) => {
+    const k: Kind = g.key === 'quotes' ? 'quotes' : 'invoices'
+    setKind(k)
+    setYear('all')
+    setQuery('')
+    if (g.docs.length === 1) {
+      setStatus('all')
+      navigate(`/?id=${g.docs[0].id}`)
+      return
+    }
+    setStatus(ATTENTION_FILTER[g.key])
+    if (explicit && (k === 'quotes') !== !!explicit.quote) navigate('/', { replace: true })
   }
   const switchKind = (k: Kind) => {
     setKind(k)
@@ -304,10 +331,11 @@ export default function InvoiceList() {
                 })}
           </p>
           )}
+          <AttentionStrip groups={attention} active={activeAttention ?? null} onOpen={openAttention} />
           <div className="list-filters">
             <Segmented<StatusFilter | ''>
               label={t('list.filterStatus')}
-              value={isExtra ? '' : status}
+              value={mainOptions.some((o) => o.value === status) ? status : ''}
               onChange={(v) => v && setStatus(v)}
               className="status-filter"
               options={mainOptions}

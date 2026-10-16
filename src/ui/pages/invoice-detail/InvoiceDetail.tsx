@@ -35,7 +35,7 @@ import { CancelInvoiceDialog, DeleteInvoiceDialog, MarkPaidDialog } from '../edi
 import { QuoteActions } from '../quotes/QuoteActions'
 import { useInvoiceEvents } from './events'
 import { PdfPage } from './PdfPage'
-import { detailStatus, docNoun, quoteDetailStatus, settlementOf } from './status'
+import { detailStatus, docNoun, quoteDetailStatus, REMIND_AGAIN_DAYS, settlementOf } from './status'
 import { interpolate } from './text'
 import { LockNote } from './LockNote'
 import { canMarkSent, sentPromptKey, useMarkSent, type SentKind } from './markSent'
@@ -65,9 +65,6 @@ function Facts({ rows }: { rows: [string, ReactNode][] }) {
 }
 
 type Dialog = null | 'paid' | 'paidDate' | 'cancel' | 'email' | 'reminder' | 'delete'
-
-/** After a reminder, wait this many days before offering the next one as the main action. */
-const REMIND_AGAIN_DAYS = 7
 
 /** The selected invoice, typeset like a document, with one status-dependent primary action. */
 export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBack?: boolean }) {
