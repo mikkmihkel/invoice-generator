@@ -1020,4 +1020,5 @@ export const et = {
   'registry.unavailablePartial': 'Osa äriregistri otsingust ei vastanud, seega võib mõni ettevõte tulemustest puududa.',
   'registry.retry': 'Proovi uuesti',
   'preview.pages': 'Eelvaate leheküljed',
+  'preview.fullSize': 'Näita täissuuruses',
 }

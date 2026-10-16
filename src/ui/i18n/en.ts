@@ -1022,4 +1022,5 @@ export const en: Record<keyof typeof et, string> = {
   'registry.unavailablePartial': 'Part of the Business Register search did not respond, so some companies may be missing from the results.',
   'registry.retry': 'Try again',
   'preview.pages': 'Preview pages',
+  'preview.fullSize': 'Show at full size',
 }

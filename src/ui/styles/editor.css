@@ -1113,6 +1113,15 @@ html.ed-sheet-open {
 .pv-body:focus-visible {
   outline-offset: -2px;
 }
+/* "Show at full size": the page at its printed width (A4 at 96 dpi); the body scrolls both ways. */
+.pv-body.is-full {
+  align-items: flex-start;
+}
+.pv-body.is-full .pv-page {
+  flex: none;
+  width: 794px;
+  max-width: none;
+}
 .pv-body > .notice {
   align-self: stretch;
 }
