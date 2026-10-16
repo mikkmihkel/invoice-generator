@@ -285,7 +285,7 @@ describe('reopening and deleting in the editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Väljasta arve' }))
     const issue = await screen.findByRole('dialog', { name: 'Väljasta arve' })
     // Moving the date to today is offered only while today is in the numbering period of the number.
-    expect(within(issue).queryByText(/Arve kuupäev on/) !== null).toBe(old.slice(0, 4) === year)
+    expect(within(issue).queryByText(/Arve kuupäev on .*, täna on/) !== null).toBe(old.slice(0, 4) === year)
     expect(within(issue).getByText(`Dokument väljastatakse uuesti sama numbriga ${year}-0007.`)).toBeInTheDocument()
     await act(async () => {
       fireEvent.click(within(issue).getByRole('button', { name: 'Väljasta' }))
@@ -312,7 +312,7 @@ describe('reopening and deleting in the editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Väljasta arve' }))
     const issue = await screen.findByRole('dialog', { name: 'Väljasta arve' })
     // Today is in another year: no offer to move the date there.
-    expect(within(issue).queryByText(/Arve kuupäev on/)).not.toBeInTheDocument()
+    expect(within(issue).queryByText(/Arve kuupäev on .*, täna on/)).not.toBeInTheDocument()
     expect(within(issue).queryByLabelText('Muuda arve kuupäevaks tänane päev')).not.toBeInTheDocument()
   })
 
