@@ -32,7 +32,7 @@ key and app ID, and the shared client is in use) or by letting the app create a 
 in My Drive (it finds that folder again on another computer, also after it was moved). The app stores
 the folder by ID and creates two subfolders in it: **Arved** for invoice PDFs and **Varukoopiad** for
 backups. Settings from earlier versions that only name a folder (default `Arved`) keep working until a
-folder is chosen; older backups stay in that folder.
+folder is chosen; older backups stay in that folder and are still offered when restoring.
 
 ## For the site owner: shared client
 

@@ -263,6 +263,8 @@ export interface DriveBackupFile {
   issued?: number
   /** Documents deleted on purpose before the backup (its deletion records), when recorded at upload. */
   deleted?: number
+  /** Where the backup is, when a list spans several folders (e.g. "Arveldaja / Varukoopiad" or "Arved"). */
+  location?: string
 }
 
 /** What uploadBackupVersion records about a version besides encryption. */
@@ -323,7 +325,11 @@ const MAX_LIST_PAGES = 10
  */
 export async function listDriveBackups(clientId: string, folder: DriveFolderRef, options?: DriveCallOptions): Promise<DriveBackupFile[]> {
   const folderId = await resolveDriveFolder(clientId, folder, false, options)
-  if (!folderId) return []
+  return folderId ? listDriveBackupsIn(clientId, folderId, options) : []
+}
+
+/** Backups directly in the folder with this ID, newest first (see listDriveBackups). */
+export async function listDriveBackupsIn(clientId: string, folderId: string, options?: DriveCallOptions): Promise<DriveBackupFile[]> {
   const q =
     `${driveQueryString(folderId)} in parents and trashed=false and ` +
     `(appProperties has { key=${driveQueryString(BACKUP_VERSION_PROPERTY)} and value='auto' } or ` +
@@ -341,6 +347,19 @@ export async function listDriveBackups(clientId: string, folder: DriveFolderRef,
   }
   const time = (f: DriveBackupFile) => f.createdTime ?? f.modifiedTime ?? ''
   return out.sort((a, b) => (time(a) < time(b) ? 1 : time(a) > time(b) ? -1 : 0))
+}
+
+/** Folders with this name that the app can see (it created them, or the user picked them), with their parents. */
+export async function findDriveFolders(clientId: string, name: string, options?: DriveCallOptions): Promise<{ id: string; parents: string[] }[]> {
+  const params = new URLSearchParams({
+    q: `mimeType=${driveQueryString(FOLDER_MIME)} and name=${driveQueryString(name.trim())} and trashed=false`,
+    spaces: 'drive',
+    fields: 'files(id,parents)',
+    pageSize: '20',
+  })
+  const res = await drive(clientId, `${API}?${params}`, undefined, options)
+  const data = (await res.json()) as { files?: { id: string; parents?: string[] }[] }
+  return (data.files ?? []).map((f) => ({ id: f.id, parents: f.parents ?? [] }))
 }
 
 /** Download a file's content as text. */

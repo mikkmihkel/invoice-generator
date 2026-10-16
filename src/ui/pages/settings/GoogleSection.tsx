@@ -139,6 +139,7 @@ export function GoogleSection() {
                     {folder.name}
                   </p>
                   <p className="setting-desc">{t('gdrive.folderSubfolders', { pdf: driveFolderLabel(settings, 'pdf'), backup: driveFolderLabel(settings, 'backup') })}</p>
+                  <p className="setting-desc">{t('gdrive.legacyNote', { name: settings.driveFolderName })}</p>
                 </>
               ) : (
                 <p className="setting-desc">{t('gdrive.folderNone', { name: settings.driveFolderName })}</p>

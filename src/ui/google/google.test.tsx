@@ -4,7 +4,7 @@ import App from '../../App'
 import { createDefaultSettings, newId, type AppSettings, type BackupFile, type Invoice } from '../../domain'
 import { googleSignIn as barrelSignIn, uploadToDrive } from '../../integrations'
 import { getBackupPassphrase, setBackupPassphrase } from '../../integrations/autoBackup'
-import { findOrCreateAppFolder, listDriveBackups, downloadDriveFile, type DriveBackupFile } from '../../integrations/drive'
+import { findDriveFolders, findOrCreateAppFolder, listDriveBackups, listDriveBackupsIn, downloadDriveFile, type DriveBackupFile } from '../../integrations/drive'
 import type { GisTokenClientConfig, GoogleGlobal } from '../../integrations/gis-types'
 import { __resetGoogleAuthForTests, SCOPE_URLS } from '../../integrations/googleAuth'
 import { pickDriveFolder } from '../../integrations/picker'
@@ -32,6 +32,8 @@ vi.mock('../../integrations/drive', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../integrations/drive')>()),
   findOrCreateAppFolder: vi.fn(),
   listDriveBackups: vi.fn(async () => []),
+  listDriveBackupsIn: vi.fn(async () => []),
+  findDriveFolders: vi.fn(async () => []),
   downloadDriveFile: vi.fn(async () => ''),
   uploadBackupVersion: vi.fn(async (_c: string, _f: unknown, name: string) => ({ id: 'v1', name, encrypted: false, automatic: true })),
   trashDriveFile: vi.fn(async () => undefined),
@@ -94,6 +96,10 @@ beforeEach(() => {
   vi.mocked(listDriveBackups).mockReset()
   vi.mocked(listDriveBackups).mockResolvedValue([])
   vi.mocked(pickDriveFolder).mockReset()
+  vi.mocked(findDriveFolders).mockReset()
+  vi.mocked(findDriveFolders).mockResolvedValue([])
+  vi.mocked(listDriveBackupsIn).mockReset()
+  vi.mocked(listDriveBackupsIn).mockResolvedValue([])
   vi.mocked(uploadToDrive).mockClear()
   vi.mocked(barrelSignIn).mockClear()
 })
@@ -158,7 +164,7 @@ describe('onboarding: Google Drive step', () => {
     expect(findOrCreateAppFolder).toHaveBeenCalledWith(BUILT_IN, 'Arveldaja')
     expect(lastSaved(repo)).toMatchObject({ driveFolder: { id: 'app-folder-1', name: 'Arveldaja', clientId: BUILT_IN }, autoBackup: { enabled: true, encrypt: false }, autoSavePdf: true })
     // Looks for backups in the new folder's backup subfolder (none here), then goes on to the company.
-    expect(listDriveBackups).toHaveBeenCalledWith(BUILT_IN, { parentId: 'app-folder-1', name: 'Varukoopiad' })
+    expect(listDriveBackups).toHaveBeenCalledWith(BUILT_IN, { parentId: 'app-folder-1', name: 'Varukoopiad' }, undefined)
     expect(await screen.findByRole('heading', { level: 2, name: 'Ettevõte' })).toBeInTheDocument()
     const toast = await screen.findByText(/Sinu Drive’i loodi kaust „Arveldaja“/)
     expect(within(toast.closest('.toast') as HTMLElement).getByRole('link', { name: 'Ava Drive’is' })).toHaveAttribute('href', 'https://drive.google.com/drive/folders/app-folder-1')
@@ -196,6 +202,21 @@ describe('onboarding: Google Drive step', () => {
     // The folder chosen on this computer is kept.
     const [imported] = repo.importBackup.mock.calls[0] as unknown as [BackupFile]
     expect(imported.settings).toMatchObject({ driveFolder: { id: 'app-folder-1', name: 'Arveldaja' } })
+  })
+
+  it('also offers backups from the folder used before a folder was chosen, labelled by location', async () => {
+    env({ clientId: BUILT_IN })
+    vi.mocked(findDriveFolders).mockResolvedValue([{ id: 'old-arved', parents: ['root'] }])
+    vi.mocked(listDriveBackupsIn).mockResolvedValue([{ id: 'old1', name: 'arveldaja-backup.json', createdTime: '2026-09-01T08:00:00Z', encrypted: false, automatic: false }])
+    renderAt('#/', createMemoryRepo())
+    fireEvent.click(await screen.findByRole('button', { name: 'Logi sisse Google’iga' }))
+    const folderDialog = await screen.findByRole('dialog', { name: 'Vali Drive’i kaust' })
+    await act(async () => {
+      fireEvent.click(within(folderDialog).getByRole('button', { name: 'Loo kaust „Arveldaja“' }))
+    })
+    const offer = await screen.findByRole('dialog', { name: 'Drive’ist leiti varukoopiad' })
+    expect(findDriveFolders).toHaveBeenCalledWith(BUILT_IN, 'Arved', undefined)
+    expect(within(offer).getByText(/kaustas „Arved“/)).toBeInTheDocument()
   })
 
   it('starts from scratch when the user declines the restore', async () => {

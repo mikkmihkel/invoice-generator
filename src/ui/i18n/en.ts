@@ -1087,6 +1087,8 @@ export const en: Record<keyof typeof et, string> = {
   'gdrive.createFolder': 'Create folder “{name}”',
   'gdrive.createFolderHint': 'You can move the folder anywhere in Drive later; Arveldaja will still find it.',
   'gdrive.optBackup': 'Back up automatically to this folder',
+  'autoBackup.inFolder': 'in “{folder}”',
+  'gdrive.legacyNote': 'Backups made earlier in the folder “{name}” are offered for restore as well.',
   'gdrive.optBackupHint': 'After changes, a new backup is saved in the subfolder “{backup}”.',
   'gdrive.optPdf': 'Save issued invoices’ PDFs to this folder',
   'gdrive.encryptAdvice': 'Backups are not encrypted: anyone with access to your Drive can read them. We recommend setting a passphrase.',

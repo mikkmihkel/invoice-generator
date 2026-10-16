@@ -1085,6 +1085,8 @@ export const et = {
   'gdrive.createFolder': 'Loo kaust „{name}“',
   'gdrive.createFolderHint': 'Kausta võid hiljem Drive’is teise kohta tõsta – Arveldaja leiab selle ikka üles.',
   'gdrive.optBackup': 'Varunda automaatselt sellesse kausta',
+  'autoBackup.inFolder': 'kaustas „{folder}“',
+  'gdrive.legacyNote': 'Varem kausta „{name}“ tehtud varukoopiad on taastamisel samuti valikus.',
   'gdrive.optBackupHint': 'Pärast muudatusi salvestatakse uus varukoopia alamkausta „{backup}“.',
   'gdrive.optPdf': 'Salvesta väljastatud arvete PDF-failid sellesse kausta',
   'gdrive.encryptAdvice': 'Varukoopiad on krüpteerimata: neid saab lugeda igaüks, kellel on ligipääs sinu Drive’ile. Soovitame määrata parooli.',

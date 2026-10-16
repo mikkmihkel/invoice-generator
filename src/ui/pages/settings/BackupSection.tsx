@@ -18,7 +18,8 @@ import {
   KEEP_VERSIONS_MIN,
 } from '../../../integrations/autoBackup'
 import { decryptText, isEncryptedEnvelope } from '../../../integrations/backupCrypto'
-import { downloadDriveFile, listDriveBackups, type DriveBackupFile } from '../../../integrations/drive'
+import { downloadDriveFile, type DriveBackupFile } from '../../../integrations/drive'
+import { listRestorableBackups } from '../../../integrations/restoreList'
 import { googleSignIn, hasAccessToken } from '../../../integrations/googleAuth'
 import { driveFolderLabel, driveFolderRef, effectiveClientId } from '../../../integrations/googleClient'
 import { useApp } from '../../AppContext'
@@ -176,6 +177,7 @@ export function RestoreDialog({
               f.size != null ? size(f.size) : '',
               f.encrypted ? t('autoBackup.encrypted') : '',
               f.automatic ? '' : t('autoBackup.manualFile'),
+              f.location ? t('autoBackup.inFolder', { folder: f.location }) : '',
             ].filter(Boolean)
             return (
               <label key={f.id} className={`template-option${selected === f.id ? ' selected' : ''}`}>
@@ -294,7 +296,7 @@ export function BackupSection() {
     withBusy('restore', async () => {
       if (!clientId) return
       await googleSignIn(clientId, ['drive'])
-      const files = await listDriveBackups(clientId, driveFolderRef(settingsRef.current, 'backup'))
+      const files = await listRestorableBackups(clientId, settingsRef.current)
       if (files.length === 0) toast.info(t('backup.driveNone'))
       else setRestoreFiles(files)
     })

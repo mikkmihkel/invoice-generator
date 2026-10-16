@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { backupToDrive, downloadDriveFile, DRIVE_BACKUP_FILE_NAME, LEGACY_DRIVE_BACKUP_FILE_NAME, driveFolderKey, findOrCreateAppFolder, findOrCreateFolder, listDriveBackups, restoreFromDrive, trashDriveFile, uploadBackupVersion, uploadToDrive } from './drive'
+import { backupToDrive, downloadDriveFile, DRIVE_BACKUP_FILE_NAME, LEGACY_DRIVE_BACKUP_FILE_NAME, driveFolderKey, findDriveFolders, findOrCreateAppFolder, findOrCreateFolder, listDriveBackups, listDriveBackupsIn, restoreFromDrive, trashDriveFile, uploadBackupVersion, uploadToDrive } from './drive'
 import { GoogleApiError } from './errors'
 import { buildGmailRaw, sendViaGmail } from './gmail'
 import { getAccessToken, invalidateToken } from './googleAuth'
@@ -263,6 +263,19 @@ describe('Drive folder chosen by ID', () => {
     stubFetch(json({ files: [] }), json({ id: 'app2', name: 'Arveldaja' }))
     expect(await findOrCreateAppFolder(CLIENT, 'Arveldaja')).toEqual({ id: 'app2', name: 'Arveldaja', created: true })
     expect(JSON.parse(String(calls.at(-1)!.init.body))).toEqual({ name: 'Arveldaja', mimeType: 'application/vnd.google-apps.folder' })
+  })
+
+  it('finds folders by name with their parents, and lists backups in a folder by ID', async () => {
+    stubFetch(json({ files: [{ id: 'f1', parents: ['root'] }, { id: 'f2' }] }), json({ files: [{ id: 'b1', name: 'arveldaja-backup.json' }] }))
+    expect(await findDriveFolders(CLIENT, ' Arved ')).toEqual([
+      { id: 'f1', parents: ['root'] },
+      { id: 'f2', parents: [] },
+    ])
+    expect(query(calls[0].url).get('q')).toBe("mimeType='application/vnd.google-apps.folder' and name='Arved' and trashed=false")
+    expect(query(calls[0].url).get('fields')).toBe('files(id,parents)')
+    const files = await listDriveBackupsIn(CLIENT, 'f1')
+    expect(files.map((f) => f.id)).toEqual(['b1'])
+    expect(query(calls[1].url).get('q')).toContain("'f1' in parents")
   })
 
   it('keys bookkeeping by folder name or chosen folder', () => {

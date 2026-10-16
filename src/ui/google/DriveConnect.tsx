@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode
 import type { AppSettings, BackupFile, DriveFolderChoice } from '../../domain'
 // Submodules rather than the integrations barrel: UI tests replace the barrel with a small mock.
 import { normalizeAutoBackup, setBackupPassphrase } from '../../integrations/autoBackup'
-import { findOrCreateAppFolder, listDriveBackups, type DriveBackupFile } from '../../integrations/drive'
+import { findOrCreateAppFolder, type DriveBackupFile } from '../../integrations/drive'
 import { getAccessToken, googleSignIn } from '../../integrations/googleAuth'
 import {
   availableScopes,
@@ -11,12 +11,12 @@ import {
   DRIVE_APP_FOLDER_NAME,
   DRIVE_BACKUP_SUBFOLDER,
   DRIVE_PDF_SUBFOLDER,
-  driveFolderRef,
   driveFolderUrl,
   effectiveClientId,
   pickerConfig,
 } from '../../integrations/googleClient'
 import { pickDriveFolder } from '../../integrations/picker'
+import { listRestorableBackups } from '../../integrations/restoreList'
 import { useApp } from '../AppContext'
 import { Dialog } from '../components/Dialog'
 import { CheckboxField } from '../components/fields'
@@ -77,7 +77,7 @@ export function DriveConnectProvider({ children }: { children: ReactNode }) {
       if (!clientId || !latest.current.empty) return finish('connected')
       let files: DriveBackupFile[] = []
       try {
-        files = await listDriveBackups(clientId, driveFolderRef(s, 'backup'))
+        files = await listRestorableBackups(clientId, s)
       } catch (e) {
         // Not finding backups must not spoil the sign-in; restore stays available in Settings.
         console.warn('Could not list Drive backups', e)
