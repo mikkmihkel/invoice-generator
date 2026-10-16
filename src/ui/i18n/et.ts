@@ -1014,4 +1014,13 @@ export const et = {
   'editor.skipToIssue': 'Liigu väljastamise juurde',
   'company.leaveConfirm': 'Ettevõtte andmetes on salvestamata muudatusi. Kui lehelt lahkud, lähevad need kaduma.',
   'common.keepEditing': 'Jätka muutmist',
+
+  // ---- Workstream B: list and home (mark as sent, attention strip, search, recurring overview) ----
+  'sent.mark': 'Märgi saadetuks',
+  'sent.marked': '{doc} {number} on märgitud saadetuks.',
+  'sent.unmarked': '{doc} {number} ei ole enam märgitud saadetuks.',
+  'sent.prompt': 'Kas saatsid arve kliendile?',
+  'sent.promptCredit': 'Kas saatsid kreeditarve kliendile?',
+  'sent.promptQuote': 'Kas saatsid hinnapakkumise kliendile?',
+  // ---- end of Workstream B ----
 }

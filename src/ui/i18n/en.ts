@@ -1016,4 +1016,13 @@ export const en: Record<keyof typeof et, string> = {
   'editor.skipToIssue': 'Skip to issuing',
   'company.leaveConfirm': 'Your company details have unsaved changes. They will be lost if you leave this page.',
   'common.keepEditing': 'Keep editing',
+
+  // ---- Workstream B: list and home (mark as sent, attention strip, search, recurring overview) ----
+  'sent.mark': 'Mark as sent',
+  'sent.marked': '{doc} {number} marked as sent.',
+  'sent.unmarked': '{doc} {number} is no longer marked as sent.',
+  'sent.prompt': 'Did you send the invoice to the client?',
+  'sent.promptCredit': 'Did you send the credit note to the client?',
+  'sent.promptQuote': 'Did you send the quote to the client?',
+  // ---- end of Workstream B ----
 }

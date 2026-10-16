@@ -233,6 +233,7 @@ describe('selected invoice', () => {
     fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
     const menu = screen.getByRole('menu')
     expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
+      'Märgi saadetuks',
       'Salvesta Drive’i',
       'E-arve (XML)',
       'Prindi',

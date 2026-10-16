@@ -12,6 +12,7 @@ import {
   EyeIcon,
   FileCodeIcon,
   LockSimpleIcon,
+  PaperPlaneTiltIcon,
   PencilSimpleIcon,
   PrinterIcon,
   ProhibitIcon,
@@ -63,6 +64,7 @@ import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './edit
 import { DueAmount, EdSection, MoreOptions, NextStep, QuoteStatusWord, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
+import { canMarkSent, useMarkSent } from './invoice-detail/markSent'
 import { docNoun, localDateOf } from './invoice-detail/status'
 import { LinesEditor } from './editor/LinesEditor'
 import { RecurringControl } from './editor/RecurringControl'
@@ -254,6 +256,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const { markDirty } = autosave
   const deleteDocument = useDeleteDocument()
   const canReopen = useCanReopen(invoice ?? REOPEN_PLACEHOLDER)
+  const markSentByHand = useMarkSent()
   const isDraft = invoice?.status === 'draft'
   const edit = useCallback(
     (fn: (inv: Invoice) => Invoice) => {
@@ -572,6 +575,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const menuItems: MenuItem[] = [
     ...(invoice.status === 'paid' ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
     ...(primary === 'reminder' || (quote && !primary && invoice.status !== 'cancelled') ? [{ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') }] : []),
+    ...(canMarkSent(invoice, app.invoiceEvents) ? [{ key: 'sent', label: t('sent.mark'), icon: <PaperPlaneTiltIcon />, onSelect: () => void act('sent', async () => void (await markSentByHand(invoice))) }] : []),
     { key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void saveToDrive() },
     ...(supportsEInvoice(invoice) ? [{ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void downloadXml() }] : []),
     { key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void print() },

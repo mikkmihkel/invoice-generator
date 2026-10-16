@@ -318,6 +318,32 @@
 .doc-page-toggle {
   margin-left: auto;
 }
+
+/* "Did you send it to the client? Mark as sent" after a download, print or Drive save. */
+.sent-prompt {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-3);
+  padding: 6px 6px 6px var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  animation: fade-in var(--dur) var(--ease);
+}
+.sent-prompt p {
+  flex: 1;
+  min-width: 0;
+}
+.sent-prompt-icon {
+  flex: none;
+  color: var(--text-3);
+}
+.sent-prompt .link-btn {
+  font-weight: 500;
+}
 .doc-page-toggle[aria-pressed='true'] {
   color: var(--accent-text);
   background: var(--accent-soft);
@@ -717,6 +743,17 @@ tr:focus-within .row-actions,
   }
   .doc-page-toggle {
     margin-left: 0;
+  }
+  .sent-prompt {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .sent-prompt p {
+    padding: 10px 0;
+  }
+  .sent-prompt .icon-btn {
+    width: 44px;
+    height: 44px;
   }
   .facts > div {
     grid-template-columns: 112px minmax(0, 1fr);
