@@ -159,7 +159,8 @@ export function PreviewPanel({
           <XIcon size={18} />
         </button>
       </div>
-      <div className={`pv-body${rendering && doc ? ' is-busy' : ''}`} aria-busy={rendering || undefined}>
+      {/* Focusable so keyboard users can scroll the pages (arrow keys, Page Up/Down). */}
+      <div className={`pv-body${rendering && doc ? ' is-busy' : ''}`} aria-busy={rendering || undefined} tabIndex={0} role="region" aria-label={t('preview.pages')}>
         {error && (
           <div className="notice notice-warn" role="status">
             {t('preview.failed')}

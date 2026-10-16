@@ -1102,6 +1102,9 @@ html.ed-sheet-open {
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+.pv-body:focus-visible {
+  outline-offset: -2px;
+}
 .pv-body > .notice {
   align-self: stretch;
 }

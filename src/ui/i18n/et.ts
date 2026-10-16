@@ -1019,4 +1019,5 @@ export const et = {
   'registry.unavailable': 'Äriregistrist ei saanud praegu otsida. Kontrolli internetiühendust ja proovi uuesti või sisesta andmed käsitsi.',
   'registry.unavailablePartial': 'Osa äriregistri otsingust ei vastanud, seega võib mõni ettevõte tulemustest puududa.',
   'registry.retry': 'Proovi uuesti',
+  'preview.pages': 'Eelvaate leheküljed',
 }

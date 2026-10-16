@@ -1021,4 +1021,5 @@ export const en: Record<keyof typeof et, string> = {
   'registry.unavailable': 'The Business Register could not be searched right now. Check your internet connection and try again, or enter the details manually.',
   'registry.unavailablePartial': 'Part of the Business Register search did not respond, so some companies may be missing from the results.',
   'registry.retry': 'Try again',
+  'preview.pages': 'Preview pages',
 }

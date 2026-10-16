@@ -115,6 +115,8 @@ describe('live preview panel', () => {
     expect(await within(panel).findByRole('img', { name: 'Arve PDF-eelvaade, lehekülg 2/2' })).toHaveAttribute('src', 'data:image/png;base64,page2')
     expect(within(panel).getByRole('img', { name: 'Arve PDF-eelvaade, lehekülg 1/2' })).toBeInTheDocument()
     expect(raster.mock.calls.map((c) => c[2])).toEqual([1, 2])
+    // The scrolling pages are reachable with the keyboard (WCAG 2.1.1).
+    expect(within(panel).getByRole('region', { name: 'Eelvaate leheküljed' })).toHaveAttribute('tabindex', '0')
   })
 
   it('falls back to the PDF itself when pages cannot be drawn, reuses it on reopening and revokes it on unmount', async () => {
