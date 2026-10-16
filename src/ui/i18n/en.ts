@@ -1002,7 +1002,7 @@ export const en: Record<keyof typeof et, string> = {
   'vies.validName': 'Valid: {name}',
   'vies.invalid': 'According to VIES this VAT number is not valid.',
   'vies.unavailable': 'VIES or the member state database is not answering right now. Try again later.',
-  'vies.blocked': 'VIES does not allow this number to be checked automatically from here. Check {number} on the official VIES page.',
+  'vies.blocked': 'Could not connect to VIES: the network connection failed or VIES does not accept requests from here. Try again, or check {number} on the official VIES page.',
   'vies.open': 'Copy number and open VIES',
   'vies.openPage': 'Open the VIES page',
   'vies.retry': 'Try again',

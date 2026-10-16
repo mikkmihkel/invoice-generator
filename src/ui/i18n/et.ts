@@ -1000,7 +1000,7 @@ export const et = {
   'vies.validName': 'Kehtiv: {name}',
   'vies.invalid': 'VIES-i andmetel ei ole see käibemaksukohustuslase number kehtiv.',
   'vies.unavailable': 'VIES või liikmesriigi andmebaas ei vasta praegu. Proovi hiljem uuesti.',
-  'vies.blocked': 'VIES ei võimalda seda numbrit siit automaatselt kontrollida. Kontrolli numbrit {number} ametlikul VIES-i lehel.',
+  'vies.blocked': 'VIES-iga ei saanud ühendust: võrguühendus katkes või VIES ei luba siit päringuid teha. Proovi uuesti või kontrolli numbrit {number} ametlikul VIES-i lehel.',
   'vies.open': 'Kopeeri number ja ava VIES',
   'vies.openPage': 'Ava VIES-i leht',
   'vies.retry': 'Proovi uuesti',
