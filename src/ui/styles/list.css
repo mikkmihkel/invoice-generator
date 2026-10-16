@@ -318,6 +318,10 @@
 .doc-page-toggle {
   margin-left: auto;
 }
+/* "Mark paid" is a link in the status line on wide screens and a real button on phones. */
+.doc-actions .doc-paid-btn {
+  display: none;
+}
 
 /* "Did you send it to the client? Mark as sent" after a download, print or Drive save. */
 .sent-prompt {
@@ -743,6 +747,15 @@ tr:focus-within .row-actions,
   }
   .doc-page-toggle {
     margin-left: 0;
+  }
+  .doc-actions .btn {
+    min-height: 44px;
+  }
+  .doc-actions .doc-paid-btn {
+    display: inline-flex;
+  }
+  .doc-paid-link {
+    display: none;
   }
   .sent-prompt {
     padding-top: 0;

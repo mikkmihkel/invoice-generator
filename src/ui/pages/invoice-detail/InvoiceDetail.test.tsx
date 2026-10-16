@@ -162,6 +162,23 @@ describe('selected invoice', () => {
     expect((within(dialog).getByLabelText('Sõnum') as HTMLTextAreaElement).value).not.toContain('viivis')
   })
 
+  it('offers "Mark paid" as a button beside the reminder (shown on phones instead of the status-line link)', async () => {
+    const inv = invoice({ issueDate: addDaysISO(today, -30), dueDate: addDaysISO(today, -16) })
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt('#/', repo)
+    const article = await doc()
+    const group = actions(article)
+    expect(within(group).getByRole('button', { name: 'Saada meeldetuletus' })).toHaveClass('btn-primary')
+    const paid = within(group).getByRole('button', { name: 'Märgi tasutuks' })
+    expect(paid).toHaveClass('btn', 'doc-paid-btn')
+    expect(paid).not.toHaveClass('btn-primary')
+    expect(article.querySelector('.doc-status .doc-paid-link')).toHaveTextContent('Märgi tasutuks')
+    await act(async () => {
+      fireEvent.click(paid)
+    })
+    expect(repo.markInvoicePaid).toHaveBeenCalledWith(inv.id, today)
+  })
+
   it('states the late interest, logs reminders and makes the second one firmer', async () => {
     const inv = invoice({ issueDate: addDaysISO(today, -30), dueDate: addDaysISO(today, -16), lateInterestPercentPerDay: 0.05 })
     const first = addDaysISO(today, -9)
@@ -211,7 +228,16 @@ describe('selected invoice', () => {
     renderAt('#/', repo)
     const article = await doc()
     // The sent event loads after the first render; only then is "Mark paid" the main action.
-    const paid = await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }, { timeout: 3000 })
+    const primary = () =>
+      waitFor(
+        () => {
+          const b = actions(article).querySelector<HTMLButtonElement>('.btn-primary')
+          expect(b).toHaveTextContent('Märgi tasutuks')
+          return b!
+        },
+        { timeout: 3000 },
+      )
+    const paid = await primary()
     await act(async () => {
       fireEvent.click(paid)
     })
@@ -221,7 +247,7 @@ describe('selected invoice', () => {
     })
     expect(repo.markInvoiceUnpaid).toHaveBeenCalledWith(inv.id)
     expect(await screen.findByText('Arve 2026-0004 on jälle tasumata.')).toBeInTheDocument()
-    const again = await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }, { timeout: 3000 })
+    const again = await primary()
     await act(async () => {
       fireEvent.click(again)
     })

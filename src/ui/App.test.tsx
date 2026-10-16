@@ -352,8 +352,12 @@ describe('status changes', () => {
     // The only invoice is shown beside the list; not sent yet, so marking it paid is the quiet link in the status line.
     expect(await screen.findByRole('button', { name: 'Saada e-kirjaga' })).toHaveClass('btn-primary')
     // One click marks it paid today (undo is offered in the toast).
+    // (On phones the link is a button among the actions instead; CSS shows one of the two.)
+    const [link, button] = screen.getAllByRole('button', { name: 'Märgi tasutuks' })
+    expect(link).toHaveClass('link-btn')
+    expect(button).toHaveClass('doc-paid-btn')
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Märgi tasutuks' }))
+      fireEvent.click(link)
     })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(repo.markInvoicePaid).toHaveBeenCalledWith(inv.id, expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/))

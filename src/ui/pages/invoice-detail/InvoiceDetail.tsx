@@ -260,12 +260,12 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
             )}
             {tail.length > 0 && <>, {tail.join(', ')}</>}
             {unpaid && primary?.kind !== 'paid' && (
-              <>
+              <span className="doc-paid-link">
                 {'. '}
                 <button type="button" className="link-btn" onClick={() => void actions.markPaid()} disabled={busy}>
                   {t('actions.markPaid')}
                 </button>
-              </>
+              </span>
             )}
             {invoice.status === 'paid' && (
               <>
@@ -302,6 +302,13 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
               {primary.label}
             </button>
           ))}
+        {unpaid && primary?.kind !== 'paid' && (
+          // Phones: a real button instead of the small link in the status line (hidden on wider screens).
+          <button type="button" className="btn doc-paid-btn" onClick={() => void actions.markPaid()} disabled={busy}>
+            <CheckIcon />
+            {t('actions.markPaid')}
+          </button>
+        )}
         <button
           type="button"
           className="btn btn-text"
