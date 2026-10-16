@@ -11,7 +11,7 @@ import { rowStatus, settlementOf, type Settlement } from './invoice-detail/statu
 import { interpolate, joinSums } from './invoice-detail/text'
 
 type Kind = 'invoices' | 'quotes'
-type MainFilter = 'all' | 'unpaid' | 'draft'
+type MainFilter = 'all' | 'unpaid' | 'overdue' | 'draft'
 type ExtraFilter = 'overdue' | 'paid' | 'cancelled'
 type QuoteMain = 'all' | 'sent' | 'draft'
 type QuoteExtra = 'accepted' | 'expired' | 'cancelled'
@@ -120,6 +120,7 @@ export default function InvoiceList() {
     return {
       unpaid: owed(invoiceRows.filter((r) => r.unpaid)),
       overdue: owed(invoiceRows.filter((r) => r.status === 'overdue')),
+      overdueCount: invoiceRows.filter((r) => r.status === 'overdue').length,
       year: sumByCurrency(billed.map((r) => ({ amount: r.gross, currency: r.inv.currency }))),
       yearCount: billed.length,
       issued: invoiceRows.some((r) => r.status !== 'draft'),
@@ -192,7 +193,10 @@ export default function InvoiceList() {
 
   const money = (amount: number, currency: string) => formatMoney(amount, currency)
   const quotes = kind === 'quotes'
-  const extras: StatusFilter[] = quotes ? QUOTE_EXTRA : EXTRA
+  // Overdue invoices get their own chip while there are any; otherwise "overdue" stays under "More filters".
+  const overdueChip = !quotes && summary.overdueCount > 0
+  const invoiceExtras = overdueChip ? EXTRA.filter((s) => s !== 'overdue') : EXTRA
+  const extras: StatusFilter[] = quotes ? QUOTE_EXTRA : invoiceExtras
   const isExtra = extras.includes(status)
   const extraValue = isExtra ? status : year !== 'all' ? `y:${year}` : ''
   const onExtra = (v: string) => {
@@ -215,7 +219,14 @@ export default function InvoiceList() {
   }
   const mainOptions = quotes
     ? (['all', 'sent', 'draft'] as const).map((s) => ({ value: s as StatusFilter, label: s === 'sent' ? t('list.quoteFilter.sent') : t(`list.filter.${s}`) }))
-    : (['all', 'unpaid', 'draft'] as const).map((s) => ({ value: s as StatusFilter, label: t(`list.filter.${s}`) }))
+    : (['all', 'unpaid', 'overdue', 'draft'] as const)
+        .filter((s) => s !== 'overdue' || overdueChip)
+        .map((s) => (s === 'overdue' ? { value: s as StatusFilter, label: t('list.filter.overdueChip'), count: summary.overdueCount } : { value: s as StatusFilter, label: t(`list.filter.${s}`) }))
+  /** The receivables sentence leads to the invoices it sums up. */
+  const showStatus = (s: StatusFilter) => {
+    setStatus(s)
+    setYear('all')
+  }
 
   // Roving tabindex: only one row is in the tab order (the selected one, else the last focused or first row),
   // so Tab goes from the list straight on to the invoice's actions. Arrow keys move between rows (and select).
@@ -270,8 +281,26 @@ export default function InvoiceList() {
               : summary.unpaid.size === 0
               ? t('list.allPaid')
               : interpolate(t(summary.overdue.size ? 'list.receivable' : 'list.receivableNoOverdue'), {
-                  unpaid: <strong className="tnum">{joinSums(summary.unpaid, money)}</strong>,
-                  overdue: <strong className="tnum tone-danger">{joinSums(summary.overdue, money)}</strong>,
+                  unpaid: (
+                    <button
+                      type="button"
+                      className="sum-link"
+                      aria-label={t('list.showUnpaid', { amount: joinSums(summary.unpaid, money) })}
+                      onClick={() => showStatus('unpaid')}
+                    >
+                      <strong className="tnum">{joinSums(summary.unpaid, money)}</strong>
+                    </button>
+                  ),
+                  overdue: (
+                    <button
+                      type="button"
+                      className="sum-link"
+                      aria-label={t('list.showOverdue', { amount: joinSums(summary.overdue, money) })}
+                      onClick={() => showStatus('overdue')}
+                    >
+                      <strong className="tnum tone-danger">{joinSums(summary.overdue, money)}</strong>
+                    </button>
+                  ),
                 })}
           </p>
           )}
@@ -292,7 +321,7 @@ export default function InvoiceList() {
                         {t(`quote.status.${s}`)}
                       </option>
                     ))
-                  : EXTRA.map((s) => (
+                  : invoiceExtras.map((s) => (
                       <option key={s} value={s}>
                         {t(`list.filter.${s}`)}
                       </option>

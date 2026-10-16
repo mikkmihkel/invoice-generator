@@ -43,6 +43,30 @@
 .receivable strong.tone-danger {
   color: var(--danger);
 }
+/* The sums in the receivables sentence open the invoices they add up. */
+.sum-link {
+  display: inline;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.sum-link:hover {
+  text-decoration-color: currentColor;
+}
+.sum-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+.list-filters {
+  flex-wrap: wrap;
+}
 .list-filters {
   display: flex;
   align-items: center;

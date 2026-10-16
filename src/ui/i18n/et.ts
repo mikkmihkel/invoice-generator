@@ -1025,5 +1025,8 @@ export const et = {
   'sent.promptReminder': 'Kas saatsid meeldetuletuse kliendile?',
   'sent.reminderMarked': 'Meeldetuletus arve {number} kohta on märgitud saadetuks.',
   'sent.reminderUnmarked': 'Meeldetuletus arve {number} kohta ei ole enam märgitud saadetuks.',
+  'list.filter.overdueChip': 'Üle tähtaja',
+  'list.showUnpaid': 'Näita tasumata arveid: {amount}',
+  'list.showOverdue': 'Näita tähtaja ületanud arveid: {amount}',
   // ---- end of Workstream B ----
 }

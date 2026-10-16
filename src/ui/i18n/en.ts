@@ -1027,5 +1027,8 @@ export const en: Record<keyof typeof et, string> = {
   'sent.promptReminder': 'Did you send the reminder to the client?',
   'sent.reminderMarked': 'Reminder about invoice {number} marked as sent.',
   'sent.reminderUnmarked': 'Reminder about invoice {number} is no longer marked as sent.',
+  'list.filter.overdueChip': 'Overdue',
+  'list.showUnpaid': 'Show unpaid invoices: {amount}',
+  'list.showOverdue': 'Show overdue invoices: {amount}',
   // ---- end of Workstream B ----
 }
