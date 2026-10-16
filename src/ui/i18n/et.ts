@@ -1021,4 +1021,7 @@ export const et = {
   'registry.retry': 'Proovi uuesti',
   'preview.pages': 'Eelvaate leheküljed',
   'preview.fullSize': 'Näita täissuuruses',
+  'backup.changesTitleCompany': 'Varukoopia muudab ettevõtte andmeid',
+  'backup.changesTitleSettings': 'Varukoopia muudab seadeid',
+  'backup.changesIntroOther': 'Kontrolli, et muudatused on õiged, enne kui need üle võtad.',
 }

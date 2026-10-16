@@ -8,7 +8,7 @@ import { backupFileName, requestPersistentStorage, serializeBackup } from '../..
 import { useApp } from '../AppContext'
 import { BackupSection } from './settings/BackupSection'
 import ExportSection from './settings/ExportSection'
-import { backupContents, GOOGLE_CLIENT_ID_RE, keepClientId, paymentDetailChanges, readBackupText } from './backupReview'
+import { backupContents, changesHeading, GOOGLE_CLIENT_ID_RE, keepClientId, paymentDetailChanges, readBackupText } from './backupReview'
 import { Dialog, useConfirm } from '../components/Dialog'
 import { CheckboxField, TextField } from '../components/fields'
 import { Section } from '../components/misc'
@@ -83,8 +83,8 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
       </ul>
       {changes.length > 0 && (
         <div className="notice notice-warn backup-changes">
-          <strong>{t('backup.changesTitle')}</strong>
-          <p className="small">{t('backup.changesIntro')}</p>
+          <strong>{changesHeading(changes, t).title}</strong>
+          <p className="small">{changesHeading(changes, t).intro}</p>
           <dl className="change-list">
             {changes.map((c) => (
               <div key={c.field}>

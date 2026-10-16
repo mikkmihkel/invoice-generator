@@ -1023,4 +1023,7 @@ export const en: Record<keyof typeof et, string> = {
   'registry.retry': 'Try again',
   'preview.pages': 'Preview pages',
   'preview.fullSize': 'Show at full size',
+  'backup.changesTitleCompany': 'The backup changes your company details',
+  'backup.changesTitleSettings': 'The backup changes settings',
+  'backup.changesIntroOther': 'Check that these changes are correct before you accept them.',
 }
