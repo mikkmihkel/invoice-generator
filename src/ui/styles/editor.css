@@ -1175,6 +1175,8 @@ html.ed-sheet-open {
     grid-template-areas:
       'check check'
       'total issue';
+    /* A long check list scrolls in its own row, so the amount due and Issue always stay in view. */
+    grid-template-rows: minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--s-3) var(--s-4);
     max-height: 45%;
@@ -1182,6 +1184,14 @@ html.ed-sheet-open {
   }
   .ed-pv .ed-side .check {
     grid-area: check;
+    align-self: stretch;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    /* Room for the toggle's hover background and the focus ring inside the scroll box. */
+    margin: -6px -8px;
+    padding: 6px 8px;
   }
   .ed-pv .ed-total {
     grid-area: total;
@@ -1206,6 +1216,7 @@ html.ed-sheet-open {
   /* Issued: amount and dates side by side, the actions under them. */
   .ed-pv .ed-side-ro {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
     grid-template-areas: none;
     align-items: start;
   }
