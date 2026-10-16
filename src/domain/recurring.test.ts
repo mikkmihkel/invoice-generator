@@ -271,4 +271,14 @@ describe('recurring overview', () => {
     // Paused since spring: the series of the 31st goes on after today, the missed months are not prepared.
     expect(resumeRule(rule({ active: false, nextDate: '2026-04-30' }), source(), '2026-10-16', NOW)).toMatchObject({ active: true, nextDate: '2026-10-31' })
   })
+
+  it("keeps today's draft when resuming on the day it is due", () => {
+    // Paused with the next draft due today: resuming today prepares it (the date is not in the past).
+    expect(resumeRule(rule({ active: false, nextDate: '2026-10-16' }), source(), '2026-10-16', NOW).nextDate).toBe('2026-10-16')
+    // Paused for months, resumed on a date of the series: that date's draft is due now.
+    expect(resumeRule(rule({ active: false, nextDate: '2026-04-30' }), source(), '2026-10-31', NOW).nextDate).toBe('2026-10-31')
+    expect(upcomingOccurrence({ issueDate: '2026-01-31' }, 'monthly', '2026-10-31', { includeToday: true })).toBe('2026-10-31')
+    // A rule set up today on an old invoice still starts with the next period.
+    expect(upcomingOccurrence({ issueDate: '2026-01-31' }, 'monthly', '2026-10-31')).toBe('2026-11-30')
+  })
 })
