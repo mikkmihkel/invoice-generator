@@ -1028,5 +1028,11 @@ export const en: Record<keyof typeof et, string> = {
   'clients.internalNoteHint': 'Only for you: shown while you write an invoice, never printed.',
   'editor.clientNote': 'Client notes, not printed',
   'editor.termFromClient': 'Payment term from the client card.',
+  'copyLines.action': 'Copy lines from invoice {number} ({month})',
+  'copyLines.meta': '{count} lines, {amount}',
+  'copyLines.metaOne': '1 line, {amount}',
+  'copyLines.done': 'Lines copied from invoice {number}.',
+  'copyLines.undone': 'The copied lines were removed.',
+  'actions.newForClient': 'New invoice for this client',
   // ---- end of Workstream C ----
 }

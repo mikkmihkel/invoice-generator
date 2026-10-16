@@ -1591,3 +1591,28 @@ html.ed-sheet-open {
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
+
+/* "Copy lines from invoice …": offered while a regular client's draft has no lines yet. */
+.ed-copy-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-3);
+  margin-bottom: var(--s-4);
+  padding: 4px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--r-sm);
+}
+.ed-copy-offer .ed-text-btn {
+  text-align: left;
+}
+.ed-copy-offer-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+@media (max-width: 640px) {
+  .ed-copy-offer .ed-text-btn {
+    min-height: 44px;
+  }
+}

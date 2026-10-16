@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Invoice, Product } from '../../domain'
 import { line, sampleInvoice } from '../../pdf/testFixtures'
-import { findProduct, invoicedLinesFor, lineMatches, lineSuggestions, productFromLine, productMatchesLine, sameBuyer, searchProducts } from './products'
+import { findProduct, invoicedLinesFor, latestInvoiceFor, lineMatches, lineSuggestions, productFromLine, productMatchesLine, sameBuyer, searchProducts } from './products'
 
 const product = (id: string, description: string, unitPrice = 10, patch: Partial<Product> = {}): Product => ({
   id,
@@ -50,6 +50,13 @@ describe('invoicedLinesFor', () => {
   it('returns nothing without a buyer', () => {
     expect(invoicedLinesFor(invoices, undefined, 'EUR')).toEqual([])
     expect(invoicedLinesFor(invoices, { name: ' ' }, 'EUR')).toEqual([])
+  })
+
+  it('latestInvoiceFor picks the newest issued or paid invoice of this buyer and currency', () => {
+    expect(latestInvoiceFor(invoices, buyer, 'EUR')?.number).toBe('A-2')
+    expect(latestInvoiceFor(invoices, buyer, 'USD')?.number).toBe('A-4')
+    expect(latestInvoiceFor(invoices, { clientId: 'nobody', name: 'Keegi' }, 'EUR')).toBeUndefined()
+    expect(latestInvoiceFor(invoices, undefined, 'EUR')).toBeUndefined()
   })
 })
 

@@ -1026,5 +1026,11 @@ export const et = {
   'clients.internalNoteHint': 'Ainult sinu jaoks: näed seda arve koostamisel, arvele seda ei trükita.',
   'editor.clientNote': 'Kliendi märkmed, arvele ei trükita',
   'editor.termFromClient': 'Kliendikaardil määratud maksetingimus.',
+  'copyLines.action': 'Kopeeri read arvelt {number} ({month})',
+  'copyLines.meta': '{count} rida, {amount}',
+  'copyLines.metaOne': '1 rida, {amount}',
+  'copyLines.done': 'Read on kopeeritud arvelt {number}.',
+  'copyLines.undone': 'Kopeeritud read on eemaldatud.',
+  'actions.newForClient': 'Uus arve sellele kliendile',
   // ---- end of Workstream C ----
 }

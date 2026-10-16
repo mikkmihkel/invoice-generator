@@ -10,6 +10,7 @@ import {
   DownloadSimpleIcon,
   EnvelopeSimpleIcon,
   FileCodeIcon,
+  FilePlusIcon,
   FileTextIcon,
   LockSimpleIcon,
   PencilSimpleIcon,
@@ -27,6 +28,7 @@ import { Menu, type MenuItem } from '../../components/ui'
 import { formatDate, formatIban, formatMoney, formatNumber } from '../../format'
 import { pick, type MessageKey } from '../../i18n'
 import { daysBetween, displayStatus, effectiveInvoice, formatAddress, isUnpaid, localTodayISO } from '../../util'
+import { savedClientOf } from '../editor/builders'
 import { EmailDialog } from '../editor/EmailDialog'
 import { RecurringControl } from '../editor/RecurringControl'
 import { CancelInvoiceDialog, DeleteInvoiceDialog, MarkPaidDialog } from '../editor/StatusDialogs'
@@ -68,7 +70,7 @@ const REMIND_AGAIN_DAYS = 7
 
 /** The selected invoice, typeset like a document, with one status-dependent primary action. */
 export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBack?: boolean }) {
-  const { t, lang, profile, invoices } = useApp()
+  const { t, lang, profile, invoices, clients } = useApp()
   const navigate = useNavigate()
   const [dialog, setDialog] = useState<Dialog>(null)
   const [showPage, setShowPage] = useState(initialShowPage)
@@ -127,6 +129,8 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   items.push({ key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void actions.print() })
   if (canReopen) items.push({ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void actions.reopen() })
   items.push({ key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void actions.duplicate() })
+  const client = savedClientOf(invoice, clients)
+  if (client) items.push({ key: 'newForClient', label: t('actions.newForClient'), icon: <FilePlusIcon />, onSelect: () => navigate(`/invoices/new?client=${encodeURIComponent(client.id)}`) })
   if (!draft && !credit && !quote && invoice.status !== 'cancelled' && !settle.settled) items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
   if (unpaid) items.push({ key: 'paidOn', label: t('payment.otherDate'), icon: <CalendarCheckIcon />, onSelect: () => setDialog('paid') })
   if (invoice.status === 'paid') items.push({ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void actions.markUnpaid() })

@@ -11,6 +11,7 @@ import {
   EnvelopeSimpleIcon,
   EyeIcon,
   FileCodeIcon,
+  FilePlusIcon,
   LockSimpleIcon,
   NoteIcon,
   PencilSimpleIcon,
@@ -62,7 +63,9 @@ import { CURRENCIES, languageOptions, templateName, vatSchemeOptions } from '../
 import { useToast } from '../Toasts'
 import { accentColor, addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isCreditSettled, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
-import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './editor/builders'
+import { copyLines, creditNoteFor, duplicateInvoice, linesAreBlank, newDraft, redateInvoice, savedClientOf } from './editor/builders'
+import { CopyLinesOffer } from './editor/CopyLinesOffer'
+import { latestInvoiceFor } from './products'
 import { DueAmount, EdSection, MoreOptions, NextStep, QuoteStatusWord, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
@@ -353,6 +356,12 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   // The saved client behind the buyer: its internal note is shown while writing, never printed.
   const pickedClient = invoice.buyer.clientId ? clients.find((c) => c.id === invoice.buyer.clientId) : undefined
   const clientNote = !ro ? pickedClient?.notes?.trim() : undefined
+  // A regular client's last invoice, offered for copying while the draft's lines are still empty.
+  const copySource =
+    !ro && !numbered && (invoice.type === 'invoice' || invoice.type === 'prepayment') && invoice.buyer.name && linesAreBlank(invoice.lines)
+      ? latestInvoiceFor(app.invoices, invoice.buyer, invoice.currency)
+      : undefined
+  const clientForNew = savedClientOf(invoice, clients)
   const termFromClient = !ro && pickedClient?.paymentTermDays !== undefined && term === clientPaymentTermDays(profile, pickedClient)
   // Issued invoices read as a document: optional fields that were left empty are not shown.
   const shown = (v: unknown) => !ro || (v !== undefined && v !== null && v !== '')
@@ -493,6 +502,22 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     })
 
   const duplicate = () => openCopy(duplicateInvoice(effective, profile), t('actions.duplicated'))
+  const newForClient = (c: Client) => navigate(`/invoices/new?client=${encodeURIComponent(c.id)}`)
+
+  const copyLinesFrom = (src: Invoice) => {
+    const before = invoice.lines
+    set({ lines: copyLines(src, invoice, profile) })
+    toast.success(t('copyLines.done', { number: src.number }), {
+      label: t('payment.undo'),
+      onClick: () => {
+        set({ lines: before })
+        toast.info(t('copyLines.undone'))
+      },
+    })
+    // The offer disappears with the click: continue in the first copied line (usually the quantity changes).
+    requestAnimationFrame(() => document.getElementById(fieldId('lines.0.quantity'))?.focus())
+  }
+
   const creditNote = () => openCopy(creditNoteFor(invoice, profile), t('actions.creditCreated', { number: invoice.number }))
 
   const cancelInvoice = async () => {
@@ -587,6 +612,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     { key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void print() },
     ...(canReopen ? [{ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void reopen() }] : []),
     { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void duplicate() },
+    ...(clientForNew ? [{ key: 'newForClient', label: t('actions.newForClient'), icon: <FilePlusIcon />, onSelect: () => newForClient(clientForNew) }] : []),
     ...(invoice.type !== 'credit-note' && !quote && invoice.status !== 'cancelled' ? [{ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void creditNote() }] : []),
     ...(invoice.status === 'paid' ? [{ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void act('unpaid', () => changeStatus(app.markInvoiceUnpaid)) }] : []),
     ...(invoice.status === 'issued' && !quote && !credit ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
@@ -762,6 +788,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               aside={totals.showVat ? t('editor.pricesExclVat') : undefined}
               hint={invoice.type === 'credit-note' ? t('editor.creditLinesHint') : undefined}
             >
+              {copySource && <CopyLinesOffer source={copySource} onCopy={() => copyLinesFrom(copySource)} />}
               <TextRows kind="before" rows={invoice.textBefore} onChange={(textBefore) => set({ textBefore })} disabled={ro} quote={quote} />
               <LinesEditor
                 catalogue={!credit}
