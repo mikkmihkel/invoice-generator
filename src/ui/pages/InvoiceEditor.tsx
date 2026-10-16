@@ -193,6 +193,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const [checkReveal, setCheckReveal] = useState(0)
   // Appearance that follows the company defaults is one summary line until the user asks to change it.
   const [appearanceOpen, setAppearanceOpen] = useState(false)
+  // A blank draft keeps its checklist folded until the user starts (picks a buyer, adds a line, tries to issue).
+  const [engaged, setEngaged] = useState(false)
+  if (!engaged && invoice && invoice.status === 'draft' && (!!invoice.buyer.name || invoice.lines.length > 1 || !linesAreBlank(invoice.lines))) setEngaged(true)
   const issueKeyRef = useRef<(() => void) | null>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -621,6 +624,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   // Issue when the checks pass; otherwise open the checklist and move focus to it.
   const requestIssue = () => {
     if (busyAny) return
+    setEngaged(true)
     if (errors.length > 0) setCheckReveal((n) => n + 1)
     else setDialog('issue')
   }
@@ -1098,7 +1102,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         {!ro ? (
           <aside ref={barRef} id="ed-side" className="ed-side" aria-label={t('editor.sideLabel')} tabIndex={-1}>
             <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : quote ? t('totals.grossShort') : undefined} />
-            <ValidationPanel issues={checklist} summaryId="issue-summary" reveal={checkReveal} />
+            <ValidationPanel issues={checklist} summaryId="issue-summary" reveal={checkReveal} calm={!engaged} />
             {sheet && (
               <IconButton className="ed-bar-preview" label={t('preview.title')} icon={<EyeIcon size={20} />} aria-expanded={previewOpen} onClick={(e) => togglePreview(e.currentTarget)} />
             )}
@@ -1106,8 +1110,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               <button
                 type="button"
                 className="btn btn-primary ed-issue-btn"
-                onClick={() => setDialog('issue')}
-                disabled={errors.length > 0 || busyAny}
+                onClick={requestIssue}
+                disabled={busyAny}
+                aria-disabled={errors.length > 0 || undefined}
                 title={errors.length ? t(quote ? 'quote.issueBlocked' : 'issue.blocked') : t('shortcuts.issueTitle', { keys: issueKeys() })}
                 aria-describedby={errors.length ? 'issue-summary' : 'issue-note'}
                 aria-keyshortcuts="Control+Enter Meta+Enter"

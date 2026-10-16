@@ -1617,6 +1617,18 @@ html.ed-sheet-open {
   }
 }
 
+/* Issue with missing details: looks unavailable but stays pressable, and pressing it opens the checklist. */
+.ed-issue-btn[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ed-issue-btn[aria-disabled='true']:hover,
+.ed-issue-btn[aria-disabled='true']:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: none;
+}
+
 /* Appearance that follows the company defaults: one line and "Muuda". */
 .ed-appearance-summary {
   display: flex;

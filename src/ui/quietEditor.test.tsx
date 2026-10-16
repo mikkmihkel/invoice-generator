@@ -73,3 +73,36 @@ describe('appearance on a new invoice', () => {
     expect(appearance()).toHaveTextContent(/standard\W+inglise keel\W+ühevärviline/i)
   })
 })
+
+describe('checklist on a blank draft', () => {
+  const toggle = () => screen.getByRole('button', { name: /^Vigu enne väljastamist: \d+$/ })
+
+  it('stays folded to its count, in a neutral tone, until a buyer is picked', async () => {
+    renderAt('#/invoices/new', createMemoryRepo({ profile, clients: [client] }))
+    await screen.findByRole('heading', { name: 'Nõuete kontroll' })
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle()).not.toHaveClass('check-has-errors')
+    fireEvent.change(screen.getByLabelText('Klient'), { target: { value: 'ostja' } })
+    fireEvent.click(await screen.findByRole('option', { name: /Ostja AS/ }))
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-expanded', 'true'))
+    expect(toggle()).toHaveClass('check-has-errors')
+  })
+
+  it('opens when a line is added or filled in', async () => {
+    renderAt('#/invoices/new', createMemoryRepo({ profile, clients: [client] }))
+    await screen.findByRole('heading', { name: 'Nõuete kontroll' })
+    fireEvent.click(screen.getByRole('button', { name: 'Lisa rida' }))
+    await waitFor(() => expect(toggle()).toHaveAttribute('aria-expanded', 'true'))
+  })
+
+  it('opens and takes focus when Issue is pressed', async () => {
+    renderAt('#/invoices/new', createMemoryRepo({ profile, clients: [client] }))
+    const issue = await screen.findByRole('button', { name: 'Väljasta arve' })
+    expect(issue).toHaveAttribute('aria-disabled', 'true')
+    expect(issue).toBeEnabled()
+    fireEvent.click(issue)
+    await waitFor(() => expect(toggle()).toHaveFocus())
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
