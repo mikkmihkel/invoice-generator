@@ -236,6 +236,7 @@ describe('selected invoice', () => {
       'Salvesta Drive’i',
       'E-arve (XML)',
       'Prindi',
+      'Kopeeri makseandmed',
       'Ava muutmiseks',
       'Tee koopia',
       'Koosta kreeditarve',

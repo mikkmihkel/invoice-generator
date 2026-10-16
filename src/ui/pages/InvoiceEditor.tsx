@@ -5,13 +5,16 @@ import {
   BellRingingIcon,
   CaretRightIcon,
   CheckIcon,
+  ClipboardTextIcon,
   CloudArrowUpIcon,
   CopyIcon,
   DownloadSimpleIcon,
   EnvelopeSimpleIcon,
   EyeIcon,
   FileCodeIcon,
+  FilePlusIcon,
   LockSimpleIcon,
+  NoteIcon,
   PencilSimpleIcon,
   PrinterIcon,
   ProhibitIcon,
@@ -20,6 +23,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
+  applyClientTerms,
+  clientPaymentTermDays,
   computeTotals,
   holdsNumber,
   newId,
@@ -56,10 +61,14 @@ import { CheckboxField, DecimalInput, FieldShell, fieldId, NumberField, SelectFi
 import { IconButton, Menu, Skeleton, type MenuItem } from '../components/ui'
 import { formatDate, formatIban } from '../format'
 import { CURRENCIES, languageOptions, templateName, vatSchemeOptions } from '../options'
+import { issueKeys } from '../shortcuts'
 import { useToast } from '../Toasts'
 import { accentColor, addDaysISO, daysBetween, displayStatus, effectiveInvoice, errorMessage, isCreditSettled, isUnpaid, localTodayISO, normalizeInvoice, nowISO, buyerFromClient } from '../util'
 import { BuyerSection } from './editor/BuyerSection'
-import { creditNoteFor, duplicateInvoice, newDraft, redateInvoice } from './editor/builders'
+import { appearanceMatchesDefaults, copyLines, creditNoteFor, duplicateInvoice, linesAreBlank, newDraft, redateInvoice, savedClientOf } from './editor/builders'
+import { AppearanceSummary } from './editor/AppearanceSummary'
+import { CopyLinesOffer } from './editor/CopyLinesOffer'
+import { latestInvoiceFor } from './products'
 import { DueAmount, EdSection, MoreOptions, NextStep, QuoteStatusWord, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
@@ -73,6 +82,7 @@ import { useFixedBarHeight } from './editor/useFixedBarHeight'
 import { useMediaQuery } from './editor/useMediaQuery'
 import { DeleteInvoiceDialog, IssueDialog, MarkPaidDialog, type StaleIssueDate } from './editor/StatusDialogs'
 import { LockNote } from './invoice-detail/LockNote'
+import { hasPaymentDetails, useCopyPaymentDetails } from './invoice-detail/paymentDetails'
 import { reopenRuleKey, useCanReopen, useDeleteDocument } from './invoice-detail/useInvoiceActions'
 import { TextRows } from './editor/TextRows'
 import { useAutosave } from './editor/useAutosave'
@@ -179,6 +189,27 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     },
     [sheet],
   )
+  // A new invoice starts in the client search (not on phones, where focus would pop up the keyboard).
+  const [autoFocusBuyer] = useState(() => id === 'new' && !focusTitle && !sheet)
+  // Ctrl/⌘+Enter asks to issue; each blocked attempt reveals the checklist (counter as a signal).
+  const [checkReveal, setCheckReveal] = useState(0)
+  // Appearance that follows the company defaults is one summary line until the user asks to change it.
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
+  // A blank draft keeps its checklist folded until the user starts (picks a buyer, adds a line, tries to issue).
+  const [engaged, setEngaged] = useState(false)
+  if (!engaged && invoice && invoice.status === 'draft' && (!!invoice.buyer.name || invoice.lines.length > 1 || !linesAreBlank(invoice.lines))) setEngaged(true)
+  const issueKeyRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.repeat || e.defaultPrevented) return
+      const request = issueKeyRef.current
+      if (!request || document.querySelector('[role="dialog"], [role="menu"]')) return
+      e.preventDefault()
+      request()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   const persistedRef = useRef(false)
   const previewBtn = useRef<HTMLButtonElement>(null)
@@ -253,6 +284,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
   const { markDirty } = autosave
   const deleteDocument = useDeleteDocument()
+  const copyPayment = useCopyPaymentDetails()
   const canReopen = useCanReopen(invoice ?? REOPEN_PLACEHOLDER)
   const isDraft = invoice?.status === 'draft'
   const edit = useCallback(
@@ -347,6 +379,18 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       ? app.invoices.filter((i) => i.type === 'credit-note' && i.id !== invoice.id && i.status !== 'cancelled' && i.creditedInvoiceNumber?.trim() === invoice.number)
       : []
   const hasGoogle = !!settings.googleClientId
+  // The saved client behind the buyer: its internal note is shown while writing, never printed.
+  const pickedClient = invoice.buyer.clientId ? clients.find((c) => c.id === invoice.buyer.clientId) : undefined
+  const clientNote = !ro ? pickedClient?.notes?.trim() : undefined
+  // A regular client's last invoice, offered for copying while the draft's lines are still empty.
+  const copySource =
+    !ro && !numbered && (invoice.type === 'invoice' || invoice.type === 'prepayment') && invoice.buyer.name && linesAreBlank(invoice.lines)
+      ? latestInvoiceFor(app.invoices, invoice.buyer, invoice.currency)
+      : undefined
+  const clientForNew = savedClientOf(invoice, clients)
+  const termFromClient = !ro && pickedClient?.paymentTermDays !== undefined && term === clientPaymentTermDays(profile, pickedClient)
+  const payable = hasPaymentDetails(invoice, app.invoices)
+  const appearanceCollapsed = !ro && !appearanceOpen && appearanceMatchesDefaults(invoice, profile, pickedClient)
   // Issued invoices read as a document: optional fields that were left empty are not shown.
   const shown = (v: unknown) => !ro || (v !== undefined && v !== null && v !== '')
 
@@ -486,6 +530,22 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     })
 
   const duplicate = () => openCopy(duplicateInvoice(effective, profile), t('actions.duplicated'))
+  const newForClient = (c: Client) => navigate(`/invoices/new?client=${encodeURIComponent(c.id)}`)
+
+  const copyLinesFrom = (src: Invoice) => {
+    const before = invoice.lines
+    set({ lines: copyLines(src, invoice, profile) })
+    toast.success(t('copyLines.done', { number: src.number }), {
+      label: t('payment.undo'),
+      onClick: () => {
+        set({ lines: before })
+        toast.info(t('copyLines.undone'))
+      },
+    })
+    // The offer disappears with the click: continue in the first copied line (usually the quantity changes).
+    requestAnimationFrame(() => document.getElementById(fieldId('lines.0.quantity'))?.focus())
+  }
+
   const creditNote = () => openCopy(creditNoteFor(invoice, profile), t('actions.creditCreated', { number: invoice.number }))
 
   const cancelInvoice = async () => {
@@ -548,13 +608,16 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   }
 
   const onPickClient = (c: Client) =>
-    edit((inv) =>
-      withVatScheme(
-        { ...inv, buyer: buyerFromClient(c), language: c.defaultLanguage ?? inv.language },
+    edit((inv) => {
+      // Payment term and late interest follow the client card unless the user already changed them in this draft.
+      const previous = inv.buyer.clientId ? clients.find((x) => x.id === inv.buyer.clientId) : undefined
+      const withTerms = applyClientTerms(inv, profile, previous, c)
+      return withVatScheme(
+        { ...withTerms, buyer: buyerFromClient(c), language: c.defaultLanguage ?? inv.language },
         effectiveVatScheme(profile, c.defaultVatScheme ?? inv.vatScheme),
         profile.defaults.defaultVatRate,
-      ),
-    )
+      )
+    })
 
   const setTerm = (days: number) => set({ dueDate: addDaysISO(invoice.issueDate, Math.max(0, Math.round(days))) })
   // A quote's due date mirrors its validity date (see asQuote).
@@ -562,6 +625,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
   const setValidity = (days: number) => setValidUntil(addDaysISO(invoice.issueDate, Math.max(0, Math.round(days))))
 
   const busyAny = busy !== null
+  // Issue when the checks pass; otherwise open the checklist and move focus to it.
+  const requestIssue = () => {
+    if (busyAny) return
+    setEngaged(true)
+    if (errors.length > 0) setCheckReveal((n) => n + 1)
+    else setDialog('issue')
+  }
+  issueKeyRef.current = ro ? null : requestIssue
   // One obvious action for an issued invoice; everything else lives in "Rohkem".
   const primary: null | 'email' | 'reminder' =
     !ro || justIssued || invoice.status === 'cancelled' || invoice.status === 'paid' || isCreditSettled(invoice, app.invoices) || (quote && qStatus !== 'sent')
@@ -575,8 +646,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     { key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void saveToDrive() },
     ...(supportsEInvoice(invoice) ? [{ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void downloadXml() }] : []),
     { key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void print() },
+    ...(payable ? [{ key: 'copyPayment', label: t('actions.copyPayment'), icon: <ClipboardTextIcon />, onSelect: () => void copyPayment(effective) }] : []),
     ...(canReopen ? [{ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void reopen() }] : []),
     { key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void duplicate() },
+    ...(clientForNew ? [{ key: 'newForClient', label: t('actions.newForClient'), icon: <FilePlusIcon />, onSelect: () => newForClient(clientForNew) }] : []),
     ...(invoice.type !== 'credit-note' && !quote && invoice.status !== 'cancelled' ? [{ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void creditNote() }] : []),
     ...(invoice.status === 'paid' ? [{ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void act('unpaid', () => changeStatus(app.markInvoiceUnpaid)) }] : []),
     ...(invoice.status === 'issued' && !quote && !credit ? [{ key: 'cancel', label: t('actions.cancelInvoice'), icon: <ProhibitIcon />, danger: true, separatorBefore: true, onSelect: () => void cancelInvoice() }] : []),
@@ -686,6 +759,15 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               onDismiss={() => setJustIssued(false)}
             />
           )}
+          {ro && justIssued && payable && (
+            <p className="next-copy">
+              <button type="button" className="ed-text-btn" onClick={() => void copyPayment(effective)}>
+                <ClipboardTextIcon />
+                {t('actions.copyPayment')}
+              </button>
+              <span className="next-copy-hint">{t('payment.detailsHint')}</span>
+            </p>
+          )}
 
           {reopened && (
             <div className="ed-locked ed-reopened">
@@ -734,7 +816,16 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
             <legend className="visually-hidden">{title}</legend>
 
             <EdSection id="sec-buyer" title={t('editor.buyer')}>
-              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} />
+              <BuyerSection buyer={invoice.buyer} onChange={(buyer: BuyerSnapshot) => set({ buyer })} onPickClient={onPickClient} disabled={ro} forceEdit={buyerFieldIssue} autoFocus={autoFocusBuyer} />
+              {clientNote && (
+                <div className="ed-client-note" role="note" aria-label={t('editor.clientNote')}>
+                  <NoteIcon size={16} className="ed-client-note-icon" aria-hidden="true" />
+                  <div>
+                    <p className="ed-client-note-label">{t('editor.clientNote')}</p>
+                    <p className="ed-client-note-text">{clientNote}</p>
+                  </div>
+                </div>
+              )}
             </EdSection>
 
             <EdSection
@@ -743,6 +834,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               aside={totals.showVat ? t('editor.pricesExclVat') : undefined}
               hint={invoice.type === 'credit-note' ? t('editor.creditLinesHint') : undefined}
             >
+              {copySource && <CopyLinesOffer source={copySource} onCopy={() => copyLinesFrom(copySource)} />}
               <TextRows kind="before" rows={invoice.textBefore} onChange={(textBefore) => set({ textBefore })} disabled={ro} quote={quote} />
               <LinesEditor
                 catalogue={!credit}
@@ -822,10 +914,10 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                   {...dateLimit}
                 />
                 <TextField label={t('field.dueDate')} type="date" path="dueDate" value={invoice.dueDate} onChange={(v) => v && set({ dueDate: v })} min={invoice.issueDate} required />
-                <FieldShell id={fieldId('paymentTerm')} label={t('field.paymentTerm')} className="span-2">
+                <FieldShell id={fieldId('paymentTerm')} label={t('field.paymentTerm')} className="span-2" hint={termFromClient ? t('editor.termFromClient') : undefined}>
                   <div className="term-row">
                     <div className="input-suffix term-days">
-                      <DecimalInput id={fieldId('paymentTerm')} className="num" value={term} onChange={(v) => setTerm(v ?? 0)} />
+                      <DecimalInput id={fieldId('paymentTerm')} className="num" value={term} onChange={(v) => setTerm(v ?? 0)} aria-describedby={termFromClient ? fieldId('paymentTerm') + '-hint' : undefined} />
                       <span aria-hidden="true">{t('common.days')}</span>
                     </div>
                     {!ro && (
@@ -907,6 +999,14 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
                     </div>
                   )}
                 </dl>
+              ) : appearanceCollapsed ? (
+                <AppearanceSummary
+                  invoice={invoice}
+                  onChange={() => {
+                    setAppearanceOpen(true)
+                    requestAnimationFrame(() => document.getElementById(fieldId('language'))?.focus())
+                  }}
+                />
               ) : (
                 <>
                 <div className="grid">
@@ -1016,7 +1116,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
         {!ro ? (
           <aside ref={barRef} id="ed-side" className="ed-side" aria-label={t('editor.sideLabel')} tabIndex={-1}>
             <DueAmount totals={totals} currency={invoice.currency} label={credit ? t('totals.credited') : quote ? t('totals.grossShort') : undefined} />
-            <ValidationPanel issues={checklist} summaryId="issue-summary" />
+            <ValidationPanel issues={checklist} summaryId="issue-summary" reveal={checkReveal} calm={!engaged} />
             {sheet && (
               <IconButton className="ed-bar-preview" label={t('preview.title')} icon={<EyeIcon size={20} />} aria-expanded={previewOpen} onClick={(e) => togglePreview(e.currentTarget)} />
             )}
@@ -1024,10 +1124,12 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
               <button
                 type="button"
                 className="btn btn-primary ed-issue-btn"
-                onClick={() => setDialog('issue')}
-                disabled={errors.length > 0 || busyAny}
-                title={errors.length ? t(quote ? 'quote.issueBlocked' : 'issue.blocked') : undefined}
+                onClick={requestIssue}
+                disabled={busyAny}
+                aria-disabled={errors.length > 0 || undefined}
+                title={errors.length ? t(quote ? 'quote.issueBlocked' : 'issue.blocked') : t('shortcuts.issueTitle', { keys: issueKeys() })}
                 aria-describedby={errors.length ? 'issue-summary' : 'issue-note'}
+                aria-keyshortcuts="Control+Enter Meta+Enter"
               >
                 {quote ? t('quote.issue') : t(credit ? 'actions.issueCredit' : 'actions.issue')}
               </button>

@@ -192,8 +192,12 @@ describe('invoice editor', () => {
     renderAt('#/invoices/new', repo)
 
     const panel = (await screen.findByRole('heading', { name: 'Nõuete kontroll' })).closest('section')!
+    // A blank draft keeps the list folded to its count; pressing Issue opens it instead of the dialog.
+    expect(within(panel).queryAllByRole('listitem')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Väljasta arve' })).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Väljasta arve' }))
     expect(within(panel).getAllByRole('listitem').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Väljasta arve' })).toBeDisabled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     // The buyer picker searches saved clients (and the register) as you type.
     fireEvent.change(screen.getByLabelText('Klient'), { target: { value: 'ostja' } })
@@ -202,7 +206,7 @@ describe('invoice editor', () => {
     fireEvent.change(screen.getByLabelText('Kirjeldus 1'), { target: { value: 'Veebilehe arendus' } })
     fireEvent.change(screen.getByLabelText('Ühikuhind'), { target: { value: '400' } })
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Väljasta arve' })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Väljasta arve' })).not.toHaveAttribute('aria-disabled'))
     expect(within(panel).queryAllByText(/./, { selector: '.issue-error *' })).toHaveLength(0)
 
     fireEvent.click(screen.getByRole('button', { name: 'Väljasta arve' }))
@@ -370,9 +374,10 @@ describe('issue button summary', () => {
     expect(screen.getByRole('button', { name: 'Väljasta arve' })).toHaveAttribute('aria-describedby', 'issue-summary')
     // The summary is the requirements check itself: one line that folds the list of problems.
     expect(summary.closest('#validation-panel')).not.toBeNull()
-    expect(summary).toHaveAttribute('aria-expanded', 'true')
-    fireEvent.click(summary)
+    // Folded on a blank draft (nothing entered yet); it opens on request.
     expect(summary).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(summary)
+    expect(summary).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('Arve saab numbri 2026-0001 ja lukustatakse.')).toBeInTheDocument()
   })
 })

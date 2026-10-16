@@ -37,17 +37,7 @@ export function sameBuyer(a: BuyerRef, b: BuyerRef): boolean {
  * (issued and paid invoices only; drafts, quotes, credit notes and cancelled invoices are ignored).
  */
 export function invoicedLinesFor(invoices: readonly Invoice[], buyer: BuyerRef | undefined, currency: string): LineSuggestion[] {
-  if (!buyer || (!buyer.clientId && !buyer.registryCode?.trim() && !buyer.name?.trim())) return []
-  const cur = (currency || 'EUR').toUpperCase()
-  const relevant = invoices
-    .filter(
-      (inv) =>
-        (inv.status === 'issued' || inv.status === 'paid') &&
-        (inv.type === 'invoice' || inv.type === 'prepayment') &&
-        (inv.currency || 'EUR').toUpperCase() === cur &&
-        sameBuyer(inv.buyer, buyer),
-    )
-    .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || (b.issuedAt ?? '').localeCompare(a.issuedAt ?? ''))
+  const relevant = invoicesOf(invoices, buyer, currency)
   const seen = new Map<string, LineSuggestion>()
   for (const inv of relevant) {
     for (const line of inv.lines) {
@@ -66,6 +56,28 @@ export function invoicedLinesFor(invoices: readonly Invoice[], buyer: BuyerRef |
     }
   }
   return [...seen.values()]
+}
+
+/** Issued and paid invoices (not credit notes, quotes or cancelled ones) of this buyer in this currency, newest first. */
+function invoicesOf(invoices: readonly Invoice[], buyer: BuyerRef | undefined, currency: string): Invoice[] {
+  if (!buyer || (!buyer.clientId && !buyer.registryCode?.trim() && !buyer.name?.trim())) return []
+  const cur = (currency || 'EUR').toUpperCase()
+  return invoices
+    .filter(
+      (inv) =>
+        (inv.status === 'issued' || inv.status === 'paid') &&
+        (inv.type === 'invoice' || inv.type === 'prepayment') &&
+        (inv.currency || 'EUR').toUpperCase() === cur &&
+        Array.isArray(inv.lines) &&
+        !!inv.buyer &&
+        sameBuyer(inv.buyer, buyer),
+    )
+    .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || (b.issuedAt ?? '').localeCompare(a.issuedAt ?? ''))
+}
+
+/** The buyer's most recent issued or paid invoice in this currency that has lines to copy. */
+export function latestInvoiceFor(invoices: readonly Invoice[], buyer: BuyerRef | undefined, currency: string): Invoice | undefined {
+  return invoicesOf(invoices, buyer, currency).find((inv) => inv.lines.some((l) => l.description?.trim()))
 }
 
 export function productSuggestion(p: Product): LineSuggestion {

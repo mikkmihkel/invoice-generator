@@ -5,11 +5,13 @@ import {
   BellRingingIcon,
   CalendarCheckIcon,
   CheckIcon,
+  ClipboardTextIcon,
   CloudArrowUpIcon,
   CopyIcon,
   DownloadSimpleIcon,
   EnvelopeSimpleIcon,
   FileCodeIcon,
+  FilePlusIcon,
   FileTextIcon,
   LockSimpleIcon,
   PencilSimpleIcon,
@@ -27,11 +29,13 @@ import { Menu, type MenuItem } from '../../components/ui'
 import { formatDate, formatIban, formatMoney, formatNumber } from '../../format'
 import { pick, type MessageKey } from '../../i18n'
 import { daysBetween, displayStatus, effectiveInvoice, formatAddress, isUnpaid, localTodayISO } from '../../util'
+import { savedClientOf } from '../editor/builders'
 import { EmailDialog } from '../editor/EmailDialog'
 import { RecurringControl } from '../editor/RecurringControl'
 import { CancelInvoiceDialog, DeleteInvoiceDialog, MarkPaidDialog } from '../editor/StatusDialogs'
 import { QuoteActions } from '../quotes/QuoteActions'
 import { useInvoiceEvents } from './events'
+import { hasPaymentDetails, useCopyPaymentDetails } from './paymentDetails'
 import { PdfPage } from './PdfPage'
 import { detailStatus, docNoun, quoteDetailStatus, settlementOf } from './status'
 import { interpolate } from './text'
@@ -68,13 +72,14 @@ const REMIND_AGAIN_DAYS = 7
 
 /** The selected invoice, typeset like a document, with one status-dependent primary action. */
 export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBack?: boolean }) {
-  const { t, lang, profile, invoices } = useApp()
+  const { t, lang, profile, invoices, clients } = useApp()
   const navigate = useNavigate()
   const [dialog, setDialog] = useState<Dialog>(null)
   const [showPage, setShowPage] = useState(initialShowPage)
   const effective = useMemo(() => effectiveInvoice(invoice, profile), [invoice, profile])
   const totals = useMemo(() => computeTotals(invoice), [invoice])
   const actions = useInvoiceActions(invoice, effective)
+  const copyPayment = useCopyPaymentDetails()
   const history = useInvoiceEvents(invoice.id)
   const sentAt = history.sentAt
   const today = localTodayISO()
@@ -125,8 +130,11 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   if (!draft) items.push({ key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void actions.saveToDrive() })
   if (!draft && !quote) items.push({ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void actions.downloadXml() })
   items.push({ key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void actions.print() })
+  if (hasPaymentDetails(invoice, invoices)) items.push({ key: 'copyPayment', label: t('actions.copyPayment'), icon: <ClipboardTextIcon />, onSelect: () => void copyPayment(effective) })
   if (canReopen) items.push({ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void actions.reopen() })
   items.push({ key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void actions.duplicate() })
+  const client = savedClientOf(invoice, clients)
+  if (client) items.push({ key: 'newForClient', label: t('actions.newForClient'), icon: <FilePlusIcon />, onSelect: () => navigate(`/invoices/new?client=${encodeURIComponent(client.id)}`) })
   if (!draft && !credit && !quote && invoice.status !== 'cancelled' && !settle.settled) items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
   if (unpaid) items.push({ key: 'paidOn', label: t('payment.otherDate'), icon: <CalendarCheckIcon />, onSelect: () => setDialog('paid') })
   if (invoice.status === 'paid') items.push({ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void actions.markUnpaid() })

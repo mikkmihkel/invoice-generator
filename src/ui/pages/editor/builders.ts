@@ -1,4 +1,4 @@
-import { asQuote, createEmptyInvoice, effectiveVatScheme, newId, withVatScheme, type Client, type CompanyProfile, type Invoice } from '../../../domain'
+import { asQuote, createEmptyInvoice, effectiveVatScheme, newId, withVatScheme, type Client, type CompanyProfile, type Invoice, type InvoiceLine } from '../../../domain'
 import { addDaysISO, buyerFromClient, daysBetween, nowISO } from '../../util'
 
 /** New in-memory draft for the profile (and optional client); a quote with `type: 'quote'`. */
@@ -95,4 +95,68 @@ export function redateInvoice(inv: Invoice, issueDate: string): Invoice {
     next.dueDate = next.validUntil
   }
   return next
+}
+
+/** Whether nothing has been entered in the lines yet (no description, price or discount on any line). */
+export function linesAreBlank(lines: readonly InvoiceLine[]): boolean {
+  return lines.every((l) => !l.description?.trim() && !l.unitPrice && !l.discountPercent)
+}
+
+/**
+ * The lines of an earlier invoice for a new draft: new ids, same descriptions, quantities, units, prices and
+ * discounts. VAT rates are kept only when both documents are domestic; otherwise they follow the draft's scheme.
+ */
+export function copyLines(src: Invoice, target: Pick<Invoice, 'vatScheme'>, profile: CompanyProfile): InvoiceLine[] {
+  const rate = (l: InvoiceLine) => (target.vatScheme !== 'domestic' ? 0 : src.vatScheme === 'domestic' ? l.vatRate : profile.defaults.defaultVatRate)
+  return src.lines
+    .filter((l) => l.description?.trim() || l.unitPrice)
+    .map((l) => {
+      const copy: InvoiceLine = { ...l, id: newId(), quantity: Math.abs(l.quantity), vatRate: rate(l) }
+      if (!copy.discountPercent) delete copy.discountPercent
+      return copy
+    })
+}
+
+/** Month of a date for short references, e.g. "september" (ET) or "September 2025" (EN, another year). */
+export function monthLabel(iso: string, lang: 'et' | 'en', today: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(iso ?? '')
+  if (!m) return ''
+  const sameYear = today.slice(0, 4) === m[1]
+  const date = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 15))
+  return new Intl.DateTimeFormat(lang === 'et' ? 'et-EE' : 'en-GB', { month: 'long', year: sameYear ? undefined : 'numeric', timeZone: 'UTC' }).format(date)
+}
+
+/** The saved client a document's buyer refers to (by client id, else registry code), if it still exists. */
+export function savedClientOf(inv: Pick<Invoice, 'buyer'>, clients: readonly Client[]): Client | undefined {
+  const buyer = inv.buyer
+  if (!buyer) return undefined
+  if (buyer.clientId) {
+    const byId = clients.find((c) => c.id === buyer.clientId)
+    if (byId) return byId
+  }
+  const code = buyer.registryCode?.trim()
+  return code ? clients.find((c) => c.registryCode?.trim() === code) : undefined
+}
+
+/**
+ * Whether a draft looks as the company defaults (and the client's invoice language) would make it: same language,
+ * template, colours and payment QR setting. The editor then shows the appearance as one summary line.
+ */
+export function appearanceMatchesDefaults(inv: Invoice, profile: CompanyProfile, client?: Client): boolean {
+  const d = profile.defaults
+  const mode = inv.colorMode ?? 'accent'
+  const sameColour = (a: string | undefined, b: string | undefined) => (a ?? '').toLowerCase() === (b ?? '').toLowerCase()
+  return (
+    inv.language === (client?.defaultLanguage ?? d.language) &&
+    inv.templateId === d.templateId &&
+    mode === (d.colorMode ?? 'accent') &&
+    (mode === 'mono' || sameColour(inv.accentColor, d.accentColor)) &&
+    (mode !== 'duo' || sameColour(inv.secondaryColor, d.secondaryColor)) &&
+    (inv.type === 'quote' || !!inv.paymentQr === !!d.paymentQr)
+  )
+}
+
+/** Copy recipients from the client card, for the CC field when e-mailing this document ('' when none). */
+export function clientEmailCc(inv: Pick<Invoice, 'buyer'>, clients: readonly Client[]): string {
+  return savedClientOf(inv, clients)?.emailCc?.trim() ?? ''
 }

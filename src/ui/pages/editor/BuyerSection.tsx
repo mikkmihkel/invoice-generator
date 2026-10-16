@@ -18,6 +18,8 @@ interface Props {
   disabled?: boolean
   /** Show the editable fields (e.g. when validation flags a buyer field). */
   forceEdit?: boolean
+  /** Focus the client search when it appears (a new invoice), without opening its list. */
+  autoFocus?: boolean
 }
 
 /** The chosen buyer as a short definition list, the way it will read on the invoice. */
@@ -58,11 +60,23 @@ const norm = (s: string | undefined) => (s ?? '').toLowerCase()
  * One search box for the buyer: saved clients match instantly, the e-Business Register is searched
  * as you type (from 2 characters). Picking a register company also saves it as a client.
  */
-function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient: (c: Client) => void; onPickRegistry: (r: RegistryCompany) => void; autoFocus?: boolean }) {
+function BuyerPicker({
+  onPickClient,
+  onPickRegistry,
+  autoFocus,
+  quiet,
+}: {
+  onPickClient: (c: Client) => void
+  onPickRegistry: (r: RegistryCompany) => void
+  autoFocus?: boolean
+  /** The automatic focus does not open the list (it opens on typing, ↓ or a later focus). */
+  quiet?: boolean
+}) {
   const { t, lang, clients } = useApp()
   const listId = useId() + '-list'
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const quietFocus = useRef(!!(autoFocus && quiet))
   const [active, setActive] = useState(0)
   const registry = useRegistrySearch(query)
   const { pick: pickRegistry, picking } = useRegistryPick((c) => {
@@ -159,7 +173,10 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
             setActive(0)
             setOpen(true)
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (quietFocus.current) quietFocus.current = false
+            else setOpen(true)
+          }}
           onBlur={() => setOpen(false)}
           onKeyDown={onKeyDown}
         />
@@ -194,7 +211,7 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
   )
 }
 
-export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdit }: Props) {
+export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdit, autoFocus }: Props) {
   const { t, lang, clients, saveClient } = useApp()
   const toast = useToast()
   const [newClient, setNewClient] = useState(false)
@@ -237,7 +254,7 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
     <div className="buyer">
       {picking && (
         <>
-          <BuyerPicker onPickClient={pickClient} onPickRegistry={(r) => void fromRegister(r)} autoFocus={changing} />
+          <BuyerPicker onPickClient={pickClient} onPickRegistry={(r) => void fromRegister(r)} autoFocus={changing || autoFocus} quiet={!changing} />
           <div className="buyer-alt">
             <button type="button" className="ed-text-btn" onClick={() => setNewClient(true)}>
               <UserPlusIcon />

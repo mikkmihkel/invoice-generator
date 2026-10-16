@@ -157,6 +157,13 @@ export interface Client extends Party {
   /** Overrides profile default when creating invoices for this client. */
   defaultLanguage?: InvoiceLanguage
   defaultVatScheme?: VatScheme
+  /** Payment term in days for this client's invoices; absent = company default. */
+  paymentTermDays?: number
+  /** Late interest in % per day for this client's invoices; absent = company default, 0 = none. */
+  lateInterestPercentPerDay?: number
+  /** Addresses (comma separated) prefilled in the CC field when e-mailing this client. */
+  emailCc?: string
+  /** Internal note, shown in the editor when the client is picked; never printed. */
   notes?: string
   createdAt: ISODateTime
   updatedAt: ISODateTime

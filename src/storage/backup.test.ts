@@ -122,6 +122,9 @@ describe('validateBackup', () => {
       [(c) => (c.kind = 'robot'), /invalid client kind/],
       [(c) => delete c.address, /missing address/],
       [(c) => (c.id = ''), /missing id/],
+      [(c) => (c.paymentTermDays = '30'), /invalid client payment term/],
+      [(c) => (c.lateInterestPercentPerDay = 'x'), /invalid client late interest/],
+      [(c) => (c.emailCc = 5), /invalid client e-mail CC/],
     ]
     for (const [patch, message] of cases) {
       const data = base()
@@ -133,6 +136,13 @@ describe('validateBackup', () => {
       expect(err.message).toMatch(message)
       expect(err.messages.et).toMatch(/^Varukoopia klient nr 2 on vigane: /)
     }
+  })
+
+  it('accepts clients with and without the per-client invoice defaults', () => {
+    const data = base()
+    data.clients.push({ ...makeClient('c2'), paymentTermDays: 30, lateInterestPercentPerDay: 0.05, emailCc: 'raamatupidaja@ostja.ee', notes: 'Arved Mari kaudu' })
+    expect(() => validateBackup(data)).not.toThrow()
+    expect(validateBackup(data).clients[1]).toMatchObject({ paymentTermDays: 30, emailCc: 'raamatupidaja@ostja.ee' })
   })
 
   it('validates the profile', () => {

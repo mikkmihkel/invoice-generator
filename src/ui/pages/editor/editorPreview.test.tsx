@@ -149,6 +149,7 @@ describe('live preview panel', () => {
     renderAt(`#/invoices/${draft.id}`, repo)
     await screen.findByRole('button', { name: 'Eelvaade' })
     expect(screen.queryByRole('complementary', { name: 'Eelvaade' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Muuda kujundust' }))
     const other = screen.getAllByRole('radio').find((r) => !(r as HTMLInputElement).checked && (r as HTMLInputElement).name && /modern|classic/.test((r as HTMLInputElement).value))!
     fireEvent.click(other)
     expect(await screen.findByRole('complementary', { name: 'Eelvaade' })).toBeInTheDocument()
