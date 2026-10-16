@@ -2,7 +2,7 @@ import { ArrowsLeftRightIcon, MagnifyingGlassIcon, PencilSimpleIcon, UserPlusIco
 import { Fragment, useId, useMemo, useRef, useState } from 'react'
 import type { BuyerSnapshot, Client, RegistryCompany } from '../../../domain'
 import { useApp } from '../../AppContext'
-import { RegistryAttribution, RegistryResult } from '../../components/CompanySearch'
+import { RegistryAttribution, RegistryResult, RegistryRetry } from '../../components/CompanySearch'
 import { fieldId, TextField } from '../../components/fields'
 import { PartyFields } from '../../components/PartyFields'
 import { VatNumberCheck } from '../../components/VatNumberCheck'
@@ -65,6 +65,8 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const registry = useRegistrySearch(query)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const registryDown = registry.unavailable && registry.searched && !registry.loading && query.trim().length >= 2
   const { pick: pickRegistry, picking } = useRegistryPick((c) => {
     setQuery('')
     setOpen(false)
@@ -142,6 +144,7 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
       <div className="combo-input">
         <MagnifyingGlassIcon className="combo-icon" />
         <input
+          ref={inputRef}
           id={fieldId('buyer')}
           type="search"
           role="combobox"
@@ -182,14 +185,22 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
           ))}
           {options.length === 0 && q.length >= 2 && !registry.loading && (
             <li role="presentation" className="combo-empty">
-              {registry.failed ? t('registry.failed') : t('buyer.noMatches')}
+              {registry.failed ? t('registry.failed') : registryDown ? t('registry.unavailable') : t('buyer.noMatches')}
             </li>
           )}
         </ul>
       </div>
       <div className="field-hint" id={fieldId('buyer') + '-hint'}>
-        {t('buyer.pickerHint')}
+        {registryDown && options.length > 0 ? t('registry.unavailablePartial') : t('buyer.pickerHint')}
       </div>
+      {registryDown && (
+        <RegistryRetry
+          onRetry={() => {
+            registry.retry()
+            inputRef.current?.focus()
+          }}
+        />
+      )}
     </div>
   )
 }

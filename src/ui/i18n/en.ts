@@ -1016,4 +1016,9 @@ export const en: Record<keyof typeof et, string> = {
   'editor.skipToIssue': 'Skip to issuing',
   'company.leaveConfirm': 'Your company details have unsaved changes. They will be lost if you leave this page.',
   'common.keepEditing': 'Keep editing',
+
+  // --- Accessibility and visual fixes (UX audit F04–F20) ---
+  'registry.unavailable': 'The Business Register could not be searched right now. Check your internet connection and try again, or enter the details manually.',
+  'registry.unavailablePartial': 'Part of the Business Register search did not respond, so some companies may be missing from the results.',
+  'registry.retry': 'Try again',
 }

@@ -44,26 +44,37 @@ export function mapLiveItem(item: LiveItem): LiveResult | null {
   return { company, status: status || 'R' }
 }
 
-/** Query the live autocomplete. Never throws; deleted (K) companies are dropped. */
-export async function liveSearch(query: string, opts: { limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<LiveResult[]> {
+/**
+ * Query the live autocomplete. Never throws; deleted (K) companies are dropped.
+ * `onFail` is called when the API did not answer usably (network, CORS, HTTP error, timeout, odd body),
+ * but not when the caller's own `signal` aborted.
+ */
+export async function liveSearch(
+  query: string,
+  opts: { limit?: number; signal?: AbortSignal; timeoutMs?: number; onFail?: () => void } = {},
+): Promise<LiveResult[]> {
   const q = query.trim()
   if (q.length < 2 || opts.signal?.aborted) return []
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? LIVE_TIMEOUT_MS)
   const onAbort = () => ctrl.abort()
   opts.signal?.addEventListener('abort', onAbort, { once: true })
+  const fail = () => {
+    if (!opts.signal?.aborted) opts.onFail?.()
+    return []
+  }
   try {
     const params = new URLSearchParams({ q, results: String(Math.min(Math.max(opts.limit ?? 10, 1), 50)) })
     // A "simple" GET (no custom headers) so the browser does not need a CORS preflight.
     const res = await fetch(`${LIVE_ENDPOINT}?${params}`, { signal: ctrl.signal, credentials: 'omit' })
-    if (!res.ok) return []
+    if (!res.ok) return fail()
     const json = (await res.json()) as { data?: unknown }
-    if (!Array.isArray(json?.data)) return []
+    if (!Array.isArray(json?.data)) return fail()
     return json.data
       .map((item) => (item && typeof item === 'object' ? mapLiveItem(item as LiveItem) : null))
       .filter((r): r is LiveResult => r !== null && r.status !== 'K')
   } catch {
-    return []
+    return fail()
   } finally {
     clearTimeout(timer)
     opts.signal?.removeEventListener('abort', onAbort)

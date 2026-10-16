@@ -612,6 +612,11 @@ fieldset {
   display: flex;
   flex-direction: column;
 }
+.company-search > .registry-retry,
+.buyer-picker > .registry-retry {
+  align-self: flex-start;
+  margin-top: 6px;
+}
 .company-search > label,
 .buyer-picker > label {
   margin-bottom: 6px;

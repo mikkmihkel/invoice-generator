@@ -1014,4 +1014,9 @@ export const et = {
   'editor.skipToIssue': 'Liigu väljastamise juurde',
   'company.leaveConfirm': 'Ettevõtte andmetes on salvestamata muudatusi. Kui lehelt lahkud, lähevad need kaduma.',
   'common.keepEditing': 'Jätka muutmist',
+
+  // --- Accessibility and visual fixes (UX audit F04–F20) ---
+  'registry.unavailable': 'Äriregistrist ei saanud praegu otsida. Kontrolli internetiühendust ja proovi uuesti või sisesta andmed käsitsi.',
+  'registry.unavailablePartial': 'Osa äriregistri otsingust ei vastanud, seega võib mõni ettevõte tulemustest puududa.',
+  'registry.retry': 'Proovi uuesti',
 }

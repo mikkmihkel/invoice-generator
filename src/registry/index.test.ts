@@ -267,6 +267,44 @@ describe('live layer', () => {
     expect(codes(await searchCompanies('eesti kinnisvara', { live: true }))).toEqual(['12888887'])
   })
 
+  it('reports which source could not be searched, so "nothing found" can be told apart from "could not search"', async () => {
+    const sources: string[] = []
+    const onUnavailable = (s: string) => sources.push(s)
+    // Both answer: nothing reported.
+    liveHandler = liveJson([newCompany])
+    await searchCompanies('kinnisvara', { live: true, onUnavailable })
+    expect(sources).toEqual([])
+    // Network / CORS failure, HTTP error and an unusable body each count as "live did not answer".
+    liveHandler = null
+    expect(await searchCompanies('olematu nimi', { live: true, onUnavailable })).toEqual([])
+    liveHandler = async () => new Response('oops', { status: 500 })
+    await searchCompanies('kinnisvara', { live: true, onUnavailable })
+    liveHandler = async () => new Response(JSON.stringify({ error: 'x' }), { status: 200 })
+    await searchCompanies('kinnisvara', { live: true, onUnavailable })
+    expect(sources).toEqual(['live', 'live', 'live'])
+    // Missing index, for name and code lookups alike.
+    sources.length = 0
+    currentDir = null
+    resetRegistryCache()
+    await searchCompanies('kinnisvara', { onUnavailable })
+    await getCompanyByCode('12345678', { onUnavailable })
+    expect(sources).toEqual(['index', 'index'])
+  })
+
+  it('does not report a search the caller aborted', async () => {
+    const onUnavailable = vi.fn()
+    liveHandler = (_url, init) =>
+      new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))))
+    const ctrl = new AbortController()
+    const p = searchCompanies('kinnisvara', { live: true, signal: ctrl.signal, onUnavailable })
+    ctrl.abort()
+    expect(await p).toEqual([])
+    expect(onUnavailable).not.toHaveBeenCalled()
+    // A live timeout is a failure, though.
+    expect(await liveSearch('kinnisvara', { timeoutMs: 20, onFail: onUnavailable })).toEqual([])
+    expect(onUnavailable).toHaveBeenCalledTimes(1)
+  })
+
   it('works without an index and falls back to live for unknown codes', async () => {
     currentDir = null
     liveHandler = liveJson([newCompany])
