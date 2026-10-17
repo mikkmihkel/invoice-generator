@@ -261,7 +261,8 @@ export default function SettingsPage() {
 
         <GoogleSection />
 
-        <BackupSection />
+        {/* Without any Google client the Drive features cannot work: the Google section explains that, nothing greyed out here. */}
+        {hasGoogle && <BackupSection />}
 
         <Section id="set-data" title={t('data.title')} description={t('data.intro')}>
           <div className="setting-row">
@@ -290,22 +291,24 @@ export default function SettingsPage() {
               <BackupImport />
             </div>
           </div>
-          <div className="setting-row">
-            <div>
-              <strong>{t('backup.driveTitle')}</strong>
-              <p className="setting-desc">{hasGoogle ? t('backup.driveHint', { folder: driveFolderLabel(settings, 'backup') }) : t('google.needClientId')}</p>
+          {hasGoogle && (
+            <div className="setting-row">
+              <div>
+                <strong>{t('backup.driveTitle')}</strong>
+                <p className="setting-desc">{t('backup.driveHint', { folder: driveFolderLabel(settings, 'backup') })}</p>
+              </div>
+              <div className="btn-row">
+                <button type="button" className="btn" onClick={() => void toDrive()} disabled={busy !== null}>
+                  <CloudArrowUpIcon />
+                  {busy === 'drive-backup' ? t('common.working') : t('backup.toDrive')}
+                </button>
+                <button type="button" className="btn" onClick={() => void fromDrive()} disabled={busy !== null}>
+                  <CloudArrowDownIcon />
+                  {busy === 'drive-restore' ? t('common.working') : t('backup.fromDrive')}
+                </button>
+              </div>
             </div>
-            <div className="btn-row">
-              <button type="button" className="btn" onClick={() => void toDrive()} disabled={!hasGoogle || busy !== null}>
-                <CloudArrowUpIcon />
-                {busy === 'drive-backup' ? t('common.working') : t('backup.toDrive')}
-              </button>
-              <button type="button" className="btn" onClick={() => void fromDrive()} disabled={!hasGoogle || busy !== null}>
-                <CloudArrowDownIcon />
-                {busy === 'drive-restore' ? t('common.working') : t('backup.fromDrive')}
-              </button>
-            </div>
-          </div>
+          )}
         </Section>
 
         <ExportSection />
