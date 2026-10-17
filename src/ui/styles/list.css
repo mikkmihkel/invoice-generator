@@ -56,6 +56,20 @@
   text-underline-offset: 3px;
   cursor: pointer;
 }
+/*
+ * Inline amounts in the sentence: vertical padding gives a 24 px target (44 px on touch screens); the equal negative
+ * margin keeps the line height, so the sentence does not move.
+ */
+.sum-link {
+  padding-block: 2px;
+  margin-block: -2px;
+}
+@media (pointer: coarse) {
+  .sum-link {
+    padding-block: 12px;
+    margin-block: -12px;
+  }
+}
 .sum-link:hover {
   text-decoration-color: currentColor;
 }
