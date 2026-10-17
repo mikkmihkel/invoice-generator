@@ -339,7 +339,7 @@ export function IssueDialog({
       <p>{t(keepsNumber ? 'reopen.issueNumber' : 'issue.number', { number })}</p>
       <p>{t('issue.lockExplain')}</p>
       <p className="muted small">{t('issue.creditHint')}</p>
-      <IssueWarnings warnings={warnings} summary={t('issue.warnings', { count: warnings.length })} />
+      <IssueWarnings warnings={warnings} summary={t(warnings.length === 1 ? 'issue.warningsOne' : 'issue.warnings', { count: warnings.length })} />
     </Dialog>
   )
 }

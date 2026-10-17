@@ -77,7 +77,7 @@ export function QuoteIssueDialog({
       )}
       <p>{t(keepsNumber ? 'reopen.issueNumber' : 'quote.issueText', { number })}</p>
       <p className="muted small">{t('quote.issueHint')}</p>
-      <IssueWarnings warnings={warnings} summary={t('quote.issueWarnings', { count: warnings.length })} />
+      <IssueWarnings warnings={warnings} summary={t(warnings.length === 1 ? 'quote.issueWarningsOne' : 'quote.issueWarnings', { count: warnings.length })} />
     </Dialog>
   )
 }
