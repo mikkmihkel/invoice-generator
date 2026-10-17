@@ -170,7 +170,7 @@ Changes to origins can take a few minutes, and occasionally longer, to take effe
 | "The Google API is not enabled" | Step 2: enable Drive API / Gmail API in the same project as the client ID. |
 | The folder picker does not open, and the app offers "Create folder Arveldaja" | The Picker needs the Google Picker API enabled and an API key restricted to the site's referrer (shared client only). Creating the folder works just as well. |
 | "The chosen Google Drive folder was not found" | The folder was deleted, or you signed in with another Google account. Choose the folder again in Settings. |
-| "Google did not grant the required permission" | You unticked Drive or Gmail on the consent screen. Sign out in the app and sign in again. |
+| "A required permission is missing" | You unticked Drive or Gmail on the consent screen. Sign out in the app and sign in again. |
 | Want to revoke access completely | In the app choose **Sign out**, which revokes the token. You can also go to <https://myaccount.google.com/permissions> and remove the app. |
 
 ## Privacy notes
