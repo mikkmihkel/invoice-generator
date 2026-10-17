@@ -115,7 +115,7 @@ describe('issuing a stale draft', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Väljasta arve' }))
     const dialog = await screen.findByRole('dialog', { name: 'Väljasta arve' })
     expect(within(dialog).getByText(/Tavaliselt märgitakse arvele väljastamise päev/)).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Muuda arve kuupäevaks tänane päev')).toBeChecked()
+    expect(within(dialog).getByLabelText('Muuda arve kuupäev tänaseks')).toBeChecked()
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Väljasta' }))
     })
@@ -133,7 +133,7 @@ describe('issuing a stale draft', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Väljasta arve' }))
     const dialog = await screen.findByRole('dialog', { name: 'Väljasta arve' })
     expect(within(dialog).getByText(new RegExp(`Koos aastaga muutub ka arve number: arve saab numbri ${year}-0001`))).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByLabelText('Muuda arve kuupäevaks tänane päev'))
+    fireEvent.click(within(dialog).getByLabelText('Muuda arve kuupäev tänaseks'))
     expect(within(dialog).getByText(`Arvele antakse number ${year - 1}-0001.`)).toBeInTheDocument()
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Väljasta' }))
@@ -313,7 +313,7 @@ describe('reopening and deleting in the editor', () => {
     const issue = await screen.findByRole('dialog', { name: 'Väljasta arve' })
     // Today is in another year: no offer to move the date there.
     expect(within(issue).queryByText(/Arve kuupäev on .*, täna on/)).not.toBeInTheDocument()
-    expect(within(issue).queryByLabelText('Muuda arve kuupäevaks tänane päev')).not.toBeInTheDocument()
+    expect(within(issue).queryByLabelText('Muuda arve kuupäev tänaseks')).not.toBeInTheDocument()
   })
 
   it('shows a doubtful buyer registry code of a reopened invoice as a warning, with the VIES check under the VAT number', async () => {

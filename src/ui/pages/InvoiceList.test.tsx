@@ -172,7 +172,7 @@ describe('needs attention strip', () => {
     const events = [q1, q2, later].map((q) => ({ id: `s-${q.id}`, invoiceId: q.id, kind: 'sent' as const, at: new Date().toISOString() }))
     renderAt('#/', createMemoryRepo({ profile, invoices: [q1, q2, later], events }))
     const box = await strip()
-    fireEvent.click(within(box).getByRole('button', { name: 'Hinnapakkumised aegumas: 2 pakkumist' }))
+    fireEvent.click(within(box).getByRole('button', { name: 'Hinnapakkumised aegumas: 2 hinnapakkumist' }))
     const root = await screen.findByRole('region', { name: 'Hinnapakkumised' })
     expect(rowNames(root as HTMLElement).sort()).toEqual(['Pakkumine A OÜ', 'Pakkumine B OÜ'])
   })

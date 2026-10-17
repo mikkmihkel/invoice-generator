@@ -218,7 +218,7 @@ export const en: Record<keyof typeof et, string> = {
   'vat.scheme.domestic-reverse-charge': 'Domestic reverse charge',
 
   'vat.explain.domestic': 'Normal sale in Estonia. VAT is added to each line at the applicable Estonian rate; the invoice shows the taxable amount and VAT per rate.',
-  'vat.explain.not-registered': 'You are not registered for VAT (annual turnover below the registration threshold). No VAT is added or shown on the invoice.',
+  'vat.explain.not-registered': 'Your company is not registered for VAT (annual turnover below the registration threshold). No VAT is added or shown on the invoice.',
   'vat.explain.eu-reverse-charge': 'Services sold to a VAT-registered business in another EU country. No VAT is added – the buyer accounts for it in their country (reverse charge). The buyer’s VAT number is required.',
   'vat.explain.eu-goods': 'Goods sold to a VAT-registered business in another EU country and transported there. VAT rate 0%; the buyer’s VAT number is required.',
   'vat.explain.export': 'Export of goods outside the European Union. VAT rate 0%; keep the documents proving the export.',

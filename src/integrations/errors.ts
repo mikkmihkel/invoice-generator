@@ -49,8 +49,8 @@ export function friendlyGoogleMessage(code: GoogleErrorCode, detail?: string): B
       }
     case 'access_denied':
       return {
-        et: 'Google’ile ei antud luba. Proovi uuesti ja anna sisselogimisel luba.',
-        en: 'Permission was not granted to Google. Try again and allow access when signing in.',
+        et: 'Juurdepääsu Google’i kontole ei lubatud. Proovi uuesti ja anna sisselogimisel luba.',
+        en: 'Access to your Google account was not allowed. Try again and grant access when signing in.',
       }
     case 'insufficient_scope':
       return {

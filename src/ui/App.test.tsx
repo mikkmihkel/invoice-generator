@@ -221,7 +221,7 @@ describe('invoice editor', () => {
     // The next step is offered right away: the issued number and the ways to send it.
     const next = screen.getByRole('region', { name: /^Arve \d{4}-\d{4} on väljastatud$/ })
     expect(within(next).getByRole('button', { name: /Saada e-kirjaga/ })).toHaveTextContent('arved@ostja.ee')
-    expect(within(next).getByRole('button', { name: /Laadi PDF/ })).toBeInTheDocument()
+    expect(within(next).getByRole('button', { name: /Laadi alla PDF/ })).toBeInTheDocument()
     expect(within(next).getByRole('button', { name: /Salvesta Drive’i/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Märgi tasutuks' })).toBeInTheDocument()
     expect(screen.getByLabelText('Kirjeldus')).toBeDisabled()
