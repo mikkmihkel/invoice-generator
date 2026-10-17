@@ -21,7 +21,7 @@ import {
   ProhibitIcon,
   TrashIcon,
 } from '@phosphor-icons/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   applyClientTerms,
@@ -242,7 +242,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
   useEffect(() => preloadPdfMake(), [])
   // Opened by the remembered state or a template pick: Escape in the panel returns focus to the header toggle.
-  useEffect(() => {
+  // A layout effect, so the opener is known as soon as the panel is on screen (a passive effect could still be
+  // pending when the panel is closed right away).
+  useLayoutEffect(() => {
     if (previewOpen && !previewOpener.current) previewOpener.current = previewBtn.current
   })
 

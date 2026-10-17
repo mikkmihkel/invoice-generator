@@ -124,14 +124,18 @@ describe('company page: number series and other tabs', () => {
 
 describe('shell: automatic backup indicator', () => {
   it('says in the footer when automatic backup is waiting', async () => {
+    // The status is shared module state: start from a known one whatever ran before in this worker.
+    setAutoBackupStatus({ phase: 'idle' })
     const repo = createMemoryRepo({ profile: sampleProfile() })
     window.location.hash = '#/company'
     render(<App repository={repo} />)
-    const footer = within((await screen.findByText('Kõik andmed on salvestatud ainult selles brauseris.')).closest('footer')!)
-    expect(footer.getByRole('link', { name: 'Tee varukoopia' })).toBeInTheDocument()
+    // Wait for the loaded company page (its form), so the shell does not re-render underneath the assertions.
+    await screen.findByRole('heading', { name: 'Arve kujundus' })
+    const footer = () => within(screen.getByRole('contentinfo'))
+    expect(await footer().findByRole('link', { name: 'Tee varukoopia' })).toBeInTheDocument()
     act(() => setAutoBackupStatus({ phase: 'pending', reason: 'signin' }))
-    expect(footer.getByRole('link', { name: 'Automaatne varundus ootab' })).toHaveAttribute('href', '#/settings')
+    expect(await footer().findByRole('link', { name: 'Automaatne varundus ootab' })).toHaveAttribute('href', '#/settings')
     act(() => setAutoBackupStatus({ phase: 'idle' }))
-    expect(footer.getByRole('link', { name: 'Tee varukoopia' })).toBeInTheDocument()
+    expect(await footer().findByRole('link', { name: 'Tee varukoopia' })).toBeInTheDocument()
   })
 })
