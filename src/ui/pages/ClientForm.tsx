@@ -120,7 +120,7 @@ export function ClientDialog({
             allowEmpty
             suffix={t('common.days')}
             placeholder={String(companyTerm)}
-            hint={t('clients.paymentTermHint', { days: companyTerm })}
+            hint={t(companyTerm === 1 ? 'clients.paymentTermHintOne' : 'clients.paymentTermHint', { days: companyTerm })}
           />
           <NumberField
             label={t('clients.lateInterest')}

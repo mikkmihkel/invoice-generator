@@ -87,7 +87,7 @@ describe('receivables and the overdue filter', () => {
     renderAt('#/', createMemoryRepo({ profile, invoices: [late, open, paid] }))
     const root = await list()
     expect(rowNames(root)).toHaveLength(3)
-    fireEvent.click(within(root).getByRole('button', { name: /^Näita tähtaja ületanud arveid: 124,00\s€$/ }))
+    fireEvent.click(within(root).getByRole('button', { name: /^Näita üle tähtaja arveid: 124,00\s€$/ }))
     expect(rowNames(root)).toEqual(['Hiline OÜ'])
     expect(within(root).getByRole('radio', { name: /Üle tähtaja/ })).toBeChecked()
     fireEvent.click(within(root).getByRole('button', { name: /^Näita tasumata arveid: 248,00\s€$/ }))
@@ -100,7 +100,7 @@ describe('receivables and the overdue filter', () => {
     let root = await list()
     const chip = within(root).getByRole('radio', { name: 'Üle tähtaja 2' })
     // Not offered twice: the overdue choice leaves "More filters".
-    expect(within(root).queryByRole('option', { name: 'Tähtaeg ületatud' })).not.toBeInTheDocument()
+    expect(within(root).queryByRole('option', { name: 'Üle tähtaja' })).not.toBeInTheDocument()
     fireEvent.click(chip)
     expect(rowNames(root)).toHaveLength(2)
     view.unmount()
@@ -108,7 +108,7 @@ describe('receivables and the overdue filter', () => {
     renderAt('#/', createMemoryRepo({ profile, invoices: [invoice()] }))
     root = await list()
     expect(within(root).queryByRole('radio', { name: /Üle tähtaja/ })).not.toBeInTheDocument()
-    expect(within(root).getByRole('option', { name: 'Tähtaeg ületatud' })).toBeInTheDocument()
+    expect(within(root).getByRole('option', { name: 'Üle tähtaja' })).toBeInTheDocument()
   })
 
   it('drops the chip once the last overdue invoice is paid', async () => {
@@ -297,27 +297,27 @@ describe('recurring overview', () => {
     fireEvent.change(within(root).getByRole('combobox', { name: 'Rohkem filtreid' }), { target: { value: 'recurring' } })
     const box = await panel()
     await act(async () => {
-      fireEvent.click(within(box).getByRole('button', { name: 'Peata korduvarve: Kuuklient OÜ' }))
+      fireEvent.click(within(box).getByRole('button', { name: 'Peata kordumine: Kuuklient OÜ' }))
     })
     expect(repo.saveRecurringRule).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'ra', active: false }))
-    expect(await screen.findByText('Korduvarve on peatatud: Kuuklient OÜ. Uusi mustandeid ei koostata.')).toBeInTheDocument()
+    expect(await screen.findByText('Kordumine on peatatud: Kuuklient OÜ. Uusi mustandeid ei koostata.')).toBeInTheDocument()
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Võta tagasi' }))
     })
     expect(repo.saveRecurringRule).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'ra', active: true, nextDate: rules[0].nextDate }))
 
     await act(async () => {
-      fireEvent.click(within(box).getByRole('button', { name: 'Jätka korduvarvet: Peatatud OÜ' }))
+      fireEvent.click(within(box).getByRole('button', { name: 'Jätka kordumist: Peatatud OÜ' }))
     })
     const resumed = repo.saveRecurringRule.mock.lastCall![0] as RecurringRule
     expect(resumed).toMatchObject({ id: 'rc', active: true })
     expect(resumed.nextDate > today).toBe(true)
 
     await act(async () => {
-      fireEvent.click(within(box).getByRole('button', { name: 'Lõpeta korduvarve: Kvartaliklient OÜ' }))
+      fireEvent.click(within(box).getByRole('button', { name: 'Lõpeta kordumine: Kvartaliklient OÜ' }))
     })
     expect(repo.deleteRecurringRule).toHaveBeenCalledWith('rb')
-    expect(await screen.findByText('Korduvarve on lõpetatud: Kvartaliklient OÜ. Varem koostatud arved jäävad alles.')).toBeInTheDocument()
+    expect(await screen.findByText('Kordumine on lõpetatud: Kvartaliklient OÜ. Varem koostatud arved jäävad alles.')).toBeInTheDocument()
     expect(within(box).queryByText('Kvartaliklient OÜ')).not.toBeInTheDocument()
   })
 
@@ -329,9 +329,9 @@ describe('recurring overview', () => {
     const undoIn = async (text: string | RegExp) => within((await screen.findByText(text)).closest('.toast') as HTMLElement).getByRole('button', { name: 'Võta tagasi' })
 
     await act(async () => {
-      fireEvent.click(within(box).getByRole('button', { name: 'Peata korduvarve: Kuuklient OÜ' }))
+      fireEvent.click(within(box).getByRole('button', { name: 'Peata kordumine: Kuuklient OÜ' }))
     })
-    const undoPause = await undoIn('Korduvarve on peatatud: Kuuklient OÜ. Uusi mustandeid ei koostata.')
+    const undoPause = await undoIn('Kordumine on peatatud: Kuuklient OÜ. Uusi mustandeid ei koostata.')
     // Changed elsewhere afterwards (e.g. another tab): quarterly from now on.
     await act(async () => {
       await repo.saveRecurringRule({ ...rules[0], active: false, interval: 'quarterly' })
@@ -343,17 +343,17 @@ describe('recurring overview', () => {
 
     // Resumed, then paused again: the resume's undo has nothing left to take back.
     await act(async () => {
-      fireEvent.click(within(box).getByRole('button', { name: 'Jätka korduvarvet: Peatatud OÜ' }))
+      fireEvent.click(within(box).getByRole('button', { name: 'Jätka kordumist: Peatatud OÜ' }))
     })
-    const undoResume = await undoIn(/^Korduvarve jätkub: Peatatud OÜ/)
+    const undoResume = await undoIn(/^Kordumine jätkub: Peatatud OÜ/)
     await act(async () => {
-      fireEvent.click(within(box).getByRole('button', { name: 'Peata korduvarve: Peatatud OÜ' }))
+      fireEvent.click(within(box).getByRole('button', { name: 'Peata kordumine: Peatatud OÜ' }))
     })
     const saves = repo.saveRecurringRule.mock.calls.length
     await act(async () => {
       fireEvent.click(undoResume)
     })
-    expect(await screen.findByText('Seda ei saa enam tagasi võtta: korduvarvet (Peatatud OÜ) on vahepeal muudetud.')).toBeInTheDocument()
+    expect(await screen.findByText('Tagasi võtta ei saa: korduvarve seadistust (Peatatud OÜ) on vahepeal muudetud.')).toBeInTheDocument()
     expect(repo.saveRecurringRule.mock.calls.length).toBe(saves)
   })
 
@@ -366,7 +366,7 @@ describe('recurring overview', () => {
     })
     expect(repo.deleteRecurringRule).toHaveBeenCalledWith('ra')
     expect(repo.saveRecurringRule).not.toHaveBeenCalled()
-    const toast = (await screen.findByText('Korduvarve on lõpetatud: Kuuklient OÜ. Varem koostatud arved jäävad alles.')).closest('.toast') as HTMLElement
+    const toast = (await screen.findByText('Kordumine on lõpetatud: Kuuklient OÜ. Varem koostatud arved jäävad alles.')).closest('.toast') as HTMLElement
     const root = await list()
     fireEvent.change(within(root).getByRole('combobox', { name: 'Rohkem filtreid' }), { target: { value: 'recurring' } })
     let box = await panel()
@@ -381,7 +381,7 @@ describe('recurring overview', () => {
     expect(await within(box).findByText('Kuuklient OÜ')).toBeInTheDocument()
     // The paused rule's own invoice says it is paused.
     window.location.hash = `#/?id=${c.id}`
-    expect(await screen.findByText('Kordamine on peatatud. Vali sagedus, et jätkata.')).toBeInTheDocument()
+    expect(await screen.findByText('Kordumine on peatatud. Jätkamiseks vali sagedus.')).toBeInTheDocument()
   })
 
   it('shows no hint and no filter without recurring invoices', async () => {

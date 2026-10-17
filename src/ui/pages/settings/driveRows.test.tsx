@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '../../../App'
 import { createDefaultSettings } from '../../../domain'
@@ -29,16 +29,18 @@ function renderSettings(googleClientId?: string) {
 describe('settings: Drive backup without a Google client', () => {
   it('leaves out the Drive backup rows instead of showing them greyed out', async () => {
     renderSettings()
-    expect(await screen.findByRole('button', { name: 'Ekspordi varukoopia' })).toBeInTheDocument()
+    expect(await screen.findAllByRole('button', { name: 'Tee varukoopia' })).toHaveLength(1)
     expect(screen.queryByText('Varukoopia Google Drive’is')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Automaatne varundus Google Drive’i' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Salvesta Drive’i' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Taasta varukoopiast' })).not.toBeInTheDocument()
   })
 
   it('shows them once a client ID is set', async () => {
     renderSettings('123456789-abc123.apps.googleusercontent.com')
     expect(await screen.findByText('Varukoopia Google Drive’is')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Automaatne varundus Google Drive’i' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Salvesta Drive’i' })).toBeEnabled()
+    const driveRow = within(screen.getByText('Varukoopia Google Drive’is').closest<HTMLElement>('.setting-row')!)
+    expect(driveRow.getByRole('button', { name: 'Tee varukoopia' })).toBeEnabled()
+    expect(driveRow.getByRole('button', { name: 'Taasta varukoopiast' })).toBeEnabled()
   })
 })

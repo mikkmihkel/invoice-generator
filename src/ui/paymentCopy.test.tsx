@@ -70,7 +70,7 @@ describe('copy payment details', () => {
     expect(text).toContain('IBAN: EE38 2200 2210 2014 5685 (Swedbank)')
     expect(text).toContain('Viitenumber: 202600127')
     expect(text).toContain('Maksetähtaeg: 30.10.2026')
-    expect(await screen.findByText('Makseandmed on kopeeritud. Kleebi need sõnumisse.')).toBeInTheDocument()
+    expect(await screen.findByText('Makseandmed on kopeeritud, kleebi need sõnumisse.')).toBeInTheDocument()
   })
 
   it('is not offered for a paid invoice', async () => {

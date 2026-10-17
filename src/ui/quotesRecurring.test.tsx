@@ -83,10 +83,10 @@ describe('invoice list: invoices and quotes', () => {
     const row = (name: string) => list().getByText(name).closest('a')!
     expect(within(row('Avatud OÜ')).getByText('Kehtib kuni 01.01.2099')).toBeInTheDocument()
     expect(within(row('Aegunud OÜ')).getByText('Aegunud')).toBeInTheDocument()
-    expect(within(row('Nõus OÜ')).getByText('Aktsepteeritud')).toBeInTheDocument()
+    expect(within(row('Nõus OÜ')).getByText('Vastu võetud')).toBeInTheDocument()
     expect(list().getByRole('link', { name: 'Uus hinnapakkumine' })).toHaveAttribute('href', '#/invoices/new?type=quote')
     // Open quotes are summed separately from receivables.
-    expect(screen.getByText(/Avatud pakkumiste summa kokku/)).toBeInTheDocument()
+    expect(screen.getByText(/Avatud hinnapakkumised kokku/)).toBeInTheDocument()
   })
 
   it('offers to create the first quote when there is none', async () => {
@@ -170,7 +170,7 @@ describe('quote wording', () => {
     const article = (await screen.findByRole('heading', { level: 2, name: 'Hinnapakkumine HP-2026-001' })).closest('article')!
     expect(within(article).getByText('Pakkumise kuupäev')).toBeInTheDocument()
     expect(within(article).getByRole('heading', { name: 'Pakkumise read' })).toBeInTheDocument()
-    expect(within(article).getByRole('button', { name: 'Näita pakkumist' })).toBeInTheDocument()
+    expect(within(article).getByRole('button', { name: 'Näita hinnapakkumist' })).toBeInTheDocument()
     expect(within(article).queryByText('Arve kuupäev')).not.toBeInTheDocument()
   })
 })

@@ -4,10 +4,10 @@ import { createEmptyInvoice, predictNumber, type ColorMode, type CompanyProfile,
 const TEXT: Record<'et' | 'en', { seller: string; buyer: string; lines: [string, number, string, number][] }> = {
   et: {
     seller: 'Sinu Ettevõte OÜ',
-    buyer: 'Näidis Klient OÜ',
+    buyer: 'Näidisklient OÜ',
     lines: [
       ['Veebilehe kujundus ja arendus', 24, 'h', 65],
-      ['Majutusteenus, 12 kuud', 1, 'tk', 120],
+      ['Veebimajutus, 12 kuud', 1, 'tk', 120],
       ['Konsultatsioon', 2, 'h', 55],
     ],
   },

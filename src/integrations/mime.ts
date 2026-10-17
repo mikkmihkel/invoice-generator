@@ -99,7 +99,7 @@ export class InvalidEmailAddressError extends Error {
           en: `The email address "${address}" contains accented or other non-ASCII characters, which are not supported. Please check the address.`,
         }
       : {
-          et: `E-posti aadress „${address}“ ei ole korrektne.`,
+          et: `E-posti aadress „${address}“ on vigane.`,
           en: `"${address}" is not a valid email address.`,
         }
     super(messages.en)

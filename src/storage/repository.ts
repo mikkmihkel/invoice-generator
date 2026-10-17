@@ -355,7 +355,7 @@ const REOPEN_BLOCKED: Record<ReopenBlock, [string, string]> = {
     'The invoice has already been sent to the client, so it can no longer be changed. Correct it with a credit note.',
   ],
   credited: ['Arvele on koostatud kreeditarve, seega seda enam muuta ei saa.', 'A credit note has been issued for the invoice, so it can no longer be changed.'],
-  accepted: ['Aktsepteeritud hinnapakkumist ei saa muutmiseks avada.', 'An accepted quote cannot be reopened for editing.'],
+  accepted: ['Vastu võetud hinnapakkumist ei saa muutmiseks avada.', 'An accepted quote cannot be reopened for editing.'],
 }
 
 /** Kept here for existing imports; the implementation lives in the domain numbering module. */
@@ -467,7 +467,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         return fail(
           new RepositoryError(
             'invalid-transition',
-            'Mustandi olekut ei saa salvestamisega muuta – kasuta arve väljastamist.',
+            'Mustandi olekut ei saa salvestamisega muuta – väljasta see.',
             'A draft cannot change status by saving it – issue it instead.',
           ),
         )
@@ -725,7 +725,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
         // Allocate the next free number; skip numbers already used (e.g. after merging a backup).
         for (let attempts = 0; ; attempts++) {
           if (attempts > 10000) {
-            return fail(new RepositoryError('numbering', 'Vaba arvenumbrit ei leitud.', 'Could not find a free invoice number.'))
+            return fail(new RepositoryError('numbering', 'Arvele ei leitud vaba numbrit.', 'Could not find a free invoice number.'))
           }
           number = formatInvoiceNumber(series, n, date)
           if ((await invoices.index('number').count(number)) === 0) break
@@ -762,12 +762,12 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
     markInvoicePaid(id, paidAt) {
       return changeStatus(id, (inv) => {
         if (!isValidIsoDate(paidAt)) {
-          throw new RepositoryError('invalid-input', 'Tasumise kuupäev on vigane.', 'The payment date is invalid.')
+          throw new RepositoryError('invalid-input', 'Laekumise kuupäev on vigane.', 'The payment date is invalid.')
         }
         if (inv.status === 'draft') {
           throw new RepositoryError(
             'invalid-transition',
-            'Mustandit ei saa tasutuks märkida. Väljasta arve enne.',
+            'Mustandit ei saa tasutuks märkida. Väljasta see kõigepealt.',
             'A draft cannot be marked as paid. Issue it first.',
           )
         }
@@ -841,7 +841,7 @@ export function createRepository(options: RepositoryOptions = {}): Repository {
 
     async saveRecurringRule(rule) {
       if (!isValidIsoDate(rule.nextDate)) {
-        throw new RepositoryError('invalid-input', 'Kordamise järgmine kuupäev on vigane.', 'The next date of the recurring rule is invalid.')
+        throw new RepositoryError('invalid-input', 'Järgmise korduvarve kuupäev on vigane.', 'The next date of the recurring rule is invalid.')
       }
       const ts = clock()
       await (await db()).put('recurringRules', { ...rule, createdAt: rule.createdAt || ts, updatedAt: ts })

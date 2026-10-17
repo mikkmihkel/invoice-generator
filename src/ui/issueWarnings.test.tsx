@@ -61,7 +61,7 @@ describe('issue confirmation', () => {
 
   it('lists them for quotes too', async () => {
     const dialog = await openIssueDialog(draft('quote'), 'Väljasta hinnapakkumine')
-    expect(within(dialog).getByText('Pakkumisel on üks hoiatus. Vaata see enne väljastamist üle.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Hinnapakkumisel on üks hoiatus. Vaata see enne väljastamist üle.')).toBeInTheDocument()
     expect(within(dialog).getByRole('listitem')).toHaveTextContent('Hinnapakkumise kehtivusaeg puudub.')
   })
 

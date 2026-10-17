@@ -252,7 +252,7 @@ class RecordCheck {
     const list = this.arr(key, field, from, 100)
     if (!list) return false
     list.forEach((acc, i) => {
-      const f = { et: `${field.et} (${i + 1}. konto)`, en: `${field.en} (account ${i + 1})` }
+      const f = { et: `${field.et} (${i + 1}. pangakonto)`, en: `${field.en} (account ${i + 1})` }
       if (this.problem) return
       if (!isObject(acc)) this.fail(invalid(f))
       else this.str('iban', { et: `${f.et} IBAN`, en: `${f.en} IBAN` }, true, acc)
@@ -274,7 +274,7 @@ class RecordCheck {
 function checkInvoice(r: Record<string, unknown>): Text | null {
   const c = new RecordCheck(r)
   c.str('number', { et: 'arve number', en: 'invoice number' }, true)
-  c.oneOf('type', { et: 'arve liik', en: 'invoice type' }, INVOICE_TYPES)
+  c.oneOf('type', { et: 'dokumendi liik', en: 'invoice type' }, INVOICE_TYPES)
   c.oneOf('status', { et: 'arve olek', en: 'status' }, STATUSES)
   c.date('issueDate', { et: 'arve kuupäev', en: 'issue date' })
   c.date('dueDate', { et: 'maksetähtaeg', en: 'due date' })
@@ -312,24 +312,24 @@ function checkInvoice(r: Record<string, unknown>): Text | null {
   c.optStrList('textBefore', { et: 'tekst enne arveridu', en: 'text before the invoice lines' })
   c.optStrList('textAfter', { et: 'tekst pärast arveridu', en: 'text after the invoice lines' })
   for (const [k, et, en] of [
-    ['supplyDate', 'käibe kuupäev', 'supply date'],
-    ['periodStart', 'perioodi algus', 'period start'],
-    ['periodEnd', 'perioodi lõpp', 'period end'],
-    ['paidAt', 'tasumise kuupäev', 'payment date'],
+    ['supplyDate', 'käibe tekkimise kuupäev', 'supply date'],
+    ['periodStart', 'teenuse perioodi algus', 'period start'],
+    ['periodEnd', 'teenuse perioodi lõpp', 'period end'],
+    ['paidAt', 'laekumise kuupäev', 'payment date'],
     ['issuedAt', 'väljastamise aeg', 'issue time'],
     ['reopenedAt', 'muutmiseks avamise aeg', 'reopening time'],
     ['referenceNumber', 'viitenumber', 'reference number'],
-    ['notes', 'märkused', 'notes'],
-    ['quoteAcceptedAt', 'pakkumise aktsepteerimise aeg', 'quote acceptance time'],
-    ['convertedToInvoiceId', 'pakkumisest koostatud arve', 'invoice created from the quote'],
-    ['convertedFromQuoteId', 'arve aluseks olev pakkumine', 'quote the invoice was created from'],
-    ['recurringRuleId', 'korduvarve reegel', 'recurring rule'],
+    ['notes', 'lisainfo', 'notes'],
+    ['quoteAcceptedAt', 'hinnapakkumise vastuvõtmise aeg', 'quote acceptance time'],
+    ['convertedToInvoiceId', 'hinnapakkumisest koostatud arve', 'invoice created from the quote'],
+    ['convertedFromQuoteId', 'arve aluseks olev hinnapakkumine', 'quote the invoice was created from'],
+    ['recurringRuleId', 'korduvarve seadistus', 'recurring rule'],
   ]) {
     c.optStr(k, { et, en })
   }
-  c.optDate('validUntil', { et: 'pakkumise kehtivus', en: 'quote validity date' })
+  c.optDate('validUntil', { et: 'hinnapakkumise „Kehtib kuni“ kuupäev', en: 'quote validity date' })
   c.optDate('reopenedIssueDate', { et: 'algne arve kuupäev', en: 'original issue date' })
-  c.optMatch('accentColor', { et: 'värv', en: 'accent colour' }, HEX_COLOR)
+  c.optMatch('accentColor', { et: 'põhivärv', en: 'accent colour' }, HEX_COLOR)
   c.optMatch('secondaryColor', { et: 'lisavärv', en: 'secondary colour' }, HEX_COLOR)
   c.optOneOf('colorMode', { et: 'värvilahendus', en: 'colour mode' }, COLOR_MODES)
   if (seller) {
@@ -348,7 +348,7 @@ function checkClient(r: Record<string, unknown>): Text | null {
   c.optStr('createdAt', { et: 'loomise aeg', en: 'creation time' })
   // Per-client invoice defaults (optional; older backups have none).
   c.optNum('paymentTermDays', { et: 'kliendi maksetingimus', en: 'client payment term' })
-  c.optNum('lateInterestPercentPerDay', { et: 'kliendi viivis', en: 'client late interest' })
+  c.optNum('lateInterestPercentPerDay', { et: 'kliendi viivise määr', en: 'client late interest rate' })
   c.optStr('emailCc', { et: 'kliendi e-kirja koopia (CC)', en: 'client e-mail CC' })
   return c.problem
 }
@@ -358,12 +358,12 @@ function checkProfile(r: Record<string, unknown>): Text | null {
   c.str('name', { et: 'nimi', en: 'name' }, true)
   c.address('address', { et: 'aadress', en: 'address' })
   c.bankAccounts('bankAccounts', { et: 'pangakontod', en: 'bank accounts' })
-  const d = c.obj('defaults', { et: 'arve vaikeväärtused', en: 'invoice defaults' })
+  const d = c.obj('defaults', { et: 'arve vaikeseaded', en: 'invoice defaults' })
   if (d) {
-    c.num('paymentTermDays', { et: 'maksetähtaeg päevades', en: 'payment term' }, d)
+    c.num('paymentTermDays', { et: 'maksetingimus (päevades)', en: 'payment term' }, d)
     c.str('templateId', { et: 'arve kujundus', en: 'invoice template' }, false, d)
-    c.str('accentColor', { et: 'arve värv', en: 'invoice accent colour' }, false, d)
-    c.optMatch('accentColor', { et: 'arve värv', en: 'invoice accent colour' }, HEX_COLOR, d)
+    c.str('accentColor', { et: 'arve põhivärv', en: 'invoice accent colour' }, false, d)
+    c.optMatch('accentColor', { et: 'arve põhivärv', en: 'invoice accent colour' }, HEX_COLOR, d)
     c.optMatch('secondaryColor', { et: 'arve lisavärv', en: 'invoice secondary colour' }, HEX_COLOR, d)
     c.optOneOf('colorMode', { et: 'arve värvilahendus', en: 'invoice colour mode' }, COLOR_MODES, d)
     c.oneOf('language', { et: 'arve keel', en: 'invoice language' }, LANGUAGES, d)
@@ -371,7 +371,7 @@ function checkProfile(r: Record<string, unknown>): Text | null {
     c.oneOf('vatScheme', { et: 'käibemaksurežiim', en: 'VAT scheme' }, VAT_SCHEMES, d)
     c.num('defaultVatRate', { et: 'vaikimisi käibemaksumäär', en: 'default VAT rate' }, d)
     c.str('defaultUnit', { et: 'vaikimisi ühik', en: 'default unit' }, true, d)
-    c.optNum('lateInterestPercentPerDay', { et: 'viivis', en: 'late interest' }, d)
+    c.optNum('lateInterestPercentPerDay', { et: 'viivise määr', en: 'late interest rate' }, d)
     c.optBool('paymentQr', { et: 'makse QR-kood', en: 'payment QR code' }, d)
     c.optStrList('textBefore', { et: 'vaikimisi tekst enne arveridu', en: 'default text before the invoice lines' }, d)
     c.optStrList('textAfter', { et: 'vaikimisi tekst pärast arveridu', en: 'default text after the invoice lines' }, d)
@@ -418,7 +418,7 @@ function checkSettings(r: Record<string, unknown>): Text | null {
     if (f) c.optMatch('clientId', { et: 'Drive’i kausta kliendi ID', en: 'Drive folder client ID' }, GOOGLE_CLIENT_ID, f)
   }
   c.optBool('autoSavePdf', { et: 'PDF-failide automaatne salvestamine', en: 'automatic PDF saving' })
-  c.optBool('registryLiveLookup', { et: 'registri otsingu seade', en: 'registry lookup setting' })
+  c.optBool('registryLiveLookup', { et: 'äriregistri otsingu seade', en: 'registry lookup setting' })
   c.optStr('updatedAt', { et: 'muutmise aeg', en: 'modification time' })
   if (!absent(r.autoBackup)) {
     const a = c.obj('autoBackup', { et: 'automaatse varunduse seaded', en: 'automatic backup settings' })
@@ -447,7 +447,7 @@ function checkRecurringRule(r: Record<string, unknown>): Text | null {
   c.str('sourceInvoiceId', { et: 'aluseks olev arve', en: 'source invoice' })
   c.oneOf('interval', { et: 'kordumise sagedus', en: 'interval' }, RECURRENCE_INTERVALS)
   c.date('nextDate', { et: 'järgmine kuupäev', en: 'next date' })
-  c.bool('active', { et: 'aktiivsus', en: 'active flag' })
+  c.bool('active', { et: 'kordumise olek', en: 'active flag' })
   c.optStr('lastCreatedInvoiceId', { et: 'viimati loodud arve', en: 'last created invoice' })
   c.optStr('createdAt', { et: 'loomise aeg', en: 'creation time' })
   return c.problem
@@ -491,7 +491,7 @@ function checkRecords(
     const fail = (p: Text): never => {
       throw new BackupFormatError(`Varukoopias on vigane ${label.et}: ${p.et}.`, `Backup ${label.en} is invalid: ${p.en}.`)
     }
-    if (!isObject(r)) fail({ et: 'kirje ei ole objekt', en: 'the record is not an object' })
+    if (!isObject(r)) fail({ et: 'vale vorming', en: 'invalid format' })
     const rec = r as Record<string, unknown>
     if (typeof rec.id !== 'string' || !rec.id) fail(absent(rec.id) || rec.id === '' ? missing({ et: 'ID', en: 'id' }) : invalid({ et: 'ID', en: 'id' }))
     if (versioned && typeof rec.updatedAt !== 'string') fail(absent(rec.updatedAt) ? missing({ et: 'muutmise aeg', en: 'modification time' }) : invalid({ et: 'muutmise aeg', en: 'modification time' }))
@@ -545,7 +545,7 @@ export function validateBackup(data: unknown): BackupFile {
   if (!absent(data.recurringRules)) {
     checkRecords(
       data.recurringRules,
-      { et: 'korduvarvete reeglid', en: 'recurring rules', one: (n) => ({ et: `korduvarvete reeglite ${n}. kirje`, en: `entry ${n} in the recurring rules` }) },
+      { et: 'korduvarvete seadistused', en: 'recurring rules', one: (n) => ({ et: `korduvarvete seadistuste ${n}. kirje`, en: `entry ${n} in the recurring rules` }) },
       checkRecurringRule,
     )
   }
@@ -566,13 +566,13 @@ export function validateBackup(data: unknown): BackupFile {
     )
   }
   if (!absent(data.profile)) {
-    const problem = isObject(data.profile) ? checkProfile(data.profile) : { et: 'kirje ei ole objekt', en: 'the record is not an object' }
+    const problem = isObject(data.profile) ? checkProfile(data.profile) : { et: 'vale vorming', en: 'invalid format' }
     if (problem) {
       throw new BackupFormatError(`Varukoopias olevad ettevõtte andmed on vigased: ${problem.et}.`, `The company profile in the backup is invalid: ${problem.en}.`)
     }
   }
   if (!absent(data.settings)) {
-    const problem = isObject(data.settings) ? checkSettings(data.settings) : { et: 'kirje ei ole objekt', en: 'the record is not an object' }
+    const problem = isObject(data.settings) ? checkSettings(data.settings) : { et: 'vale vorming', en: 'invalid format' }
     if (problem) {
       throw new BackupFormatError(`Varukoopia seaded on vigased: ${problem.et}.`, `The settings in the backup are invalid: ${problem.en}.`)
     }

@@ -282,7 +282,7 @@ describe('eInvoiceIssues', () => {
     expect(us.map((i) => i.field)).toEqual(['buyer.registryCode'])
     expect(us[0].message.en).not.toContain('Private persons')
     expect(us[0].message.en).toContain('no Peppol electronic address')
-    expect(us[0].message.et).toContain('elektrooniline aadress')
+    expect(us[0].message.et).toContain('Ostjal puudub e-arve aadress')
   })
 
   it('asks for the EUR VAT only when the exchange rate is missing, since the XML adds it otherwise', () => {

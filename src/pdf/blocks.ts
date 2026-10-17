@@ -30,7 +30,7 @@ export interface LabelStyle {
   uppercase?: boolean
   characterSpacing?: number
   alignment?: Align
-  /** Keep each line on one row (e.g. "KM %" must not break into "KM" / "%"). */
+  /** Keep each line on one row (e.g. "VAT %" must not break into "VAT" / "%"). */
   noWrap?: boolean
 }
 
@@ -256,7 +256,7 @@ export interface TableStyle {
 }
 
 /** Short numeric-column headers that would otherwise break mid-label when the description column takes the space. */
-const NO_WRAP_HEADERS = new Set<LabelKey>(['lineNo', 'quantity', 'unit', 'vatRate', 'lineTotal', 'unitPrice'])
+const NO_WRAP_HEADERS = new Set<LabelKey>(['lineNo', 'quantity', 'unit', 'vatRate', 'breakdownRate', 'lineTotal', 'unitPrice'])
 
 function headerCell(ctx: DocContext, key: LabelKey, align: Align, s: TableStyle): TableCell {
   const noWrap = NO_WRAP_HEADERS.has(key)
@@ -337,7 +337,7 @@ export function vatBreakdownTable(ctx: DocContext, s: TableStyle): ContentTable 
       // The taxable-amount column takes the free width: its header is the longest.
       widths: ['auto', '*', 'auto'],
       body: [
-        [headerCell(ctx, 'vatRate', 'left', s), headerCell(ctx, 'taxableAmount', 'right', s), headerCell(ctx, 'vatAmount', 'right', s)],
+        [headerCell(ctx, 'breakdownRate', 'left', s), headerCell(ctx, 'taxableAmount', 'right', s), headerCell(ctx, 'vatAmount', 'right', s)],
         ...ctx.totals.vatBreakdown.map((r): TableCell[] => [cell(ctx.percent(r.rate), 'left'), cell(ctx.money(r.taxable), 'right'), cell(ctx.money(r.vat), 'right')]),
       ],
     },

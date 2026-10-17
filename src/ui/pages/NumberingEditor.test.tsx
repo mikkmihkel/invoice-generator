@@ -88,11 +88,11 @@ describe('company page: numbering', () => {
 
     fireEvent.click(section.getByRole('radio', { name: `${year}-0001` }))
     expect(section.getByLabelText('Järgmine number')).toHaveValue('8')
-    expect(section.queryByText(/on selles seerias juba kasutatud/)).toBeNull()
+    expect(section.queryByText(/on selles numbriseerias juba kasutatud/)).toBeNull()
 
     fireEvent.change(section.getByLabelText('Järgmine number'), { target: { value: '2' } })
     fireEvent.blur(section.getByLabelText('Järgmine number'))
-    expect(await section.findByText(new RegExp(`Numbrid kuni ${year}-0007 on selles seerias juba kasutatud`))).toBeInTheDocument()
+    expect(await section.findByText(new RegExp(`Numbrid kuni ${year}-0007 on selles numbriseerias juba kasutatud`))).toBeInTheDocument()
     fireEvent.click(section.getByRole('button', { name: 'Jätka numbrist 8' }))
     expect(section.getByLabelText('Järgmine number')).toHaveValue('8')
   })
@@ -114,7 +114,7 @@ describe('company page: numbering', () => {
     fireEvent.change(section.getByLabelText('Number algab uuesti 1-st'), { target: { value: 'yearly' } })
     expect(section.getByText(/peab eesliites olema selle perioodi kuupäev/)).toBeInTheDocument()
     fireEvent.change(section.getByLabelText('Eesliide'), { target: { value: 'A{YY}/{Q}' } })
-    expect(section.getByText(/tundmatu märgend \{Q\}/)).toBeInTheDocument()
+    expect(section.getByText(/tundmatu kohatäitja \{Q\}/)).toBeInTheDocument()
   })
 
   it('has its own block for the quote series', async () => {

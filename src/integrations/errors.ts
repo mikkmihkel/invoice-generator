@@ -29,13 +29,13 @@ export function friendlyGoogleMessage(code: GoogleErrorCode, detail?: string): B
   switch (code) {
     case 'not_configured':
       return {
-        et: 'Google’i ühendus ei ole seadistatud. Sisesta seadetes oma OAuth-kliendi ID (vt juhendit).',
-        en: 'Google is not set up. Enter your OAuth client ID in Settings (see the setup guide).',
+        et: 'Google’i sisselogimine pole seadistatud. Lisa seadetes oma OAuth-kliendi ID (vt juhendit).',
+        en: 'Google sign-in is not set up. Add your OAuth client ID in Settings (see the setup guide).',
       }
     case 'script_load_failed':
       return {
-        et: 'Google’i sisselogimise skripti laadimine ebaõnnestus. Kontrolli internetiühendust või reklaamiblokeerijat.',
-        en: 'Could not load Google sign-in. Check your connection or ad/script blocker.',
+        et: 'Google’i sisselogimist ei õnnestunud laadida. Kontrolli internetiühendust ja reklaamiblokeerijat.',
+        en: 'Could not load Google sign-in. Check your internet connection and ad blocker.',
       }
     case 'popup_blocked':
       return {
@@ -49,13 +49,13 @@ export function friendlyGoogleMessage(code: GoogleErrorCode, detail?: string): B
       }
     case 'access_denied':
       return {
-        et: 'Google’i juurdepääsust keelduti. Selle funktsiooni kasutamiseks pead andma loa.',
-        en: 'Google access was denied. You need to grant permission to use this feature.',
+        et: 'Google’ile ei antud luba. Proovi uuesti ja anna sisselogimisel luba.',
+        en: 'Permission was not granted to Google. Try again and allow access when signing in.',
       }
     case 'insufficient_scope':
       return {
-        et: 'Google ei andnud vajalikku õigust (nt jäi Drive’i või Gmaili linnuke märkimata). Logi uuesti sisse ja luba kõik küsitud õigused.',
-        en: 'Google did not grant the required permission (e.g. the Drive or Gmail box was unchecked). Sign in again and allow all requested permissions.',
+        et: 'Vajalik õigus puudub (nt jäi Drive’i või Gmaili linnuke märkimata). Logi uuesti sisse ja luba kõik küsitud õigused.',
+        en: 'A required permission is missing (e.g. the Drive or Gmail box was unchecked). Sign in again and allow all requested permissions.',
       }
     case 'unauthorized':
       return {
@@ -79,15 +79,15 @@ export function friendlyGoogleMessage(code: GoogleErrorCode, detail?: string): B
       }
     case 'rate_limited':
       return {
-        et: 'Google’i päringute limiit on ületatud. Oota hetk ja proovi uuesti.',
-        en: 'Google rate limit exceeded. Wait a moment and try again.',
+        et: 'Google’ile on saadetud liiga palju päringuid. Oota hetk ja proovi uuesti.',
+        en: 'Too many requests were sent to Google. Wait a moment and try again.',
       }
     case 'not_found':
       return { et: 'Faili ei leitud Google Drive’ist.', en: 'File not found in Google Drive.' }
     case 'gmail_needs_own_client':
       return {
-        et: 'Gmailiga saatmiseks lisa seadetes (Google → Täpsemad seaded) oma OAuth-kliendi ID. Seni saada arve e-posti rakenduse kaudu.',
-        en: 'To send with Gmail, add your own OAuth client ID in Settings (Google → Advanced). Until then, send the invoice with your email app.',
+        et: 'Gmailiga saatmiseks lisa seadetes (Google’i konto ja Drive → Täpsemad seaded) oma OAuth-kliendi ID. Seni saada arve e-posti rakenduse kaudu.',
+        en: 'To send with Gmail, add your own OAuth client ID in Settings (Google account and Drive → Advanced). Until then, send the invoice with your email app.',
       }
     case 'folder_not_found':
       return {
@@ -101,7 +101,7 @@ export function friendlyGoogleMessage(code: GoogleErrorCode, detail?: string): B
       }
     case 'network':
       return {
-        et: 'Google’iga ühendumine ebaõnnestus. Kontrolli internetiühendust.',
+        et: 'Google’iga ei saanud ühendust. Kontrolli internetiühendust.',
         en: 'Could not reach Google. Check your internet connection.',
       }
     default:

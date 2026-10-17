@@ -83,7 +83,7 @@ describe('register search that cannot reach the register', () => {
     liveOffline()
     const input = await openRegisterSearch()
     fireEvent.change(input, { target: { value: 'päikese' } })
-    expect(await screen.findByText('Osa äriregistri otsingust ei vastanud, seega võib mõni ettevõte tulemustest puududa.')).toBeInTheDocument()
+    expect(await screen.findByText('Osa äriregistri päringutest jäi vastuseta, seega võib mõni ettevõte tulemustest puududa.')).toBeInTheDocument()
     expect(within(screen.getByRole('listbox', { name: 'Otsingutulemused' })).getAllByRole('option')).toHaveLength(2)
   })
 

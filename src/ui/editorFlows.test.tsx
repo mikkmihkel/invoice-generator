@@ -77,7 +77,7 @@ describe('VAT note field', () => {
     renderAt(`#/invoices/${inv.id}`, repo)
     await screen.findByLabelText('Kirjeldus 1')
     expect(screen.queryByLabelText(/Viide 0% määra õiguslikule alusele/)).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('KM %'), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText('Käibemaks'), { target: { value: '0' } })
     const panel = screen.getByRole('heading', { name: 'Nõuete kontroll' }).closest('section')!
     expect(await within(panel).findByText(/0% määraga maksustatava käibe/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(/Viide 0% määra õiguslikule alusele/), { target: { value: 'KMS § 15 lg 3 p 4' } })
@@ -132,7 +132,7 @@ describe('issuing a stale draft', () => {
     renderAt(`#/invoices/${draft.id}`, repo)
     fireEvent.click(await screen.findByRole('button', { name: 'Väljasta arve' }))
     const dialog = await screen.findByRole('dialog', { name: 'Väljasta arve' })
-    expect(within(dialog).getByText(new RegExp(`aasta arvenumbris: arve saab numbri ${year}-0001`))).toBeInTheDocument()
+    expect(within(dialog).getByText(new RegExp(`Koos aastaga muutub ka arve number: arve saab numbri ${year}-0001`))).toBeInTheDocument()
     fireEvent.click(within(dialog).getByLabelText('Muuda arve kuupäevaks tänane päev'))
     expect(within(dialog).getByText(`Arvele antakse number ${year - 1}-0001.`)).toBeInTheDocument()
     await act(async () => {
@@ -157,7 +157,7 @@ describe('autosave', () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Väljasta' }))
     })
-    expect(await screen.findByText(/Arvet ei väljastatud, sest muudatuste salvestamine ebaõnnestus/)).toBeInTheDocument()
+    expect(await screen.findByText(/Arvet ei väljastatud, sest muudatusi ei õnnestunud salvestada/)).toBeInTheDocument()
     expect(repo.issueInvoice).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog', { name: 'Väljasta arve' })).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Loobu' }))

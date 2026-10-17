@@ -325,7 +325,7 @@ describe('selected invoice', () => {
     expect(repo.cancelInvoice).not.toHaveBeenCalled()
     const draft = repo.saveInvoice.mock.calls[0][0] as Invoice
     expect(draft).toMatchObject({ type: 'credit-note', status: 'draft', creditedInvoiceNumber: '2026-0004' })
-    expect(await screen.findByText(/Täpselt jäägi 62,03\s€ suurust kreeditarvet ei õnnestunud automaatselt koostada/)).toBeInTheDocument()
+    expect(await screen.findByText(/Kreeditarvet täpselt jäägi summas 62,03\s€ ei õnnestunud automaatselt koostada/)).toBeInTheDocument()
     await waitFor(() => expect(window.location.hash).toBe(`#/invoices/${draft.id}`))
   })
 
@@ -407,7 +407,7 @@ describe('deleting and reopening', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Kas kustutada arve 2026-0004?' })
     expect(within(dialog).getByText(/Arve on kliendile juba saadetud/)).toBeInTheDocument()
     expect(within(dialog).getByText(/säilitada 7 aastat \(RPS § 12\)/)).toHaveTextContent(
-      'Numeratsiooni jääb lünk (2026-0004). Kui dokument on juba kliendile saadetud, tasutud, krediteeritud või tühistatud, selle numbrit uuesti ei kasutata.',
+      'Numeratsiooni jääb lünk (2026-0004). Kui dokument on juba kliendile saadetud, tasutud, krediteeritud või tühistatud, ei kasutata selle numbrit uuesti.',
     )
     expect(within(dialog).getByRole('button', { name: 'Koosta kreeditarve' })).toHaveClass('btn-primary')
     await act(async () => {
@@ -613,7 +613,7 @@ describe('recurring source cancelled', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Tühista kreeditarvega' }))
     })
     await waitFor(() => expect(repo.saveRecurringRule).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', active: false })))
-    expect(await screen.findByText(/Ka selle arve kordamine on lõpetatud/)).toBeInTheDocument()
+    expect(await screen.findByText(/Ka selle arve kordumine on lõpetatud/)).toBeInTheDocument()
   })
 
   it('lets a rule still running on a cancelled invoice be stopped, not changed', async () => {

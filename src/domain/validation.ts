@@ -89,12 +89,12 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
   }
   const issueOk = isValidISODate(invoice.issueDate)
   if (!issueOk) {
-    if (quote) add('issueDate', 'error', 'Hinnapakkumise kuupäev puudub või on vigane.', 'Quote date is missing or invalid.')
+    if (quote) add('issueDate', 'error', 'Pakkumise kuupäev puudub või on vigane.', 'Quote date is missing or invalid.')
     else add('issueDate', 'error', 'Arve kuupäev puudub või on vigane.', 'Issue date is missing or invalid.', `${L.KMS37_1}; ${L.RPS7}`)
   } else {
     const today = options.today ?? todayISO()
     if (invoice.issueDate > addDays(today, 30)) {
-      add('issueDate', 'warning', quote ? 'Hinnapakkumise kuupäev on kaugel tulevikus.' : 'Arve kuupäev on kaugel tulevikus.', 'Issue date is far in the future.')
+      add('issueDate', 'warning', quote ? 'Pakkumise kuupäev on kaugel tulevikus.' : 'Arve kuupäev on kaugel tulevikus.', 'Issue date is far in the future.')
     } else if (!quote && invoice.status === 'draft' && invoice.issueDate < addDays(today, -7)) {
       add(
         'issueDate',
@@ -108,7 +108,7 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     if (isBlank(invoice.validUntil)) {
       add('validUntil', 'warning', 'Hinnapakkumise kehtivusaeg puudub.', 'The quote has no validity date.')
     } else if (!isValidISODate(invoice.validUntil!)) {
-      add('validUntil', 'error', 'Kehtivuse kuupäev on vigane.', 'The validity date is invalid.')
+      add('validUntil', 'error', 'Kuupäev „Kehtib kuni“ on vigane.', 'The validity date is invalid.')
     } else if (issueOk && invoice.validUntil! < invoice.issueDate) {
       add('validUntil', 'error', 'Kehtivusaeg ei saa lõppeda enne pakkumise kuupäeva.', 'The validity date cannot be before the quote date.')
     }
@@ -133,19 +133,19 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
   const hasStart = !isBlank(invoice.periodStart)
   const hasEnd = !isBlank(invoice.periodEnd)
   if (hasStart && !isValidISODate(invoice.periodStart!)) {
-    add('periodStart', 'error', 'Perioodi algus on vigane.', 'Period start is invalid.')
+    add('periodStart', 'error', 'Teenuse perioodi algus on vigane.', 'Period start is invalid.')
   }
   if (hasEnd && !isValidISODate(invoice.periodEnd!)) {
-    add('periodEnd', 'error', 'Perioodi lõpp on vigane.', 'Period end is invalid.')
+    add('periodEnd', 'error', 'Teenuse perioodi lõpp on vigane.', 'Period end is invalid.')
   }
   if (hasStart && hasEnd && invoice.periodEnd! < invoice.periodStart!) {
-    add('periodEnd', 'error', 'Perioodi lõpp on enne perioodi algust.', 'Period end is before period start.')
+    add('periodEnd', 'error', 'Teenuse perioodi lõpp on enne selle algust.', 'Period end is before period start.')
   }
   if (hasStart !== hasEnd) {
     add(
       hasStart ? 'periodEnd' : 'periodStart',
       'warning',
-      'Teenuse perioodi puhul on täidetud ainult üks kuupäev.',
+      'Teenuse perioodi algus või lõpp puudub.',
       'Only one date of the service period is set.',
     )
   }
@@ -174,8 +174,8 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
     add(
       'vatScheme',
       'error',
-      'Käibemaksukohustuslasest müüja peab valima käibemaksurežiimi (nt „Tavaline käibemaks (Eesti)“).',
-      'A VAT-registered seller must choose a VAT scheme (e.g. "domestic").',
+      'Käibemaksukohustuslasest müüja ei saa valida režiimi „Ei ole käibemaksukohustuslane“. Vali sobiv käibemaksurežiim (nt „Tavaline käibemaks (Eesti)“).',
+      'A VAT-registered seller cannot use “Not VAT registered”. Choose a VAT treatment (e.g. “Standard VAT (Estonia)”).',
       L.KMS37,
     )
   }
@@ -274,8 +274,8 @@ export function validateInvoice(invoice: Invoice, options: ValidateOptions = {})
       add(
         'buyer.vatNumber',
         'error',
-        'Ostja KMKR number ei ole ELi liikmesriigi number; väljapoole ELi müües vali „Eksport väljapoole ELi“ või „Teenus väljapoole ELi (ei maksustata Eestis)“.',
-        'Buyer VAT number is not from an EU Member State; use "export" for non-EU customers.',
+        'Ostja KMKR number ei ole ELi liikmesriigi number; väljapoole ELi müües vali „Kauba eksport väljapoole ELi“ või „Teenus väljapoole ELi (ei maksustata Eestis)“.',
+        'Buyer VAT number is not from an EU Member State; for customers outside the EU choose “Export of goods outside the EU” or “Service outside the EU (not taxed in Estonia)”.',
         vatScheme === 'eu-goods' ? L.KMS15 : 'KMS § 10',
       )
     } else if (buyerCountry && vatPrefixToCountry(buyerVatPrefix) !== buyerCountry && !(buyerVatPrefix === 'XI' && buyerCountry === 'GB')) {

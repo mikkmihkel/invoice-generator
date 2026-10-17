@@ -143,7 +143,8 @@ describe('automatic backup settings', () => {
     ])
     vi.mocked(downloadDriveFile).mockResolvedValueOnce(envelope).mockResolvedValueOnce(envelope)
     setup({ autoBackup: { enabled: true, encrypt: true, keepVersions: 10 } })
-    fireEvent.click(await screen.findByRole('button', { name: 'Taasta Drive’ist' }))
+    const auto = within(await screen.findByRole('region', { name: 'Automaatne varundus Google Drive’i' }))
+    fireEvent.click(auto.getByRole('button', { name: 'Taasta varukoopiast' }))
     const dialog = within(await screen.findByRole('dialog', { name: 'Taasta varukoopia Drive’ist' }))
     expect(dialog.getAllByRole('radio')).toHaveLength(2)
     expect(dialog.getByText(/2,9 kB · krüpteeritud/)).toBeInTheDocument()
@@ -156,7 +157,7 @@ describe('automatic backup settings', () => {
 
     fireEvent.change(dialog.getByLabelText('Varukoopia parool'), { target: { value: 'taasta mind' } })
     fireEvent.click(dialog.getByRole('button', { name: 'Jätka' }))
-    expect(await screen.findByRole('dialog', { name: 'Impordi varukoopia' }, { timeout: 8000 })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Taasta varukoopiast' }, { timeout: 8000 })).toBeInTheDocument()
   }, 15_000)
 })
 
@@ -165,7 +166,7 @@ describe('background backup', () => {
     window.location.hash = '#/'
     setup({ autoBackup: { enabled: true, encrypt: false, keepVersions: 10 } })
     const toasts = within(document.querySelector<HTMLElement>('.toasts')!)
-    expect(await toasts.findByText('Automaatne varundus ootab: Google’i konto pole selles seansis ühendatud.')).toBeInTheDocument()
+    expect(await toasts.findByText('Automaatne varundus ootab: selles seansis pole Google’isse sisse logitud.')).toBeInTheDocument()
     fireEvent.click(toasts.getByRole('button', { name: 'Varunda nüüd' }))
     expect(googleSignIn).toHaveBeenCalledWith(CLIENT_ID, ['drive'])
     await waitFor(() => expect(uploadBackupVersion).toHaveBeenCalledTimes(1))
@@ -175,13 +176,13 @@ describe('background backup', () => {
     cleanup()
     vi.mocked(hasAccessToken).mockReturnValue(false)
     setup({ autoBackup: { enabled: true, encrypt: false, keepVersions: 10 } })
-    expect(await screen.findByText(/Varundus ootab: Google’i konto ei ole/)).toBeInTheDocument()
-    expect(screen.queryByText('Automaatne varundus ootab: Google’i konto pole selles seansis ühendatud.')).not.toBeInTheDocument()
+    expect(await screen.findByText(/Varundus ootab: selles seansis pole Google’isse sisse logitud/)).toBeInTheDocument()
+    expect(screen.queryByText('Automaatne varundus ootab: selles seansis pole Google’isse sisse logitud.')).not.toBeInTheDocument()
   })
 
   it('waits without a popup when there is no Google token, and runs once a token appears', async () => {
     setup({ autoBackup: { enabled: true, encrypt: false, keepVersions: 10 } })
-    expect(await screen.findByText(/Varundus ootab: Google’i konto ei ole selles seansis ühendatud/)).toBeInTheDocument()
+    expect(await screen.findByText(/Varundus ootab: selles seansis pole Google’isse sisse logitud/)).toBeInTheDocument()
     expect(googleSignIn).not.toHaveBeenCalled()
     expect(uploadBackupVersion).not.toHaveBeenCalled()
 

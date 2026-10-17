@@ -136,7 +136,7 @@ describe('buildDocDefinition — variants', () => {
     for (const templateId of templates) {
       const inv = notRegisteredInvoice({ templateId })
       const all = joined(buildDocDefinition(inv))
-      expect(all).not.toContain('KM %')
+      expect(all).not.toContain('Määr')
       expect(all).not.toContain('Käibemaks')
       expect(all).not.toContain('Summa käibemaksuta')
       expect(all).not.toMatch(/\b24%/)
@@ -253,10 +253,10 @@ describe('buildDocDefinition — variants', () => {
     const def = buildDocDefinition(sampleInvoice({ language: 'et-en' }))
     const found: Record<string, unknown>[] = []
     JSON.stringify(def.content, (_k, v) => {
-      if (v && typeof v === 'object' && (v.text === 'KM %' || v.text === 'VAT %')) found.push(v)
+      if (v && typeof v === 'object' && (v.text === 'Määr' || v.text === 'VAT %')) found.push(v)
       return v
     })
-    expect(found.length).toBeGreaterThan(0)
+    expect(found.map((f) => f.text)).toEqual(expect.arrayContaining(['Määr', 'VAT %']))
     for (const f of found) expect(f.noWrap).toBe(true)
   })
 })
@@ -363,7 +363,7 @@ describe('templates — design system', () => {
       expect(qrs(sampleInvoice({ templateId, paymentQr: true })), `${templateId}: invalid IBAN`).toEqual([])
       expect(qrs(payable({ templateId, type: 'credit-note', creditedInvoiceNumber: '2026-0006' })), `${templateId}: credit note`).toEqual([])
     }
-    expect(joined(buildDocDefinition(payable({ language: 'et-en' })))).toContain('Skanni ja maksa')
+    expect(joined(buildDocDefinition(payable({ language: 'et-en' })))).toContain('Makse QR-kood')
   })
 
   it('labels the document number by type and prints it with the page count in the footer', () => {

@@ -47,7 +47,7 @@ describe('VatNumberCheck', () => {
     vi.mocked(checkVatNumber).mockResolvedValue({ status: 'invalid', countryCode: 'EE', vatNumber: '100000000' })
     wrap(<VatNumberCheck vatNumber="EE100000000" />)
     await check()
-    expect(screen.getByRole('status')).toHaveTextContent('VIES-i andmetel ei ole see käibemaksukohustuslase number kehtiv.')
+    expect(screen.getByRole('status')).toHaveTextContent('VIES-i andmetel ei ole see KMKR number kehtiv.')
   })
 
   it('separates an unavailable service from an invalid number and links to the VIES page', async () => {

@@ -94,7 +94,7 @@ describe('onboarding', () => {
     expect(screen.getByLabelText(/^Registrikood/)).toHaveValue('16543210')
     expect(screen.getByLabelText(/^KMKR number/)).toHaveValue('EE102345676')
     expect(screen.getByLabelText(/^Linn/)).toHaveValue('Tallinn')
-    expect(screen.getByLabelText('Olen käibemaksukohustuslane')).toBeChecked()
+    expect(screen.getByLabelText('Ettevõte on käibemaksukohustuslane')).toBeChecked()
   })
 
   it('hides the "type 2 characters" hint once searching and warns about companies in liquidation', async () => {
@@ -153,7 +153,7 @@ describe('invoice editor', () => {
     const prices = screen.getAllByLabelText('Ühikuhind')
     expect(prices).toHaveLength(2)
     fireEvent.change(prices[1], { target: { value: '10' } })
-    fireEvent.change(screen.getAllByLabelText('KM %')[1], { target: { value: '9' } })
+    fireEvent.change(screen.getAllByLabelText('Käibemaks')[1], { target: { value: '9' } })
 
     await waitFor(() => expect(screen.getByTestId('total-gross')).toHaveTextContent('260,14'))
     expect(screen.getByText(/Käibemaks 9%/)).toBeInTheDocument()
@@ -178,7 +178,7 @@ describe('invoice editor', () => {
     fireEvent.change(await screen.findByLabelText('Ühikuhind'), { target: { value: '50' } })
     await waitFor(() => expect(screen.getByTestId('total-gross')).toHaveTextContent('50,00'))
     expect(screen.queryByTestId('total-net')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('KM %')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Käibemaks')).not.toBeInTheDocument()
   })
 
   it('lists legal problems, blocks issuing until fixed, then issues and locks the invoice', async () => {
@@ -264,7 +264,7 @@ describe('invoice list', () => {
     // One sentence sums up what is owed, with the overdue part called out.
     expect(screen.getByText(/^Tasumata/, { selector: 'p' })).toHaveTextContent(/^Tasumata 124,00 €, neist üle tähtaja 124,00 €$/)
     // The backup reminder is shown while no backup has been made.
-    expect(screen.getByText(/ei ole veel varukoopiat teinud/)).toBeInTheDocument()
+    expect(screen.getByText(/Varukoopiat ei ole veel tehtud/)).toBeInTheDocument()
   })
 })
 

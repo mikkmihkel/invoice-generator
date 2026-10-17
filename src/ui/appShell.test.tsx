@@ -50,12 +50,12 @@ const backupFile = (data: unknown) => new File([JSON.stringify(data)], 'backup.j
 describe('backup import', () => {
   it('names the broken record and field instead of a generic error', async () => {
     renderAt('#/settings', createMemoryRepo({ profile: sampleProfile() }))
-    const input = (await screen.findByText('Impordi varukoopia…')).querySelector('input')!
+    const input = (await screen.findByText('Taasta varukoopiast…')).querySelector('input')!
     const bad = { app: 'invoice-generator', version: 1, exportedAt: '2026-10-01T00:00:00Z', profile: null, settings: null, clients: [{ id: 'c1', name: 'X' }], invoices: [] }
     await act(async () => {
       fireEvent.change(input, { target: { files: [backupFile(bad)] } })
     })
-    expect(await screen.findByText(/^Varukoopiat ei saa importida\. Varukoopias on vigane klientide 1\. kirje: /)).toBeInTheDocument()
+    expect(await screen.findByText(/^Varukoopiat ei saa taastada\. Varukoopias on vigane klientide 1\. kirje: /)).toBeInTheDocument()
   })
 
   it('asks to confirm changed IBANs and keeps the current Google client ID by default', async () => {
@@ -63,7 +63,7 @@ describe('backup import', () => {
     const settings = { ...createDefaultSettings(), googleClientId: '1-own.apps.googleusercontent.com' }
     const repo = createMemoryRepo({ profile, settings })
     renderAt('#/settings', repo)
-    const input = (await screen.findByText('Impordi varukoopia…')).querySelector('input')!
+    const input = (await screen.findByText('Taasta varukoopiast…')).querySelector('input')!
     const backup: BackupFile = {
       app: 'invoice-generator',
       version: 1,
@@ -76,13 +76,13 @@ describe('backup import', () => {
     await act(async () => {
       fireEvent.change(input, { target: { files: [backupFile(backup)] } })
     })
-    const dialog = await screen.findByRole('dialog', { name: 'Impordi varukoopia' })
+    const dialog = await screen.findByRole('dialog', { name: 'Taasta varukoopiast' })
     expect(within(dialog).getByText('Varukoopia muudab makseandmeid')).toBeInTheDocument()
     expect(within(dialog).getByText('EE38 2200 2210 2014 5685')).toBeInTheDocument()
     expect(within(dialog).getByText('EE47 1000 0010 2014 5685')).toBeInTheDocument()
     const merge = within(dialog).getByRole('button', { name: 'Ühenda' })
     expect(merge).toBeDisabled()
-    expect(within(dialog).getByLabelText('Impordi ka Google’i kliendi ID')).not.toBeChecked()
+    expect(within(dialog).getByLabelText('Taasta ka Google’i OAuth-kliendi ID')).not.toBeChecked()
     fireEvent.click(within(dialog).getByLabelText('Olen muudatused üle vaadanud ja kinnitan need'))
     expect(merge).toBeEnabled()
     await act(async () => {
@@ -114,7 +114,7 @@ describe('settings', () => {
 describe('onboarding', () => {
   it('discloses that live register search sends queries to RIK', async () => {
     renderAt('#/', createMemoryRepo())
-    expect(await screen.findByText(/saadetakse sisestatud tekst ka RIKi serverisse/)).toBeInTheDocument()
+    expect(await screen.findByText(/saadetakse sisestatud tekst ka RIK-i serverisse/)).toBeInTheDocument()
   })
 })
 

@@ -36,16 +36,18 @@ export const LABELS = {
   recipient: { et: 'Saaja', en: 'Recipient' },
   iban: { et: 'IBAN', en: 'IBAN' },
   bic: { et: 'BIC', en: 'BIC' },
-  scanToPay: { et: 'Skanni ja maksa', en: 'Scan to pay' },
+  scanToPay: { et: 'Makse QR-kood', en: 'Scan to pay' },
   lineNo: { et: 'Nr', en: 'No.' },
   description: { et: 'Kirjeldus', en: 'Description' },
   quantity: { et: 'Kogus', en: 'Qty' },
   unit: { et: 'Ühik', en: 'Unit' },
   unitPrice: { et: 'Ühikuhind', en: 'Unit price' },
   discount: { et: 'Allahindlus', en: 'Discount' },
-  vatRate: { et: 'KM %', en: 'VAT %' },
+  vatRate: { et: 'Käibemaks', en: 'VAT %' },
   lineTotal: { et: 'Summa', en: 'Amount' },
   vatBreakdown: { et: 'Käibemaksu jaotus', en: 'VAT breakdown' },
+  /** Rate column of the VAT breakdown: „Käibemaks“ already heads its amount column, and a long header would squeeze the totals beside it. */
+  breakdownRate: { et: 'Määr', en: 'VAT %' },
   taxableAmount: { et: 'Maksustatav summa', en: 'Taxable amount' },
   vatAmount: { et: 'Käibemaks', en: 'VAT' },
   netTotal: { et: 'Summa käibemaksuta', en: 'Total excl. VAT' },
@@ -98,7 +100,7 @@ export function lateInterestText(percentPerDay: number, lang: InvoiceLanguage): 
 }
 
 export function referenceHint(ref: string, lang: InvoiceLanguage): string {
-  const et = `Makse tegemisel palume märkida viitenumbri ${ref}.`
+  const et = `Palume maksmisel märkida viitenumbri ${ref}.`
   const en = `Please use reference number ${ref} when paying.`
   return lang === 'et' ? et : lang === 'en' ? en : `${et} / ${en}`
 }

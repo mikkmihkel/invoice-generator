@@ -102,7 +102,7 @@ describe('accountant export section', () => {
     let release!: () => void
     vi.mocked(renderInvoicePdf).mockImplementationOnce(() => new Promise((resolve) => (release = () => resolve(new Blob(['%PDF'])))))
     fireEvent.click(screen.getByRole('button', { name: /Laadi alla ZIP/ }))
-    const status = (await screen.findByText('Koostan PDF-faile: 0 / 2')).closest<HTMLElement>('[role="status"]')!
+    const status = (await screen.findByText('PDF-failide koostamine: 0 / 2')).closest<HTMLElement>('[role="status"]')!
     fireEvent.click(within(status).getByRole('button', { name: 'Katkesta' }))
     release()
     expect(await screen.findByText('Eksport katkestati.')).toBeInTheDocument()

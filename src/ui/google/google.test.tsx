@@ -137,9 +137,9 @@ describe('onboarding: Google Drive step', () => {
     expect(steps).toHaveLength(4)
     expect(steps[0]).toHaveTextContent('1Google Drive')
     expect(screen.getByText('Teises arvutis logid sisse ja saad kõik andmed tagasi.')).toBeInTheDocument()
-    expect(screen.getByText(/Meie serverisse ei saadeta midagi/)).toBeInTheDocument()
+    expect(screen.getByText(/Arveldajal pole oma serverit/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Logi sisse Google’iga' })).toHaveClass('btn-primary')
-    fireEvent.click(screen.getByRole('button', { name: 'Jätka ilma kontota' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Jätka ilma Google’i kontota' }))
     expect(await screen.findByRole('heading', { level: 2, name: 'Ettevõte' })).toBeInTheDocument()
     expect(gisRequests).toHaveLength(0)
     // And back again.
@@ -193,7 +193,7 @@ describe('onboarding: Google Drive step', () => {
       fireEvent.click(within(offer).getByRole('button', { name: 'Jätka' }))
     })
     expect(downloadDriveFile).toHaveBeenCalledWith(BUILT_IN, 'b1')
-    const review = await screen.findByRole('dialog', { name: 'Impordi varukoopia' })
+    const review = await screen.findByRole('dialog', { name: 'Taasta varukoopiast' })
     fireEvent.click(within(review).getByRole('checkbox', { name: 'Olen muudatused üle vaadanud ja kinnitan need' }))
     await act(async () => {
       fireEvent.click(within(review).getByRole('button', { name: 'Ühenda' }))
@@ -383,10 +383,10 @@ describe('app shell', () => {
     env({ clientId: BUILT_IN })
     localStorage.setItem('invoice-generator.google', JSON.stringify({ clientId: BUILT_IN, email: 'omanik@gmail.com' }))
     renderAt('#/products', createMemoryRepo({ profile: sampleProfile() }))
-    const chip = await screen.findByRole('button', { name: 'Google’i konto omanik@gmail.com, Selles seansis pole ühendatud' })
+    const chip = await screen.findByRole('button', { name: 'Google’i konto omanik@gmail.com, selles seansis sisse logimata' })
     expect(chip).toHaveClass('acct-idle')
     fireEvent.click(chip)
-    expect(screen.getByRole('menuitem', { name: 'Ühenda uuesti' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Logi uuesti sisse' })).toBeInTheDocument()
     expect(screen.queryByText('Hoia arveid ja varukoopiaid oma Google Drive’is')).not.toBeInTheDocument()
   })
 })
@@ -488,7 +488,7 @@ describe('Gmail', () => {
     const dialog = await openEmail(settings())
     expect(within(dialog).queryByRole('button', { name: 'Saada Gmailiga' })).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Ava e-posti rakendus' })).toBeInTheDocument()
-    expect(within(dialog).getByText(/Otse Gmailiga saatmise saad seadistada seadetes/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Gmailiga otse saatmise saad seadistada seadetes/)).toBeInTheDocument()
   })
 
   it('is offered with the user’s own client ID', async () => {

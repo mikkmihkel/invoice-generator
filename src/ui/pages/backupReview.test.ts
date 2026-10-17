@@ -57,7 +57,7 @@ describe('changesHeading', () => {
   it('warns about payments only when the IBANs change', () => {
     expect(changesHeading([change('name'), change('ibans')], t)).toEqual({
       title: 'Varukoopia muudab makseandmeid',
-      intro: 'Kontrolli, et muudatused on õiged – vale IBANi korral laekuvad maksed valele kontole.',
+      intro: 'Kontrolli, et muudatused on õiged – vale IBAN-i korral laekuvad maksed valele pangakontole.',
     })
   })
   it('names a change of company details as such, without the IBAN warning', () => {

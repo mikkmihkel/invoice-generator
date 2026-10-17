@@ -32,8 +32,8 @@ const MESSAGES: Record<BackupCryptoErrorCode, Bilingual> = {
     en: 'The encrypted backup file is damaged.',
   },
   unsupported: {
-    et: 'See brauser ei toeta krüpteerimist (Web Crypto). Kasuta uuemat brauserit.',
-    en: 'This browser does not support encryption (Web Crypto). Use a newer browser.',
+    et: 'See brauser ei toeta krüpteerimist. Kasuta uuemat brauserit.',
+    en: 'This browser does not support encryption. Use a newer browser.',
   },
 }
 

@@ -101,14 +101,23 @@ describe('client card', () => {
     const dialog = await screen.findByRole('dialog')
     const term = within(dialog).getByLabelText('Selle kliendi maksetingimus')
     expect(term).toHaveAttribute('placeholder', '14')
+    expect(within(dialog).getByText('Kui jätad välja tühjaks, kehtib ettevõtte vaikeseade (14 päeva).')).toBeInTheDocument()
     fireEvent.change(term, { target: { value: '30' } })
-    fireEvent.change(within(dialog).getByLabelText('Selle kliendi viivis'), { target: { value: '0,05' } })
+    fireEvent.change(within(dialog).getByLabelText('Selle kliendi viivise määr'), { target: { value: '0,05' } })
     fireEvent.change(within(dialog).getByLabelText('E-kirja koopia saajad (CC)'), { target: { value: 'raamatupidaja@ostja.ee' } })
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Salvesta' }))
     })
     await waitFor(() => expect(repo.saveClient).toHaveBeenCalled())
     expect(repo.saveClient.mock.calls.at(-1)![0]).toMatchObject({ paymentTermDays: 30, lateInterestPercentPerDay: 0.05, emailCc: 'raamatupidaja@ostja.ee' })
+  })
+
+  it('says "1 päev" when the company default term is one day', async () => {
+    const repo = createMemoryRepo({ profile: { ...profile, defaults: { ...profile.defaults, paymentTermDays: 1 } }, clients: [regular({ paymentTermDays: undefined })] })
+    renderAt('#/clients', repo)
+    fireEvent.click(await screen.findByRole('button', { name: 'Muuda klienti Ostja AS' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Kui jätad välja tühjaks, kehtib ettevõtte vaikeseade (1 päev).')).toBeInTheDocument()
   })
 
   it('does not save an invalid CC address', async () => {
