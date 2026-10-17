@@ -6,9 +6,11 @@ import {
   isRecurrenceInterval,
   RECURRENCE_INTERVALS,
   ruleForInvoice,
+  undoStop,
   upcomingOccurrence,
   type Invoice,
   type RecurrenceInterval,
+  type RecurringRule,
 } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { SelectField, TextField } from '../../components/fields'
@@ -25,7 +27,7 @@ type Choice = RecurrenceInterval | 'none'
  * be stopped. Renders nothing otherwise.
  */
 export function RecurringControl({ invoice, className }: { invoice: Invoice; className?: string }) {
-  const { t, recurringRules, saveRecurringRule } = useApp()
+  const { t, repo, recurringRules, saveRecurringRule, deleteRecurringRule } = useApp()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
   const rule = ruleForInvoice(recurringRules, invoice.id)
@@ -51,13 +53,30 @@ export function RecurringControl({ invoice, className }: { invoice: Invoice; cla
   const choose = (choice: Choice) =>
     save(async () => {
       if (choice === 'none') {
-        if (active) await saveRecurringRule({ ...active, active: false, updatedAt: nowISO() })
+        // "Ei kordu" stops the repeating: the rule is removed (pausing lives in the recurring overview).
+        if (active) await stop(active)
         return
       }
       const nextDate = active && active.interval === choice ? active.nextDate : upcomingOccurrence(invoice, choice, today)
       const base = rule ?? createRecurringRule(invoice, choice)
       await saveRecurringRule({ ...base, interval: choice, nextDate, active: true, updatedAt: nowISO() })
     })
+
+  const stop = async (stopped: RecurringRule) => {
+    await deleteRecurringRule(stopped.id)
+    const client = invoice.buyer.name || t('list.noClient')
+    toast.success(t('recurring.stopped', { client }), {
+      label: t('payment.undo'),
+      onClick: () => {
+        void (async () => {
+          const back = undoStop(await repo.listRecurringRules(), stopped, nowISO())
+          if (!back) return toast.info(t('recurring.undoStale', { client }))
+          await saveRecurringRule(back)
+          toast.info(t('recurring.restored', { client }))
+        })().catch((e: unknown) => toast.error(e))
+      },
+    })
+  }
 
   const setNextDate = (date: string) => {
     if (!active || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date <= today) return
@@ -72,7 +91,7 @@ export function RecurringControl({ invoice, className }: { invoice: Invoice; cla
         onChange={(v) => void choose(v)}
         disabled={busy}
         options={[{ value: 'none', label: t('recurring.none') }, ...intervals.map((v) => ({ value: v as Choice, label: t(`recurring.${v}`) }))]}
-        hint={active ? t('recurring.hint', { date: formatDate(active.nextDate) }) : t('recurring.offHint')}
+        hint={active ? t('recurring.hint', { date: formatDate(active.nextDate) }) : rule ? t('recurring.pausedHint') : t('recurring.offHint')}
       />
       {active && invoice.status !== 'cancelled' && (
         <TextField label={t('recurring.next')} type="date" value={active.nextDate} min={addDays(today, 1)} onChange={setNextDate} disabled={busy} />

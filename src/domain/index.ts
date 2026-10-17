@@ -123,5 +123,8 @@ export {
   recurringOverview,
   nextRecurring,
   resumeRule,
+  undoPause,
+  undoResume,
+  undoStop,
 } from './recurring'
 export type { RecurringEntry, RecurringRun } from './recurring'

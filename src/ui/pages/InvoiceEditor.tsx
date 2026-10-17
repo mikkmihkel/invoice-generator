@@ -21,7 +21,7 @@ import {
   ProhibitIcon,
   TrashIcon,
 } from '@phosphor-icons/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   applyClientTerms,
@@ -74,7 +74,7 @@ import { latestInvoiceFor } from './products'
 import { DueAmount, EdSection, MoreOptions, NextStep, QuoteStatusWord, SaveIndicator, StatusWord } from './editor/EditorParts'
 import { EmailDialog } from './editor/EmailDialog'
 import { markSent } from './invoice-detail/sent'
-import { canMarkSent, useMarkSent } from './invoice-detail/markSent'
+import { canMarkSent, sentPromptKey, useMarkSent } from './invoice-detail/markSent'
 import { docNoun, localDateOf } from './invoice-detail/status'
 import { LinesEditor } from './editor/LinesEditor'
 import { RecurringControl } from './editor/RecurringControl'
@@ -242,7 +242,9 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
 
   useEffect(() => preloadPdfMake(), [])
   // Opened by the remembered state or a template pick: Escape in the panel returns focus to the header toggle.
-  useEffect(() => {
+  // A layout effect, so the opener is known as soon as the panel is on screen (a passive effect could still be
+  // pending when the panel is closed right away).
+  useLayoutEffect(() => {
     if (previewOpen && !previewOpener.current) previewOpener.current = previewBtn.current
   })
 
@@ -452,7 +454,17 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
     }
   }
 
-  const downloadPdf = () => act('pdf', async () => downloadBlob(await renderPdf(), invoiceFileName(effective, 'pdf')))
+  // After a download, print or Drive save the app cannot tell whether the client got it: ask (as in the detail).
+  const askSent = () => {
+    if (!canMarkSent(invoice, app.invoiceEvents)) return
+    toast.info(t(sentPromptKey(invoice.type)), { label: t('sent.mark'), onClick: () => void markSentByHand(invoice) })
+  }
+
+  const downloadPdf = () =>
+    act('pdf', async () => {
+      downloadBlob(await renderPdf(), invoiceFileName(effective, 'pdf'))
+      askSent()
+    })
 
   const print = () =>
     act('print', async () => {
@@ -466,11 +478,13 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       })
       if (!w) {
         downloadBlob(blob, invoiceFileName(effective, 'pdf'))
+        askSent()
         return
       }
       const url = URL.createObjectURL(blob)
       w.location.href = url
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      askSent()
     })
 
   const downloadXml = () =>
@@ -486,6 +500,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       const xml = buildUblXml(invoice, pdf ? { pdf } : {})
       downloadBlob(new Blob([xml], { type: 'application/xml' }), invoiceFileName(invoice, 'xml'))
       toast.success(t('einvoice.downloaded'))
+      askSent()
     })
 
   const saveToDrive = () =>
@@ -501,6 +516,7 @@ function InvoiceEditor({ id, editorKey }: { id: string; editorKey: string }) {
       const blob = await renderPdf()
       const res = await uploadToDrive(clientId, blob, invoiceFileName(effective, 'pdf'), driveFolderRef(settings, 'pdf'))
       toast.success(t('drive.saved', { folder: driveFolderLabel(settings, 'pdf') }), res.webViewLink ? { label: t('drive.open'), href: res.webViewLink } : undefined)
+      askSent()
     })
 
   const issue = async (useToday: boolean) => {

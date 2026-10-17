@@ -81,10 +81,14 @@ export function firstOccurrence(source: Pick<Invoice, 'issueDate'>, interval: Re
   return nextOccurrence(source.issueDate, interval, source.issueDate)
 }
 
-/** The first date of `source`'s series after `today` (a rule set on an old invoice does not catch up the past). */
-export function upcomingOccurrence(source: Pick<Invoice, 'issueDate'>, interval: RecurrenceInterval, today: ISODate): ISODate {
+/**
+ * The first date of `source`'s series after `today` (a rule set on an old invoice does not catch up the past; one
+ * set today starts with the next period). With `includeToday`, a series date on `today` itself counts: that draft
+ * is due now, not in the past (used when resuming a paused rule).
+ */
+export function upcomingOccurrence(source: Pick<Invoice, 'issueDate'>, interval: RecurrenceInterval, today: ISODate, opts: { includeToday?: boolean } = {}): ISODate {
   let date = firstOccurrence(source, interval)
-  while (date <= today) date = nextOccurrence(date, interval, source.issueDate)
+  while (opts.includeToday ? date < today : date <= today) date = nextOccurrence(date, interval, source.issueDate)
   return date
 }
 
@@ -199,12 +203,36 @@ export function nextRecurring(rules: readonly RecurringRule[], invoices: readonl
 }
 
 /**
- * A paused rule switched on again. The series goes on from its next date when that is still ahead; otherwise from
- * the first date of the series after `today`, so the paused periods are not caught up.
+ * A paused rule switched on again. The series goes on from its next date when that is today or still ahead (today's
+ * draft is then prepared); otherwise from the first date of the series on or after `today`, so the paused periods
+ * are not caught up.
  */
 export function resumeRule(rule: RecurringRule, source: Pick<Invoice, 'issueDate'>, today: ISODate, now = new Date().toISOString()): RecurringRule {
-  const nextDate = rule.nextDate > today ? rule.nextDate : upcomingOccurrence(source, rule.interval, today)
+  const nextDate = rule.nextDate >= today ? rule.nextDate : upcomingOccurrence(source, rule.interval, today, { includeToday: true })
   return { ...rule, active: true, nextDate, updatedAt: now }
+}
+
+// Undo of the overview's actions. Each one takes back only what its own action changed, applied to the rule as it
+// is now (`rules` read afresh), so an older toast's undo never rolls back a later change. Null: nothing to take back
+// (the rule changed in a way that already undid it, or was removed).
+
+/** Undo "pause": switch the rule on again, keeping its current interval and next date. */
+export function undoPause(rules: readonly RecurringRule[], paused: RecurringRule, now = new Date().toISOString()): RecurringRule | null {
+  const current = rules.find((r) => r.id === paused.id)
+  return current && !current.active ? { ...current, active: true, updatedAt: now } : null
+}
+
+/** Undo "resume": pause the rule again; its next date goes back too unless it was changed after resuming. */
+export function undoResume(rules: readonly RecurringRule[], before: RecurringRule, resumed: RecurringRule, now = new Date().toISOString()): RecurringRule | null {
+  const current = rules.find((r) => r.id === resumed.id)
+  if (!current || !current.active) return null
+  return { ...current, active: false, nextDate: current.nextDate === resumed.nextDate ? before.nextDate : current.nextDate, updatedAt: now }
+}
+
+/** Undo "stop" (the rule was removed): put it back, unless the invoice has been given another active rule since. */
+export function undoStop(rules: readonly RecurringRule[], stopped: RecurringRule, now = new Date().toISOString()): RecurringRule | null {
+  if (rules.some((r) => r.id === stopped.id || (r.sourceInvoiceId === stopped.sourceInvoiceId && r.active))) return null
+  return { ...stopped, updatedAt: now }
 }
 
 function structuredCopy<T>(v: T): T {

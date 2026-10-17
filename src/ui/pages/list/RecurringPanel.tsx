@@ -1,7 +1,7 @@
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { computeTotals, resumeRule, type RecurringEntry, type RecurringRule } from '../../../domain'
+import { computeTotals, resumeRule, undoPause, undoResume, undoStop, type RecurringEntry, type RecurringRule } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { formatDate, formatMoney } from '../../format'
 import { useToast } from '../../Toasts'
@@ -12,7 +12,7 @@ import { localTodayISO, nowISO } from '../../util'
  * paused rules below with resume and stop. Each change can be undone from its toast.
  */
 export function RecurringPanel({ active, paused, selectedId }: { active: RecurringEntry[]; paused: RecurringEntry[]; selectedId?: string }) {
-  const { t, saveRecurringRule, deleteRecurringRule } = useApp()
+  const { t, repo, saveRecurringRule, deleteRecurringRule } = useApp()
   const toast = useToast()
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -27,31 +27,41 @@ export function RecurringPanel({ active, paused, selectedId }: { active: Recurri
     }
   }
   const client = (e: RecurringEntry) => e.source.buyer.name || t('list.noClient')
-  const restore = (e: RecurringEntry) => ({
+  /**
+   * The toast's undo: `revert` works out, from the rules as they are now (read afresh), what takes back only this
+   * action; an older toast's undo then never rolls back a later change.
+   */
+  const undo = (e: RecurringEntry, revert: (rules: RecurringRule[]) => RecurringRule | null) => ({
     label: t('payment.undo'),
     onClick: () => {
-      saveRecurringRule(e.rule).then(
-        () => toast.info(t('recurring.restored', { client: client(e) })),
-        (err: unknown) => toast.error(err),
-      )
+      void (async () => {
+        const back = revert(await repo.listRecurringRules())
+        if (!back) {
+          toast.info(t('recurring.undoStale', { client: client(e) }))
+          return
+        }
+        await saveRecurringRule(back)
+        toast.info(t('recurring.restored', { client: client(e) }))
+      })().catch((err: unknown) => toast.error(err))
     },
   })
 
   const pause = (e: RecurringEntry) =>
     run(e.rule, async () => {
-      await saveRecurringRule({ ...e.rule, active: false, updatedAt: nowISO() })
-      toast.success(t('recurring.paused', { client: client(e) }), restore(e))
+      const paused = { ...e.rule, active: false, updatedAt: nowISO() }
+      await saveRecurringRule(paused)
+      toast.success(t('recurring.paused', { client: client(e) }), undo(e, (rules) => undoPause(rules, paused, nowISO())))
     })
   const resume = (e: RecurringEntry) =>
     run(e.rule, async () => {
       const next = resumeRule(e.rule, e.source, localTodayISO(), nowISO())
       await saveRecurringRule(next)
-      toast.success(t('recurring.resumed', { client: client(e), date: formatDate(next.nextDate) }), restore(e))
+      toast.success(t('recurring.resumed', { client: client(e), date: formatDate(next.nextDate) }), undo(e, (rules) => undoResume(rules, e.rule, next, nowISO())))
     })
   const stop = (e: RecurringEntry) =>
     run(e.rule, async () => {
       await deleteRecurringRule(e.rule.id)
-      toast.success(t('recurring.stopped', { client: client(e) }), restore(e))
+      toast.success(t('recurring.stopped', { client: client(e) }), undo(e, (rules) => undoStop(rules, e.rule, nowISO())))
     })
 
   const row = (e: RecurringEntry, on: boolean) => {

@@ -61,8 +61,7 @@ export function EmailDialog({
     [kind, invoice.language, invoice.type, profile, second, interest],
   )
   const [to, setTo] = useState(invoice.buyer.email ?? '')
-  // The client card can name copy recipients (e.g. the client's accountant). `emailCc` comes with the per-client
-  // defaults of the client card; the cast keeps this compiling before that field exists in Client.
+  // The client card can name copy recipients (e.g. the client's accountant); see clientEmailCc.
   const [cc, setCc] = useState(() => clientEmailCc(invoice, clients))
   const [subject, setSubject] = useState(() => fillEmailText(tpl.subject, invoice, company, amount, interest))
   const [body, setBody] = useState(() => fillEmailText(tpl.body, invoice, company, amount, interest))

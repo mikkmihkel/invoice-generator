@@ -217,6 +217,42 @@ describe('mark as sent in the selected invoice', () => {
 })
 
 describe('mark as sent in the editor', () => {
+  it('asks with a toast after the PDF download and printing, whose action records the sent event', async () => {
+    const inv = invoice()
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt(`#/invoices/${inv.id}`, repo)
+    await screen.findByRole('heading', { level: 1, name: 'Arve 2026-0004' })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'PDF' }))
+    })
+    const toast = (await screen.findByText('Kas saatsid arve kliendile?')).closest('.toast') as HTMLElement
+    expect(repo.addInvoiceEvent).not.toHaveBeenCalled()
+
+    const win = { opener: {}, location: { href: '' }, close: vi.fn() }
+    vi.spyOn(window, 'open').mockReturnValue(win as unknown as Window)
+    fireEvent.click(screen.getByRole('button', { name: 'Rohkem' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Prindi' }))
+    })
+    expect(await screen.findAllByText('Kas saatsid arve kliendile?')).toHaveLength(2)
+
+    await act(async () => {
+      fireEvent.click(within(toast).getByRole('button', { name: 'Märgi saadetuks' }))
+    })
+    expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'sent' }))
+  })
+
+  it('does not ask after a download once the invoice was sent', async () => {
+    const inv = invoice()
+    const events = [{ id: 'e', invoiceId: inv.id, kind: 'sent' as const, at: new Date().toISOString() }]
+    renderAt(`#/invoices/${inv.id}`, createMemoryRepo({ profile, invoices: [inv], events }))
+    await screen.findByRole('heading', { level: 1, name: 'Arve 2026-0004' })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'PDF' }))
+    })
+    expect(screen.queryByText('Kas saatsid arve kliendile?')).not.toBeInTheDocument()
+  })
+
   it('is in the "More" menu of an issued, unsent invoice and records the same event', async () => {
     const inv = invoice()
     const repo = createMemoryRepo({ profile, invoices: [inv] })

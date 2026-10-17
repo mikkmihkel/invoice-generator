@@ -212,7 +212,8 @@ describe('recurring invoices', () => {
     await act(async () => {
       fireEvent.change(select, { target: { value: 'none' } })
     })
-    await waitFor(() => expect(repo.saveRecurringRule).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', active: false })))
+    // "Ei kordu" stops it: the rule is removed (undo is offered in the toast).
+    await waitFor(() => expect(repo.deleteRecurringRule).toHaveBeenCalledWith('r1'))
   })
 
   it('prepares the due drafts once and says how many', async () => {
