@@ -400,3 +400,13 @@
   height: 8px;
   accent-color: var(--accent);
 }
+
+/* Touch screens: larger targets for the small catalogue buttons (WCAG 2.5.8; platforms suggest more). */
+@media (pointer: coarse) {
+  .line-cat-save {
+    height: 32px;
+  }
+  .name-btn {
+    padding-block: 6px;
+  }
+}

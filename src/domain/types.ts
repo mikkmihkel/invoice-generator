@@ -157,6 +157,13 @@ export interface Client extends Party {
   /** Overrides profile default when creating invoices for this client. */
   defaultLanguage?: InvoiceLanguage
   defaultVatScheme?: VatScheme
+  /** Payment term in days for this client's invoices; absent = company default. */
+  paymentTermDays?: number
+  /** Late interest in % per day for this client's invoices; absent = company default, 0 = none. */
+  lateInterestPercentPerDay?: number
+  /** Addresses (comma separated) prefilled in the CC field when e-mailing this client. */
+  emailCc?: string
+  /** Internal note, shown in the editor when the client is picked; never printed. */
   notes?: string
   createdAt: ISODateTime
   updatedAt: ISODateTime
@@ -319,12 +326,25 @@ export interface AppSettings {
   uiLanguage: UiLanguage
   /** Missing means 'auto'. */
   theme?: UiTheme
-  /** Google OAuth 2.0 Web client ID; enables Drive + Gmail features. */
+  /**
+   * The user's own Google OAuth 2.0 Web client ID ("advanced"): overrides the site's built-in client and is the only
+   * way to enable Gmail sending.
+   */
   googleClientId?: string
   /** Automatic backups to Google Drive after changes. Missing means off. */
   autoBackup?: AutoBackupSettings
-  /** Drive folder name for exported PDFs. */
+  /**
+   * Drive folder name for PDFs and backups, found or created by name. Used until the user chooses a folder
+   * (`driveFolder`).
+   */
   driveFolderName: string
+  /**
+   * Drive folder chosen by the user (Google Picker or created by the app), by ID. PDFs go to its subfolder "Arved",
+   * backups to "Varukoopiad".
+   */
+  driveFolder?: DriveFolderChoice
+  /** Upload the PDF of each issued invoice to the chosen Drive folder. Missing means on. */
+  autoSavePdf?: boolean
   /** Try the live e-Business Register autocomplete API in addition to the bundled index. */
   registryLiveLookup: boolean
   updatedAt: ISODateTime
@@ -342,6 +362,18 @@ export interface RegistryCompany {
   address?: Address
   /** Free-text full address as given by the register. */
   addressText?: string
+}
+
+export interface DriveFolderChoice {
+  /** Drive file ID of the folder. */
+  id: string
+  /** Its name when chosen (for display only; the folder may be renamed or moved in Drive). */
+  name: string
+  /**
+   * OAuth client the folder was chosen with. drive.file access is granted per client (Cloud project), so with
+   * another client the folder counts as not chosen.
+   */
+  clientId?: string
 }
 
 export interface AutoBackupSettings {

@@ -49,7 +49,8 @@ export function Segmented<T extends string>({
         <label key={o.value} className={value === o.value ? 'selected' : undefined}>
           <input type="radio" name={name} value={o.value} checked={value === o.value} onChange={() => onChange(o.value)} disabled={disabled} />
           {o.label}
-          {o.count != null && <span className="seg-count">{o.count}</span>}
+          {/* The space keeps "Overdue 2" apart for screen readers (flex layout ignores it visually). */}
+          {o.count != null && <> <span className="seg-count">{o.count}</span></>}
         </label>
       ))}
     </div>
@@ -99,6 +100,8 @@ export function Menu({
   align = 'end',
   small,
   id: triggerId,
+  trigger,
+  triggerClassName,
 }: {
   label: string
   items: MenuItem[]
@@ -109,6 +112,9 @@ export function Menu({
   small?: boolean
   /** Id of the trigger button, so callers can return focus to it. */
   id?: string
+  /** Custom trigger content (e.g. an account chip); `label` stays its accessible name. */
+  trigger?: ReactNode
+  triggerClassName?: string
 }) {
   const [open, setOpen] = useState(false)
   const [place, setPlace] = useState<CSSProperties | undefined>(undefined)
@@ -178,7 +184,7 @@ export function Menu({
         ref={btn}
         id={triggerId}
         type="button"
-        className={text ? 'btn btn-text' : small ? 'icon-btn icon-btn-sm' : 'btn btn-icon'}
+        className={trigger ? triggerClassName : text ? 'btn btn-text' : small ? 'icon-btn icon-btn-sm' : 'btn btn-icon'}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
@@ -187,7 +193,9 @@ export function Menu({
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        {text ? (
+        {trigger ? (
+          trigger
+        ) : text ? (
           <>
             {text}
             <CaretDownIcon size={12} className="menu-caret" />

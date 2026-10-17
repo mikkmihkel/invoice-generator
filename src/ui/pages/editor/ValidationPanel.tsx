@@ -1,5 +1,5 @@
 import { ArrowRightIcon, CaretDownIcon, CheckCircleIcon, InfoIcon, WarningCircleIcon } from '@phosphor-icons/react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ValidationIssue } from '../../../domain'
 import { useApp } from '../../AppContext'
 import { fieldId } from '../../components/fields'
@@ -36,12 +36,41 @@ function roomToExpand(): boolean {
  * The requirements check as one quiet line ("All required details are present. 1 suggestion") that expands
  * into the list of problems. Each problem focuses its field; seller problems link to the company page.
  */
-export function ValidationPanel({ issues, readOnly, summaryId }: { issues: ValidationIssue[]; readOnly?: boolean; summaryId?: string }) {
+export function ValidationPanel({
+  issues,
+  readOnly,
+  summaryId,
+  reveal = 0,
+  calm = false,
+}: {
+  issues: ValidationIssue[]
+  readOnly?: boolean
+  summaryId?: string
+  /** Increase to open the list and move focus to it (e.g. after a blocked attempt to issue). */
+  reveal?: number
+  /** A blank draft: keep the list folded to its count, in a neutral tone, until the user starts. */
+  calm?: boolean
+}) {
   const { t, lang } = useApp()
   const listId = useId()
+  const toggleRef = useRef<HTMLButtonElement>(null)
   const errors = issues.filter((i) => i.severity === 'error')
   const warnings = issues.filter((i) => i.severity === 'warning')
-  const [open, setOpen] = useState(() => errors.length > 0 && roomToExpand())
+  const [open, setOpen] = useState(() => !calm && errors.length > 0 && roomToExpand())
+  // When the user starts filling in the draft, the list opens the way it would have opened from the start.
+  const [wasCalm, setWasCalm] = useState(calm)
+  if (wasCalm !== calm) {
+    setWasCalm(calm)
+    if (!calm) setOpen(errors.length > 0 && roomToExpand())
+  }
+  const [revealed, setRevealed] = useState(reveal)
+  if (revealed !== reveal) {
+    setRevealed(reveal)
+    setOpen(true)
+  }
+  useEffect(() => {
+    if (reveal > 0) toggleRef.current?.focus()
+  }, [reveal])
 
   const suggestions = warnings.length === 1 ? t('editor.checkOneSuggestion') : t('editor.checkSuggestions', { count: warnings.length })
   const summary = errors.length > 0 ? t('issue.errorsSummary', { count: errors.length }) : t('validation.allGood')
@@ -58,14 +87,23 @@ export function ValidationPanel({ issues, readOnly, summaryId }: { issues: Valid
         </p>
       ) : (
         <button
+          ref={toggleRef}
           type="button"
           id={summaryId}
-          className={`check-line check-toggle${errors.length ? ' check-has-errors' : ''}`}
+          className={`check-line check-toggle${errors.length && !calm ? ' check-has-errors' : ''}`}
           aria-expanded={open}
           aria-controls={listId}
           onClick={() => setOpen((o) => !o)}
         >
-          {errors.length ? <WarningCircleIcon size={16} className="check-icon" /> : <CheckCircleIcon size={16} className="check-icon" />}
+          {errors.length ? (
+            calm ? (
+              <InfoIcon size={16} className="check-icon" />
+            ) : (
+              <WarningCircleIcon size={16} className="check-icon" />
+            )
+          ) : (
+            <CheckCircleIcon size={16} className="check-icon" />
+          )}
           <span className="check-text">
             {summary}
             {errors.length === 0 && ' '}

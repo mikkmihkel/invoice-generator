@@ -12,10 +12,15 @@ export interface DialogProps {
   closeLabel?: string
   /** False while an operation is running: Escape, the backdrop and × don't close the dialog. */
   dismissible?: boolean
+  /**
+   * The body is text only (no controls) and may need scrolling on small screens: make it a focusable region named by
+   * the title, so keyboard users can scroll it (WCAG 2.1.1).
+   */
+  focusableBody?: boolean
 }
 
 /** Accessible modal: focus moves in on open, Tab is trapped, Escape closes, focus is restored on close. */
-export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'Close', dismissible = true }: DialogProps) {
+export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'Close', dismissible = true, focusableBody }: DialogProps) {
   const titleId = useId()
   const ref = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
@@ -71,7 +76,13 @@ export function Dialog({ title, onClose, children, footer, wide, closeLabel = 'C
             <XIcon size={18} />
           </button>
         </div>
-        <div className="dialog-body">{children}</div>
+        {focusableBody ? (
+          <div className="dialog-body" tabIndex={0} role="region" aria-labelledby={titleId}>
+            {children}
+          </div>
+        ) : (
+          <div className="dialog-body">{children}</div>
+        )}
         {footer && <div className="dialog-foot">{footer}</div>}
       </div>
     </div>

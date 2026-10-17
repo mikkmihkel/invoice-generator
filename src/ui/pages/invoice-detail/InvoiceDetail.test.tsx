@@ -162,6 +162,23 @@ describe('selected invoice', () => {
     expect((within(dialog).getByLabelText('Sõnum') as HTMLTextAreaElement).value).not.toContain('viivis')
   })
 
+  it('offers "Mark paid" as a button beside the reminder (shown on phones instead of the status-line link)', async () => {
+    const inv = invoice({ issueDate: addDaysISO(today, -30), dueDate: addDaysISO(today, -16) })
+    const repo = createMemoryRepo({ profile, invoices: [inv] })
+    renderAt('#/', repo)
+    const article = await doc()
+    const group = actions(article)
+    expect(within(group).getByRole('button', { name: 'Saada meeldetuletus' })).toHaveClass('btn-primary')
+    const paid = within(group).getByRole('button', { name: 'Märgi tasutuks' })
+    expect(paid).toHaveClass('btn', 'doc-paid-btn')
+    expect(paid).not.toHaveClass('btn-primary')
+    expect(article.querySelector('.doc-status .doc-paid-link')).toHaveTextContent('Märgi tasutuks')
+    await act(async () => {
+      fireEvent.click(paid)
+    })
+    expect(repo.markInvoicePaid).toHaveBeenCalledWith(inv.id, today)
+  })
+
   it('states the late interest, logs reminders and makes the second one firmer', async () => {
     const inv = invoice({ issueDate: addDaysISO(today, -30), dueDate: addDaysISO(today, -16), lateInterestPercentPerDay: 0.05 })
     const first = addDaysISO(today, -9)
@@ -178,6 +195,12 @@ describe('selected invoice', () => {
     expect(body).toContain('Arvel kokku lepitud viivis on 0,05% päevas. Makse on hilinenud 16 päeva ja tänaseks on viivist kogunenud 11,85 €.')
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Ava e-posti rakendus' }))
+    })
+    // The mail app may not have sent it: the detail asks instead of recording the reminder by itself.
+    expect(repo.addInvoiceEvent).not.toHaveBeenCalled()
+    const prompt = (await within(article).findByText('Kas saatsid meeldetuletuse kliendile?')).closest('.sent-prompt') as HTMLElement
+    await act(async () => {
+      fireEvent.click(within(prompt).getByRole('button', { name: 'Märgi saadetuks' }))
     })
     expect(repo.addInvoiceEvent).toHaveBeenCalledWith(expect.objectContaining({ invoiceId: inv.id, kind: 'reminder' }))
     expect(await within(article).findByText(/^Meeldetuletused: \d{2}\.\d{2}\.\d{4}, \d{2}\.\d{2}\.\d{4}$/)).toBeInTheDocument()
@@ -204,16 +227,29 @@ describe('selected invoice', () => {
     const repo = createMemoryRepo({ profile, invoices: [inv], events: [{ id: 's', invoiceId: inv.id, kind: 'sent', at: new Date().toISOString() }] })
     renderAt('#/', repo)
     const article = await doc()
+    // The sent event loads after the first render; only then is "Mark paid" the main action.
+    const primary = () =>
+      waitFor(
+        () => {
+          const b = actions(article).querySelector<HTMLButtonElement>('.btn-primary')
+          expect(b).toHaveTextContent('Märgi tasutuks')
+          return b!
+        },
+        { timeout: 3000 },
+      )
+    const paid = await primary()
     await act(async () => {
-      fireEvent.click(await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }))
+      fireEvent.click(paid)
     })
+    const undo = await screen.findByRole('button', { name: 'Võta tagasi' })
     await act(async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Võta tagasi' }))
+      fireEvent.click(undo)
     })
     expect(repo.markInvoiceUnpaid).toHaveBeenCalledWith(inv.id)
     expect(await screen.findByText('Arve 2026-0004 on jälle tasumata.')).toBeInTheDocument()
+    const again = await primary()
     await act(async () => {
-      fireEvent.click(await within(actions(article)).findByRole('button', { name: 'Märgi tasutuks' }))
+      fireEvent.click(again)
     })
     fireEvent.click(await within(article).findByRole('button', { name: 'muuda kuupäeva' }))
     const dialog = await screen.findByRole('dialog', { name: 'Arve 2026-0004 laekumise kuupäev' })
@@ -233,9 +269,11 @@ describe('selected invoice', () => {
     fireEvent.click(within(article).getByRole('button', { name: 'Rohkem' }))
     const menu = screen.getByRole('menu')
     expect(within(menu).getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
+      'Märgi saadetuks',
       'Salvesta Drive’i',
       'E-arve (XML)',
       'Prindi',
+      'Kopeeri makseandmed',
       'Ava muutmiseks',
       'Tee koopia',
       'Koosta kreeditarve',
@@ -587,6 +625,6 @@ describe('recurring source cancelled', () => {
     await act(async () => {
       fireEvent.change(select, { target: { value: 'none' } })
     })
-    await waitFor(() => expect(repo.saveRecurringRule).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', active: false })))
+    await waitFor(() => expect(repo.deleteRecurringRule).toHaveBeenCalledWith('r1'))
   })
 })

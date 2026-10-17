@@ -80,6 +80,8 @@ export const LOGO_DATA_URL = /^data:image\/(png|jpe?g);base64,[A-Za-z0-9+/=]+$/
 /** Only plain hex colours: anything else (e.g. url(...)) would reach CSS custom properties. */
 export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
 export const GOOGLE_CLIENT_ID = /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/
+/** A Google Drive file or folder ID. */
+export const DRIVE_ID = /^[A-Za-z0-9_-]{8,128}$/
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -344,6 +346,10 @@ function checkClient(r: Record<string, unknown>): Text | null {
   c.oneOf('kind', { et: 'kliendi liik', en: 'client kind' }, CLIENT_KINDS)
   c.address('address', { et: 'aadress', en: 'address' })
   c.optStr('createdAt', { et: 'loomise aeg', en: 'creation time' })
+  // Per-client invoice defaults (optional; older backups have none).
+  c.optNum('paymentTermDays', { et: 'kliendi maksetingimus', en: 'client payment term' })
+  c.optNum('lateInterestPercentPerDay', { et: 'kliendi viivis', en: 'client late interest' })
+  c.optStr('emailCc', { et: 'kliendi e-kirja koopia (CC)', en: 'client e-mail CC' })
   return c.problem
 }
 
@@ -402,6 +408,16 @@ function checkSettings(r: Record<string, unknown>): Text | null {
   c.optOneOf('theme', { et: 'välimus', en: 'theme' }, ['auto', 'light', 'dark'])
   c.optMatch('googleClientId', { et: 'Google’i kliendi ID', en: 'Google client ID' }, GOOGLE_CLIENT_ID)
   c.optStr('driveFolderName', { et: 'Drive’i kausta nimi', en: 'Drive folder name' })
+  if (!absent(r.driveFolder)) {
+    const f = c.obj('driveFolder', { et: 'Drive’i kaust', en: 'Drive folder' })
+    // The ID ends up in Drive queries and links: plain Drive ID characters only.
+    if (f && c.str('id', { et: 'Drive’i kausta ID', en: 'Drive folder ID' }, false, f)) {
+      c.optMatch('id', { et: 'Drive’i kausta ID', en: 'Drive folder ID' }, DRIVE_ID, f)
+    }
+    if (f) c.str('name', { et: 'Drive’i kausta nimi', en: 'Drive folder name' }, true, f)
+    if (f) c.optMatch('clientId', { et: 'Drive’i kausta kliendi ID', en: 'Drive folder client ID' }, GOOGLE_CLIENT_ID, f)
+  }
+  c.optBool('autoSavePdf', { et: 'PDF-failide automaatne salvestamine', en: 'automatic PDF saving' })
   c.optBool('registryLiveLookup', { et: 'registri otsingu seade', en: 'registry lookup setting' })
   c.optStr('updatedAt', { et: 'muutmise aeg', en: 'modification time' })
   if (!absent(r.autoBackup)) {
@@ -473,7 +489,7 @@ function checkRecords(
   list.forEach((r, i) => {
     const label = what.one(i + 1, r)
     const fail = (p: Text): never => {
-      throw new BackupFormatError(`Varukoopia ${label.et} on vigane: ${p.et}.`, `Backup ${label.en} is invalid: ${p.en}.`)
+      throw new BackupFormatError(`Varukoopias on vigane ${label.et}: ${p.et}.`, `Backup ${label.en} is invalid: ${p.en}.`)
     }
     if (!isObject(r)) fail({ et: 'kirje ei ole objekt', en: 'the record is not an object' })
     const rec = r as Record<string, unknown>
@@ -503,7 +519,7 @@ export function validateBackup(data: unknown): BackupFile {
   checkTree(data)
   checkRecords(
     data.clients,
-    { et: 'kliendid', en: 'clients', one: (n) => ({ et: `klient nr ${n}`, en: `client #${n}` }) },
+    { et: 'kliendid', en: 'clients', one: (n) => ({ et: `klientide ${n}. kirje`, en: `entry ${n} in the client list` }) },
     checkClient,
   )
   checkRecords(
@@ -513,7 +529,7 @@ export function validateBackup(data: unknown): BackupFile {
       en: 'invoices',
       one: (n, r) => {
         const num = isObject(r) && typeof r.number === 'string' && r.number ? ` (${r.number})` : ''
-        return { et: `arve nr ${n}${num}`, en: `invoice #${n}${num}` }
+        return { et: `arvete ${n}. kirje${num}`, en: `entry ${n} in the invoice list${num}` }
       },
     },
     checkInvoice,
@@ -522,21 +538,21 @@ export function validateBackup(data: unknown): BackupFile {
   if (!absent(data.products)) {
     checkRecords(
       data.products,
-      { et: 'tooted ja teenused', en: 'products', one: (n) => ({ et: `toode nr ${n}`, en: `product #${n}` }) },
+      { et: 'tooted ja teenused', en: 'products', one: (n) => ({ et: `toodete ${n}. kirje`, en: `entry ${n} in the product list` }) },
       checkProduct,
     )
   }
   if (!absent(data.recurringRules)) {
     checkRecords(
       data.recurringRules,
-      { et: 'korduvarvete reeglid', en: 'recurring rules', one: (n) => ({ et: `korduvarve reegel nr ${n}`, en: `recurring rule #${n}` }) },
+      { et: 'korduvarvete reeglid', en: 'recurring rules', one: (n) => ({ et: `korduvarvete reeglite ${n}. kirje`, en: `entry ${n} in the recurring rules` }) },
       checkRecurringRule,
     )
   }
   if (!absent(data.events)) {
     checkRecords(
       data.events,
-      { et: 'arvete sündmused', en: 'invoice events', one: (n) => ({ et: `sündmus nr ${n}`, en: `event #${n}` }) },
+      { et: 'arvete sündmused', en: 'invoice events', one: (n) => ({ et: `arvete sündmuste ${n}. kirje`, en: `entry ${n} in the invoice events` }) },
       checkEvent,
       false,
     )
@@ -544,7 +560,7 @@ export function validateBackup(data: unknown): BackupFile {
   if (!absent(data.deleted)) {
     checkRecords(
       data.deleted,
-      { et: 'kustutatud dokumendid', en: 'deleted documents', one: (n) => ({ et: `kustutatud dokumendi kirje nr ${n}`, en: `deleted document record #${n}` }) },
+      { et: 'kustutatud dokumendid', en: 'deleted documents', one: (n) => ({ et: `kustutatud dokumentide ${n}. kirje`, en: `entry ${n} in the deleted documents` }) },
       checkDeletionRecord,
       false,
     )

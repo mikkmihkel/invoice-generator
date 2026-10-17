@@ -83,7 +83,7 @@ describe('automatic backup settings', () => {
     google.append(input)
     document.body.append(google)
     setup({ googleClientId: undefined })
-    expect(await screen.findByText(/lisa jaotises „Google Drive ja Gmail“ oma OAuth-kliendi ID/)).toBeInTheDocument()
+    expect(await screen.findByText(/lisa jaotises „Google’i konto ja Drive“ oma OAuth-kliendi ID/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Ava Google’i seaded' }))
     expect(input).toHaveFocus()
     expect(window.location.hash).toBe('#/settings')

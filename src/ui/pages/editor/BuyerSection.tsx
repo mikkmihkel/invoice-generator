@@ -1,8 +1,8 @@
 import { ArrowsLeftRightIcon, MagnifyingGlassIcon, PencilSimpleIcon, UserPlusIcon } from '@phosphor-icons/react'
 import { Fragment, useId, useMemo, useRef, useState } from 'react'
-import type { BuyerSnapshot, Client, RegistryCompany } from '../../../domain'
+import { vatSchemeRequiresBuyerVat, type BuyerSnapshot, type Client, type RegistryCompany, type VatScheme } from '../../../domain'
 import { useApp } from '../../AppContext'
-import { RegistryAttribution, RegistryResult } from '../../components/CompanySearch'
+import { RegistryAttribution, RegistryResult, RegistryRetry } from '../../components/CompanySearch'
 import { fieldId, TextField } from '../../components/fields'
 import { PartyFields } from '../../components/PartyFields'
 import { VatNumberCheck } from '../../components/VatNumberCheck'
@@ -18,6 +18,10 @@ interface Props {
   disabled?: boolean
   /** Show the editable fields (e.g. when validation flags a buyer field). */
   forceEdit?: boolean
+  /** Focus the client search when it appears (a new invoice), without opening its list. */
+  autoFocus?: boolean
+  /** Decides whether a doubtful buyer VAT number blocks issuing, so the field shows it with the checklist's severity. */
+  vatScheme?: VatScheme
 }
 
 /** The chosen buyer as a short definition list, the way it will read on the invoice. */
@@ -58,13 +62,27 @@ const norm = (s: string | undefined) => (s ?? '').toLowerCase()
  * One search box for the buyer: saved clients match instantly, the e-Business Register is searched
  * as you type (from 2 characters). Picking a register company also saves it as a client.
  */
-function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient: (c: Client) => void; onPickRegistry: (r: RegistryCompany) => void; autoFocus?: boolean }) {
+function BuyerPicker({
+  onPickClient,
+  onPickRegistry,
+  autoFocus,
+  quiet,
+}: {
+  onPickClient: (c: Client) => void
+  onPickRegistry: (r: RegistryCompany) => void
+  autoFocus?: boolean
+  /** The automatic focus does not open the list (it opens on typing, ↓ or a later focus). */
+  quiet?: boolean
+}) {
   const { t, lang, clients } = useApp()
   const listId = useId() + '-list'
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
+  const quietFocus = useRef(!!(autoFocus && quiet))
   const [active, setActive] = useState(0)
   const registry = useRegistrySearch(query)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const registryDown = registry.unavailable && registry.searched && !registry.loading && query.trim().length >= 2
   const { pick: pickRegistry, picking } = useRegistryPick((c) => {
     setQuery('')
     setOpen(false)
@@ -79,7 +97,19 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
   const savedCodes = useMemo(() => new Set(clients.map((c) => c.registryCode).filter(Boolean)), [clients])
   const fromRegistry = registry.results.filter((r) => !savedCodes.has(r.registryCode)).slice(0, 8)
   const options: PickerOption[] = [...saved.map((client) => ({ kind: 'client' as const, client })), ...fromRegistry.map((company) => ({ kind: 'registry' as const, company }))]
-  const show = open && (options.length > 0 || q.length >= 2)
+  // The popup holds options only; "nothing found" and "could not search" are shown under the field, where the
+  // retry button stays clickable and the listbox is never left without options.
+  const show = open && options.length > 0
+  const empty = options.length === 0 && q.length >= 2 && !registry.loading && (registry.searched || registry.failed)
+  const hint = empty
+    ? registry.failed
+      ? t('registry.failed')
+      : registryDown
+        ? t('registry.unavailable')
+        : t('buyer.noMatches')
+    : registryDown
+      ? t('registry.unavailablePartial')
+      : t('buyer.pickerHint')
   // The highlighted option stays within the current list as results change.
   const activeIdx = Math.max(0, Math.min(active, options.length - 1))
 
@@ -142,6 +172,7 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
       <div className="combo-input">
         <MagnifyingGlassIcon className="combo-icon" />
         <input
+          ref={inputRef}
           id={fieldId('buyer')}
           type="search"
           role="combobox"
@@ -159,7 +190,10 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
             setActive(0)
             setOpen(true)
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (quietFocus.current) quietFocus.current = false
+            else setOpen(true)
+          }}
           onBlur={() => setOpen(false)}
           onKeyDown={onKeyDown}
         />
@@ -180,21 +214,24 @@ function BuyerPicker({ onPickClient, onPickRegistry, autoFocus }: { onPickClient
               {renderOption(o, i)}
             </Fragment>
           ))}
-          {options.length === 0 && q.length >= 2 && !registry.loading && (
-            <li role="presentation" className="combo-empty">
-              {registry.failed ? t('registry.failed') : t('buyer.noMatches')}
-            </li>
-          )}
         </ul>
       </div>
-      <div className="field-hint" id={fieldId('buyer') + '-hint'}>
-        {t('buyer.pickerHint')}
+      <div className={`field-hint${empty && (registryDown || registry.failed) ? ' tone-warn' : ''}`} id={fieldId('buyer') + '-hint'} aria-live="polite">
+        {hint}
       </div>
+      {registryDown && (
+        <RegistryRetry
+          onRetry={() => {
+            registry.retry()
+            inputRef.current?.focus()
+          }}
+        />
+      )}
     </div>
   )
 }
 
-export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdit }: Props) {
+export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdit, autoFocus, vatScheme }: Props) {
   const { t, lang, clients, saveClient } = useApp()
   const toast = useToast()
   const [newClient, setNewClient] = useState(false)
@@ -237,7 +274,7 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
     <div className="buyer">
       {picking && (
         <>
-          <BuyerPicker onPickClient={pickClient} onPickRegistry={(r) => void fromRegister(r)} autoFocus={changing} />
+          <BuyerPicker onPickClient={pickClient} onPickRegistry={(r) => void fromRegister(r)} autoFocus={changing || autoFocus} quiet={!changing} />
           <div className="buyer-alt">
             <button type="button" className="ed-text-btn" onClick={() => setNewClient(true)}>
               <UserPlusIcon />
@@ -304,6 +341,7 @@ export function BuyerSection({ buyer, onChange, onPickClient, disabled, forceEdi
             pathPrefix="buyer"
             person={buyer.kind === 'person'}
             codeAsWarning
+            vatAsWarning={!vatScheme || !vatSchemeRequiresBuyerVat(vatScheme)}
             vatExtra={buyer.vatNumber && <VatNumberCheck vatNumber={buyer.vatNumber} />}
           />
           <div className="grid">

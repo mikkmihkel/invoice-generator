@@ -5,17 +5,21 @@ import {
   BellRingingIcon,
   CalendarCheckIcon,
   CheckIcon,
+  ClipboardTextIcon,
   CloudArrowUpIcon,
   CopyIcon,
   DownloadSimpleIcon,
   EnvelopeSimpleIcon,
   FileCodeIcon,
+  FilePlusIcon,
   FileTextIcon,
   LockSimpleIcon,
+  PaperPlaneTiltIcon,
   PencilSimpleIcon,
   PrinterIcon,
   ProhibitIcon,
   TrashIcon,
+  XIcon,
 } from '@phosphor-icons/react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -23,19 +27,22 @@ import { computeTotals, holdsNumber, selectedBankAccounts, textRows, type Invoic
 import { quoteStatus } from '../../../domain/quote'
 import { TEMPLATES } from '../../../pdf'
 import { useApp } from '../../AppContext'
-import { Menu, type MenuItem } from '../../components/ui'
+import { IconButton, Menu, type MenuItem } from '../../components/ui'
 import { formatDate, formatIban, formatMoney, formatNumber } from '../../format'
 import { pick, type MessageKey } from '../../i18n'
 import { daysBetween, displayStatus, effectiveInvoice, formatAddress, isUnpaid, localTodayISO } from '../../util'
+import { savedClientOf } from '../editor/builders'
 import { EmailDialog } from '../editor/EmailDialog'
 import { RecurringControl } from '../editor/RecurringControl'
 import { CancelInvoiceDialog, DeleteInvoiceDialog, MarkPaidDialog } from '../editor/StatusDialogs'
 import { QuoteActions } from '../quotes/QuoteActions'
 import { useInvoiceEvents } from './events'
+import { hasPaymentDetails, useCopyPaymentDetails } from './paymentDetails'
 import { PdfPage } from './PdfPage'
-import { detailStatus, docNoun, quoteDetailStatus, settlementOf } from './status'
+import { detailStatus, docNoun, quoteDetailStatus, REMIND_AGAIN_DAYS, settlementOf } from './status'
 import { interpolate } from './text'
 import { LockNote } from './LockNote'
+import { canMarkSent, sentPromptKey, useMarkSent, type SentKind } from './markSent'
 import { useCanReopen, useInvoiceActions } from './useInvoiceActions'
 
 const PAGE_KEY = 'invoice-generator:detailPage'
@@ -63,20 +70,32 @@ function Facts({ rows }: { rows: [string, ReactNode][] }) {
 
 type Dialog = null | 'paid' | 'paidDate' | 'cancel' | 'email' | 'reminder' | 'delete'
 
-/** After a reminder, wait this many days before offering the next one as the main action. */
-const REMIND_AGAIN_DAYS = 7
-
 /** The selected invoice, typeset like a document, with one status-dependent primary action. */
 export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBack?: boolean }) {
-  const { t, lang, profile, invoices } = useApp()
+  const { t, lang, profile, invoices, clients } = useApp()
   const navigate = useNavigate()
   const [dialog, setDialog] = useState<Dialog>(null)
   const [showPage, setShowPage] = useState(initialShowPage)
   const effective = useMemo(() => effectiveInvoice(invoice, profile), [invoice, profile])
   const totals = useMemo(() => computeTotals(invoice), [invoice])
-  const actions = useInvoiceActions(invoice, effective)
+  // After a download, print, Drive save or the mail app the app cannot tell whether the client got it: ask (one line,
+  // no dialog).
+  const [ask, setAsk] = useState<SentKind | null>(null)
+  const actions = useInvoiceActions(invoice, effective, { onShared: () => setAsk('sent') })
+  const copyPayment = useCopyPaymentDetails()
   const history = useInvoiceEvents(invoice.id)
   const sentAt = history.sentAt
+  const sendable = canMarkSent(invoice, history.events)
+  const markSentNow = useMarkSent()
+  const [marking, setMarking] = useState(false)
+  const markSent = async (kind: SentKind = 'sent') => {
+    setMarking(true)
+    try {
+      if (await markSentNow(invoice, kind)) setAsk(null)
+    } finally {
+      setMarking(false)
+    }
+  }
   const today = localTodayISO()
   const draft = invoice.status === 'draft'
   const numbered = holdsNumber(invoice)
@@ -88,7 +107,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   const lastReminder = history.reminders[history.reminders.length - 1]
   const remindedRecently = !!lastReminder && daysBetween(lastReminder, today) < REMIND_AGAIN_DAYS
   const settle = useMemo(() => settlementOf(invoice, invoices), [invoice, invoices])
-  const busy = actions.busy !== null
+  const busy = actions.busy !== null || marking
   const cur = invoice.currency
 
   const togglePage = () => {
@@ -120,13 +139,17 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
   // ---- everything else, in one menu ---------------------------------------------
   const items: MenuItem[] = []
   if (!draft && invoice.status !== 'cancelled' && primary?.kind !== 'email') items.push({ key: 'email', label: t('actions.email'), icon: <EnvelopeSimpleIcon />, onSelect: () => setDialog('email') })
+  if (sendable) items.push({ key: 'sent', label: t('sent.mark'), icon: <PaperPlaneTiltIcon />, onSelect: () => void markSent() })
   if (status === 'overdue' && primary?.kind !== 'remind')
     items.push({ key: 'remind', label: t(history.reminders.length ? 'reminder.again' : 'detail.remind'), icon: <BellRingingIcon />, onSelect: () => setDialog('reminder') })
   if (!draft) items.push({ key: 'drive', label: t('actions.drive'), icon: <CloudArrowUpIcon />, onSelect: () => void actions.saveToDrive() })
   if (!draft && !quote) items.push({ key: 'xml', label: t('actions.downloadXml'), icon: <FileCodeIcon />, onSelect: () => void actions.downloadXml() })
   items.push({ key: 'print', label: t('actions.print'), icon: <PrinterIcon />, onSelect: () => void actions.print() })
+  if (hasPaymentDetails(invoice, invoices)) items.push({ key: 'copyPayment', label: t('actions.copyPayment'), icon: <ClipboardTextIcon />, onSelect: () => void copyPayment(effective) })
   if (canReopen) items.push({ key: 'reopen', label: t('reopen.action'), icon: <PencilSimpleIcon />, separatorBefore: true, onSelect: () => void actions.reopen() })
   items.push({ key: 'duplicate', label: t('actions.duplicate'), icon: <CopyIcon />, separatorBefore: !canReopen, onSelect: () => void actions.duplicate() })
+  const client = savedClientOf(invoice, clients)
+  if (client) items.push({ key: 'newForClient', label: t('actions.newForClient'), icon: <FilePlusIcon />, onSelect: () => navigate(`/invoices/new?client=${encodeURIComponent(client.id)}`) })
   if (!draft && !credit && !quote && invoice.status !== 'cancelled' && !settle.settled) items.push({ key: 'credit', label: t('actions.creditNote'), icon: <ArrowUUpLeftIcon />, onSelect: () => void actions.creditNote() })
   if (unpaid) items.push({ key: 'paidOn', label: t('payment.otherDate'), icon: <CalendarCheckIcon />, onSelect: () => setDialog('paid') })
   if (invoice.status === 'paid') items.push({ key: 'unpaid', label: t('actions.markUnpaid'), icon: <ArrowCounterClockwiseIcon />, onSelect: () => void actions.markUnpaid() })
@@ -218,7 +241,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
       </>,
     ])
   payRows.push([t('detail.vat'), t(`vat.scheme.${invoice.vatScheme}` as MessageKey)])
-  payRows.push([t('detail.design'), [template ? pick(template.name, lang) : invoice.templateId, t(`lang.${invoice.language}` as MessageKey).toLowerCase()].filter(Boolean).join(', ')])
+  payRows.push([t('detail.design'), [template ? pick(template.name, lang) : invoice.templateId, lang === 'et' ? t(`lang.${invoice.language}` as MessageKey).toLowerCase() : t(`lang.${invoice.language}` as MessageKey)].filter(Boolean).join(', ')])
 
   return (
     <article className="doc" aria-labelledby="doc-title">
@@ -242,12 +265,12 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
             )}
             {tail.length > 0 && <>, {tail.join(', ')}</>}
             {unpaid && primary?.kind !== 'paid' && (
-              <>
+              <span className="doc-paid-link">
                 {'. '}
                 <button type="button" className="link-btn" onClick={() => void actions.markPaid()} disabled={busy}>
                   {t('actions.markPaid')}
                 </button>
-              </>
+              </span>
             )}
             {invoice.status === 'paid' && (
               <>
@@ -284,6 +307,13 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
               {primary.label}
             </button>
           ))}
+        {unpaid && primary?.kind !== 'paid' && (
+          // Phones: a real button instead of the small link in the status line (hidden on wider screens).
+          <button type="button" className="btn doc-paid-btn" onClick={() => void actions.markPaid()} disabled={busy}>
+            <CheckIcon />
+            {t('actions.markPaid')}
+          </button>
+        )}
         <button
           type="button"
           className="btn btn-text"
@@ -301,6 +331,18 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           {t(quote ? 'quote.showPage' : 'detail.showPage')}
         </button>
       </div>
+      {(ask === 'reminder' || (ask === 'sent' && sendable)) && (
+        <div className="sent-prompt" role="status">
+          <PaperPlaneTiltIcon className="sent-prompt-icon" />
+          <p>
+            {t(sentPromptKey(invoice.type, ask))}{' '}
+            <button type="button" className="link-btn" onClick={() => void markSent(ask)} disabled={busy}>
+              {t('sent.mark')}
+            </button>
+          </p>
+          <IconButton label={t('common.close')} icon={<XIcon size={14} />} className="icon-btn-sm" onClick={() => setAsk(null)} />
+        </div>
+      )}
 
       {showPage ? (
         <PdfPage invoice={effective} cacheKey={`${invoice.id}:${invoice.updatedAt}:${draft ? (profile?.updatedAt ?? '') : ''}`} />
@@ -470,6 +512,7 @@ export function InvoiceDetail({ invoice, showBack }: { invoice: Invoice; showBac
           invoice={effective}
           kind={dialog === 'reminder' ? 'reminder' : 'invoice'}
           previousReminders={history.reminders.length}
+          onHandedOff={setAsk}
           onClose={() => setDialog(null)}
         />
       )}

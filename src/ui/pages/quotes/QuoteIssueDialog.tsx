@@ -3,6 +3,8 @@ import { useApp } from '../../AppContext'
 import { Dialog } from '../../components/Dialog'
 import { CheckboxField } from '../../components/fields'
 import { formatDate } from '../../format'
+import type { ValidationIssue } from '../../../domain'
+import { IssueWarnings } from '../editor/IssueWarnings'
 
 /** A quote dated before today: the dates "set to today" would give it. */
 export interface StaleQuoteDate {
@@ -24,7 +26,7 @@ export function QuoteIssueDialog({
   predictedNumber: string
   /** A reopened quote is issued again under its own number. */
   keepsNumber?: boolean
-  warnings: number
+  warnings: ValidationIssue[]
   stale?: StaleQuoteDate | null
   onClose: () => void
   /** `useToday` = move the quote date to today before issuing. */
@@ -75,7 +77,7 @@ export function QuoteIssueDialog({
       )}
       <p>{t(keepsNumber ? 'reopen.issueNumber' : 'quote.issueText', { number })}</p>
       <p className="muted small">{t('quote.issueHint')}</p>
-      {warnings > 0 && <p className="notice notice-warn">{t('quote.issueWarnings', { count: warnings })}</p>}
+      <IssueWarnings warnings={warnings} summary={t(warnings.length === 1 ? 'quote.issueWarningsOne' : 'quote.issueWarnings', { count: warnings.length })} />
     </Dialog>
   )
 }

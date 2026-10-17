@@ -1,0 +1,235 @@
+/* Google sign-in and Drive: account chip, Drive nudge, onboarding step, Settings section. */
+
+/* ---------- Account chip (top bar) ---------- */
+
+.acct {
+  flex: none;
+  min-width: 0;
+}
+.acct-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  height: var(--h-control);
+  padding: 0 10px 0 3px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.acct-chip:hover,
+.acct-chip[aria-expanded='true'] {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.acct-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: 50%;
+}
+/* Remembered but not connected in this session: a quiet ring instead of the filled accent. */
+.acct-idle .acct-avatar {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-soft-border);
+}
+.acct-email {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---------- "Keep it in your Drive" nudge ---------- */
+
+.drive-nudge {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-10) var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--r-md);
+}
+main > .drive-nudge {
+  max-width: 1200px;
+  margin: 0 auto var(--s-5);
+}
+.drive-nudge-icon {
+  flex: none;
+  padding-top: 1px;
+  color: var(--accent-text);
+}
+.drive-nudge-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.drive-nudge-text strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.drive-nudge-cta {
+  margin-top: var(--s-2);
+}
+.drive-nudge-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+/* Shown while the Google Picker loads (our dialog is closed meanwhile so nothing covers the picker). */
+.drive-picking {
+  position: fixed;
+  z-index: 90;
+  top: calc(var(--topbar-h) + var(--s-4));
+  left: 50%;
+  padding: 8px 14px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-overlay);
+  transform: translateX(-50%);
+}
+
+/* ---------- Onboarding ---------- */
+
+.stepper.stepper-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.onb-drive {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-6);
+}
+.onb-benefits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.onb-benefits li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.onb-benefits svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent-text);
+}
+.onb-drive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* ---------- Settings ---------- */
+
+.drive-folder-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+.google-advanced {
+  margin-top: var(--s-4);
+  padding: 6px var(--s-4);
+}
+.google-advanced[open] {
+  padding-bottom: var(--s-4);
+}
+.google-advanced > .disclosure-body {
+  padding-top: var(--s-2);
+}
+
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 1199px) {
+  /* Initial only where the top bar is busy; the address is in the menu. */
+  .acct-chip {
+    padding: 0 3px;
+    border-color: transparent;
+  }
+  .acct-email {
+    display: none;
+  }
+}
+
+/* Four onboarding steps do not fit side by side on a phone: numbers for the others, the name of the current one. */
+@media (max-width: 639px) {
+  .stepper.stepper-4 {
+    display: flex;
+  }
+  .stepper-4 li {
+    flex: 0 0 40px;
+  }
+  .stepper-4 li.stepper-current {
+    flex: 1 1 auto;
+  }
+  .stepper-4 li:not(.stepper-current) .stepper-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 767px) {
+  .acct-chip {
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+  }
+  .acct-avatar {
+    width: 30px;
+    height: 30px;
+  }
+  .drive-nudge {
+    padding-right: var(--s-12);
+  }
+  .drive-nudge-cta {
+    height: 44px;
+  }
+  .drive-nudge-close {
+    top: 2px;
+    right: 2px;
+    width: 44px;
+    height: 44px;
+  }
+  .onb-drive {
+    padding: var(--s-4);
+  }
+  .onb-drive-actions .btn {
+    flex: 1 1 auto;
+    height: 44px;
+  }
+}

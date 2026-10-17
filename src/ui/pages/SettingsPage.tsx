@@ -1,16 +1,18 @@
-import { ArrowSquareOutIcon, CheckCircleIcon, CircleIcon, CloudArrowDownIcon, CloudArrowUpIcon, DownloadSimpleIcon, PlugsConnectedIcon, ShieldCheckIcon, SignOutIcon, UploadSimpleIcon } from '@phosphor-icons/react'
+import { ArrowSquareOutIcon, CloudArrowDownIcon, CloudArrowUpIcon, DownloadSimpleIcon, ShieldCheckIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
 import type { BackupFile } from '../../domain'
 import { RegistryAttribution } from '../components/CompanySearch'
-import { backupToDrive, clearDeletedDocuments, downloadBlob, getGoogleStatus, googleSignIn, googleSignOut, restoreFromDrive, type GoogleStatus } from '../../integrations'
+import { backupToDrive, clearDeletedDocuments, downloadBlob, googleSignIn, restoreFromDrive } from '../../integrations'
+import { driveFolderLabel, driveFolderRef, effectiveClientId } from '../../integrations/googleClient'
 import { getIndexInfo, type RegistryIndexInfo } from '../../registry'
 import { backupFileName, requestPersistentStorage, serializeBackup } from '../../storage'
 import { useApp } from '../AppContext'
 import { BackupSection } from './settings/BackupSection'
 import ExportSection from './settings/ExportSection'
-import { backupContents, GOOGLE_CLIENT_ID_RE, keepClientId, paymentDetailChanges, readBackupText } from './backupReview'
+import { GoogleSection } from './settings/GoogleSection'
+import { backupContents, changesHeading, keepClientId, keepDriveFolder, paymentDetailChanges, readBackupText } from './backupReview'
 import { Dialog, useConfirm } from '../components/Dialog'
-import { CheckboxField, TextField } from '../components/fields'
+import { CheckboxField } from '../components/fields'
 import { Section } from '../components/misc'
 import { Segmented } from '../components/ui'
 import { formatDateTime } from '../format'
@@ -42,7 +44,7 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
     }
     setBusy(true)
     try {
-      const res = await repo.importBackup(importClientId ? backup : keepClientId(backup, settings.googleClientId), mode)
+      const res = await repo.importBackup(keepDriveFolder(importClientId ? backup : keepClientId(backup, settings.googleClientId), settings), mode)
       // The deletions recorded here belong to the data that was just replaced.
       if (mode === 'replace') clearDeletedDocuments()
       await reload()
@@ -83,8 +85,8 @@ export function ImportBackupDialog({ backup, onClose }: { backup: BackupFile; on
       </ul>
       {changes.length > 0 && (
         <div className="notice notice-warn backup-changes">
-          <strong>{t('backup.changesTitle')}</strong>
-          <p className="small">{t('backup.changesIntro')}</p>
+          <strong>{changesHeading(changes, t).title}</strong>
+          <p className="small">{changesHeading(changes, t).intro}</p>
           <dl className="change-list">
             {changes.map((c) => (
               <div key={c.field}>
@@ -139,17 +141,11 @@ export function BackupImport({ compact }: { compact?: boolean }) {
 export default function SettingsPage() {
   const { t, settings, saveSettings, repo, lang } = useApp()
   const toast = useToast()
-  const [clientId, setClientId] = useState(settings.googleClientId ?? '')
-  const [folder, setFolder] = useState(settings.driveFolderName)
-  const [google, setGoogle] = useState<GoogleStatus>(() => getGoogleStatus(settings.googleClientId))
   const [lastBackup, setLastBackup] = useState(getLastBackupAt)
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const [indexInfo, setIndexInfo] = useState<RegistryIndexInfo | null | 'loading'>('loading')
   const [busy, setBusy] = useState<string | null>(null)
   const [driveBackup, setDriveBackup] = useState<BackupFile | null>(null)
-
-  useEffect(() => setClientId(settings.googleClientId ?? ''), [settings.googleClientId])
-  useEffect(() => setFolder(settings.driveFolderName), [settings.driveFolderName])
 
   useEffect(() => {
     let alive = true
@@ -176,31 +172,6 @@ export default function SettingsPage() {
     }
   }
 
-  const clientIdError = clientId.trim() && !GOOGLE_CLIENT_ID_RE.test(clientId.trim()) ? t('google.clientIdInvalid') : undefined
-
-  const saveGoogle = () =>
-    withBusy('google-save', async () => {
-      if (clientIdError) throw new Error(clientIdError)
-      const id = clientId.trim() || undefined
-      await saveSettings({ googleClientId: id, driveFolderName: folder.trim() || settings.driveFolderName })
-      setGoogle(getGoogleStatus(id))
-      toast.success(t('common.saved'))
-    })
-
-  const connect = () =>
-    withBusy('google-connect', async () => {
-      if (!settings.googleClientId) throw new Error(t('google.needClientId'))
-      setGoogle(await googleSignIn(settings.googleClientId, ['drive', 'gmail']))
-      toast.success(t('google.connected'))
-    })
-
-  const disconnect = () =>
-    withBusy('google-disconnect', async () => {
-      await googleSignOut()
-      setGoogle(getGoogleStatus(settings.googleClientId))
-      toast.info(t('google.disconnected'))
-    })
-
   const exportBackup = () =>
     withBusy('export', async () => {
       const backup = await repo.exportBackup()
@@ -210,24 +181,25 @@ export default function SettingsPage() {
       toast.success(t('backup.exported'))
     })
 
+  const clientId = effectiveClientId(settings)
+
   const toDrive = () =>
     withBusy('drive-backup', async () => {
-      if (!settings.googleClientId) throw new Error(t('google.needClientId'))
+      if (!clientId) throw new Error(t('google.needClientId'))
       // Sign in first: the consent popup must open directly from the click.
-      await googleSignIn(settings.googleClientId, ['drive'])
+      await googleSignIn(clientId, ['drive'])
       const backup = await repo.exportBackup()
-      const res = await backupToDrive(settings.googleClientId, serializeBackup(backup), settings.driveFolderName)
+      const res = await backupToDrive(clientId, serializeBackup(backup), driveFolderRef(settings, 'backup'))
       markBackupDone()
       setLastBackup(getLastBackupAt())
-      setGoogle(getGoogleStatus(settings.googleClientId))
       toast.success(t('backup.driveSaved', { time: formatDateTime(res.modifiedTime) }))
     })
 
   const fromDrive = () =>
     withBusy('drive-restore', async () => {
-      if (!settings.googleClientId) throw new Error(t('google.needClientId'))
-      await googleSignIn(settings.googleClientId, ['drive'])
-      const json = await restoreFromDrive(settings.googleClientId, settings.driveFolderName)
+      if (!clientId) throw new Error(t('google.needClientId'))
+      await googleSignIn(clientId, ['drive'])
+      const json = await restoreFromDrive(clientId, driveFolderRef(settings, 'backup'))
       if (!json) {
         toast.info(t('backup.driveNone'))
         return
@@ -245,7 +217,7 @@ export default function SettingsPage() {
       else toast.info(t('data.persistDenied'))
     })
 
-  const hasGoogle = !!settings.googleClientId
+  const hasGoogle = !!clientId
 
   return (
     <div className="page page-form form-page">
@@ -287,44 +259,10 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        <Section id="set-google" title={t('google.title')} description={t('google.intro')}>
-          <ol className="howto">
-            <li>{t('google.step1')}</li>
-            <li>{t('google.step2')}</li>
-            <li>{t('google.step3')}</li>
-          </ol>
-          <p>
-            <a href={GOOGLE_SETUP_URL} target="_blank" rel="noreferrer" className="ext-link">
-              {t('google.guideLink')}
-              <ArrowSquareOutIcon size={14} />
-            </a>
-          </p>
-          <div className="grid">
-            <TextField className="span-2" label={t('google.clientId')} value={clientId} onChange={setClientId} placeholder="123456789-abc.apps.googleusercontent.com" spellCheck={false} error={clientIdError} />
-            <TextField label={t('google.folder')} value={folder} onChange={setFolder} hint={t('google.folderHint')} />
-          </div>
-          <div className="btn-row">
-            <button type="button" className="btn" onClick={() => void saveGoogle()} disabled={busy !== null}>
-              {t('common.save')}
-            </button>
-            {hasGoogle && !google.signedIn && (
-              <button type="button" className="btn btn-primary" onClick={() => void connect()} disabled={busy !== null}>
-                <PlugsConnectedIcon />
-                {t('google.connect')}
-              </button>
-            )}
-            {google.signedIn && (
-              <button type="button" className="btn" onClick={() => void disconnect()} disabled={busy !== null}>
-                <SignOutIcon />
-                {t('google.disconnect')}
-              </button>
-            )}
-          </div>
-          <p className={`status-line${google.signedIn ? ' status-ok' : ''}`}>
-            {google.signedIn ? <CheckCircleIcon /> : <CircleIcon />}
-            {google.signedIn ? t('google.statusSignedIn', { email: google.email ?? '' }) : hasGoogle ? t('google.statusConfigured') : t('google.statusOff')}
-          </p>
-        </Section>
+        <GoogleSection />
+
+        {/* Without any Google client the Drive features cannot work: the Google section explains that, nothing greyed out here. */}
+        {hasGoogle && <BackupSection />}
 
         <Section id="set-data" title={t('data.title')} description={t('data.intro')}>
           <div className="setting-row">
@@ -353,25 +291,25 @@ export default function SettingsPage() {
               <BackupImport />
             </div>
           </div>
-          <div className="setting-row">
-            <div>
-              <strong>{t('backup.driveTitle')}</strong>
-              <p className="setting-desc">{hasGoogle ? t('backup.driveHint', { folder: settings.driveFolderName }) : t('google.needClientId')}</p>
+          {hasGoogle && (
+            <div className="setting-row">
+              <div>
+                <strong>{t('backup.driveTitle')}</strong>
+                <p className="setting-desc">{t('backup.driveHint', { folder: driveFolderLabel(settings, 'backup') })}</p>
+              </div>
+              <div className="btn-row">
+                <button type="button" className="btn" onClick={() => void toDrive()} disabled={busy !== null}>
+                  <CloudArrowUpIcon />
+                  {busy === 'drive-backup' ? t('common.working') : t('backup.toDrive')}
+                </button>
+                <button type="button" className="btn" onClick={() => void fromDrive()} disabled={busy !== null}>
+                  <CloudArrowDownIcon />
+                  {busy === 'drive-restore' ? t('common.working') : t('backup.fromDrive')}
+                </button>
+              </div>
             </div>
-            <div className="btn-row">
-              <button type="button" className="btn" onClick={() => void toDrive()} disabled={!hasGoogle || busy !== null}>
-                <CloudArrowUpIcon />
-                {busy === 'drive-backup' ? t('common.working') : t('backup.toDrive')}
-              </button>
-              <button type="button" className="btn" onClick={() => void fromDrive()} disabled={!hasGoogle || busy !== null}>
-                <CloudArrowDownIcon />
-                {busy === 'drive-restore' ? t('common.working') : t('backup.fromDrive')}
-              </button>
-            </div>
-          </div>
+          )}
         </Section>
-
-        <BackupSection />
 
         <ExportSection />
 

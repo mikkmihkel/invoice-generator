@@ -81,6 +81,13 @@
   background: var(--warning-soft);
   border-color: var(--warning-border);
 }
+/* Issue confirmation: the warnings themselves under the count. */
+.issue-warnings ul {
+  margin: 6px 0 0;
+}
+.issue-warnings li + li {
+  margin-top: 4px;
+}
 .notice-error {
   background: var(--danger-soft);
   border-color: var(--danger-border);
@@ -355,6 +362,9 @@
   overflow: auto;
   color: var(--text-2);
 }
+.dialog-body:focus-visible {
+  outline-offset: -2px;
+}
 .dialog-foot {
   display: flex;
   justify-content: flex-end;
@@ -563,4 +573,44 @@
 .change-from {
   text-decoration: line-through;
   color: var(--text-3);
+}
+
+/* ---------- Workstream C: keyboard shortcut sheet ---------- */
+.shortcut-sheet {
+  display: grid;
+  gap: var(--s-5);
+}
+.shortcut-group {
+  margin-bottom: var(--s-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.shortcut-list {
+  display: grid;
+  gap: 0;
+}
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: var(--s-4);
+  align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-soft);
+}
+.shortcut-row dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-3);
+}
+.shortcut-row .kbd {
+  min-width: 22px;
+  height: 22px;
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+.shortcut-or {
+  padding: 0 2px;
 }

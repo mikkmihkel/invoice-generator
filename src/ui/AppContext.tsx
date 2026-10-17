@@ -12,6 +12,7 @@ import {
 } from '../domain'
 import { getRepository, subscribe, type DeletedDocuments, type Repository, type SaveProfileOptions, type StorageArea } from '../storage'
 import { makeT, type Translate } from './i18n'
+import { notifyIssued } from './issueEvents'
 import { errorMessage, nowISO, reconcileList, setErrorLanguage, sortInvoices } from './util'
 import { applyTheme, normalizeTheme, readStoredTheme } from './theme'
 
@@ -248,6 +249,7 @@ export function AppProvider({ children, repository }: { children: ReactNode; rep
       setInvoices((list) => sortInvoices([...list.filter((x) => x.id !== id), issued]))
       // Numbering advanced inside the repository — refresh the profile.
       await load(['profile'])
+      notifyIssued(issued)
       return issued
     },
     [repo, load],

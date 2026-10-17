@@ -18,8 +18,10 @@ import {
   KEEP_VERSIONS_MIN,
 } from '../../../integrations/autoBackup'
 import { decryptText, isEncryptedEnvelope } from '../../../integrations/backupCrypto'
-import { downloadDriveFile, listDriveBackups, type DriveBackupFile } from '../../../integrations/drive'
+import { downloadDriveFile, type DriveBackupFile } from '../../../integrations/drive'
+import { listRestorableBackups } from '../../../integrations/restoreList'
 import { googleSignIn, hasAccessToken } from '../../../integrations/googleAuth'
+import { driveFolderLabel, driveFolderRef, effectiveClientId } from '../../../integrations/googleClient'
 import { useApp } from '../../AppContext'
 import { Dialog, useConfirm } from '../../components/Dialog'
 import { CheckboxField, NumberField, TextField } from '../../components/fields'
@@ -95,8 +97,27 @@ function backupLabel(f: DriveBackupFile): string {
   return formatDateTime(f.createdTime ?? f.modifiedTime ?? parseAutoBackupFileName(f.name)?.date.toISOString())
 }
 
-/** Pick a Drive backup, decrypt it if needed and hand the parsed backup to the usual import review. */
-function RestoreDialog({ files, clientId, onClose, onBackup }: { files: DriveBackupFile[]; clientId: string; onClose: () => void; onBackup: (backup: BackupFile) => void }) {
+/**
+ * Pick a Drive backup, decrypt it if needed and hand the parsed backup to the usual import review. `title`, `intro`
+ * and `cancelLabel` adapt it for the offer after signing in on a new computer.
+ */
+export function RestoreDialog({
+  files,
+  clientId,
+  onClose,
+  onBackup,
+  title,
+  intro,
+  cancelLabel,
+}: {
+  files: DriveBackupFile[]
+  clientId: string
+  onClose: () => void
+  onBackup: (backup: BackupFile) => void
+  title?: string
+  intro?: string
+  cancelLabel?: string
+}) {
   const { t, lang } = useApp()
   const [selected, setSelected] = useState(() => preferredRestoreFile(files)?.id ?? '')
   const [passphrase, setPassphrase] = useState(() => getBackupPassphrase() ?? '')
@@ -131,14 +152,14 @@ function RestoreDialog({ files, clientId, onClose, onBackup }: { files: DriveBac
 
   return (
     <Dialog
-      title={t('autoBackup.restoreTitle')}
+      title={title ?? t('autoBackup.restoreTitle')}
       onClose={onClose}
       closeLabel={t('common.close')}
       dismissible={busy === null}
       footer={
         <>
           <button type="button" className="btn" onClick={onClose} disabled={busy !== null}>
-            {t('common.cancel')}
+            {cancelLabel ?? t('common.cancel')}
           </button>
           <button type="button" className="btn btn-primary" onClick={() => void restore()} disabled={!file || busy !== null || (file.encrypted && !passphrase)}>
             {busy === 'decrypt' ? t('autoBackup.decrypting') : busy ? t('common.working') : t('autoBackup.restoreContinue')}
@@ -146,7 +167,7 @@ function RestoreDialog({ files, clientId, onClose, onBackup }: { files: DriveBac
         </>
       }
     >
-      <p>{t('autoBackup.restoreIntro')}</p>
+      <p>{intro ?? t('autoBackup.restoreIntro')}</p>
       <fieldset className="template-picker" disabled={busy !== null}>
         <legend className="visually-hidden">{t('autoBackup.restoreList')}</legend>
         <div className="template-list">
@@ -156,6 +177,7 @@ function RestoreDialog({ files, clientId, onClose, onBackup }: { files: DriveBac
               f.size != null ? size(f.size) : '',
               f.encrypted ? t('autoBackup.encrypted') : '',
               f.automatic ? '' : t('autoBackup.manualFile'),
+              f.location ? t('autoBackup.inFolder', { folder: f.location }) : '',
             ].filter(Boolean)
             return (
               <label key={f.id} className={`template-option${selected === f.id ? ' selected' : ''}`}>
@@ -197,7 +219,7 @@ export function BackupSection() {
   const plaintextLeft = useSyncExternalStore(subscribePlaintextVersionCount, getPlaintextVersionCount)
   const confirm = useConfirm()
   const cfg = normalizeAutoBackup(settings.autoBackup)
-  const clientId = settings.googleClientId
+  const clientId = effectiveClientId(settings)
   const [busy, setBusy] = useState<'backup' | 'restore' | 'trash' | null>(null)
   const [askPassphrase, setAskPassphrase] = useState<{ mode: 'new' | 'session'; then: (passphrase: string) => void } | null>(null)
   const [restoreFiles, setRestoreFiles] = useState<DriveBackupFile[] | null>(null)
@@ -274,7 +296,7 @@ export function BackupSection() {
     withBusy('restore', async () => {
       if (!clientId) return
       await googleSignIn(clientId, ['drive'])
-      const files = await listDriveBackups(clientId, settingsRef.current.driveFolderName)
+      const files = await listRestorableBackups(clientId, settingsRef.current)
       if (files.length === 0) toast.info(t('backup.driveNone'))
       else setRestoreFiles(files)
     })
@@ -301,7 +323,7 @@ export function BackupSection() {
     if (!ok) return
     await withBusy('trash', async () => {
       await googleSignIn(clientId, ['drive'])
-      const n = await trashPlaintextVersions(clientId, settingsRef.current.driveFolderName)
+      const n = await trashPlaintextVersions(clientId, driveFolderRef(settingsRef.current, 'backup'))
       toast.success(t('autoBackup.plaintextDone', { n }))
     })
   }
@@ -322,7 +344,7 @@ export function BackupSection() {
       )}
       <CheckboxField
         label={t('autoBackup.enable')}
-        hint={t('autoBackup.enableHint', { folder: settings.driveFolderName })}
+        hint={t('autoBackup.enableHint', { folder: driveFolderLabel(settings, 'backup') })}
         checked={cfg.enabled}
         onChange={(v) => void toggleEnabled(v)}
         disabled={!clientId}

@@ -23,11 +23,11 @@ Arveldaja is a simple, private invoicing tool for Estonian micro-companies. It r
 - **6 PDF styles:** Standard, Classic, Modern, Minimal, Bold and Compact, with your logo and brand colours, in Estonian, English or both (bilingual). Issued PDFs carry the e-invoice XML inside and can show a payment QR code.
 - **Export:**
   - PDF download / print
-  - email: Gmail with the PDF attached, the device share sheet, or your email app
-  - save to Google Drive
+  - email: the device share sheet or your email app; Gmail with the PDF attached when you set up your own Google client
+  - save to Google Drive, automatically for every issued invoice once you have chosen a Drive folder
   - e-invoice XML (EN 16931 / Peppol BIS Billing 3.0) to upload to your e-invoice operator
 - **Export for the accountant:** a period's invoices as CSV, or a ZIP with the CSV, every PDF and every e-invoice XML.
-- **Your data stays in your browser** (IndexedDB). Back it up to a JSON file, or turn on automatic versioned backups to Google Drive, optionally encrypted with a passphrase, and restore them on another computer. Backups made under the tool's earlier name (`arvegeneraator-backup-…`, `invoice-generator-backup….json`) are still recognised.
+- **Your data stays in your browser** (IndexedDB). Back it up to a JSON file, or sign in with Google (optional, recommended) and pick a folder in your own Drive: PDFs go to its `Arved` subfolder, versioned backups (optionally encrypted with a passphrase) to `Varukoopiad`, and on another computer the app offers to restore them right after you sign in. Backups made under the tool's earlier name (`arvegeneraator-backup-…`, `invoice-generator-backup….json`) are still recognised.
 - Estonian and English interface, light and dark mode, works on mobile.
 
 > This tool helps you produce correct invoices but is not legal or tax advice. Invoices must be kept for 7 years (RPS § 12), so back up regularly.
@@ -41,7 +41,7 @@ Open the published site, e.g. `https://<github-user>.github.io/invoice-generator
 3. **Issue:** this assigns the next number and locks the invoice. Until it is sent you can still reopen it for editing; after that, corrections are made with a credit note.
 4. **Send:** download the PDF, email it, save it to Drive, or download the e-invoice XML.
 
-Google Drive and Gmail need a free Google OAuth client ID that you create once. See [docs/google-setup.md](docs/google-setup.md). Everything else works without it.
+Signing in with Google is optional. On the published site it works out of the box (the site has a shared client that can only reach files the app creates or you pick). Sending through Gmail needs your own free OAuth client ID, entered under Settings → Google → Advanced. See [docs/google-setup.md](docs/google-setup.md). Everything else works without Google.
 
 ## Business register data
 
@@ -54,6 +54,7 @@ Data: Estonian e-Business Register, Centre of Registers and Information Systems 
 1. In the repository, go to **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 2. Push to `main`. The `Build & deploy to GitHub Pages` workflow (`.github/workflows/deploy.yml`) runs lint and tests, builds the register index, builds the site and deploys it.
 3. The workflow also re-runs weekly to refresh register data. You can start it manually from the Actions tab.
+4. Optional, for built-in Google sign-in: set the repository variables `GOOGLE_CLIENT_ID`, `GOOGLE_API_KEY` and `GOOGLE_APP_ID` (Settings → Secrets and variables → Actions → Variables). See "For the site owner" in [docs/google-setup.md](docs/google-setup.md). Without them the site builds without built-in sign-in.
 
 If the register download fails, the site still deploys. Search then uses live lookup, and you can always enter companies by hand.
 
@@ -83,7 +84,7 @@ npm run registry:build
 | `src/registry/` | Register search over the static index, plus the optional live API |
 | `src/pdf/` | pdfmake document definitions and the 6 templates (lazy-loaded), PDF metadata and payment QR |
 | `src/einvoice/` | UBL 2.1 / Peppol BIS 3 XML |
-| `src/integrations/` | Google Identity Services, Drive (incl. automatic encrypted backup), Gmail (MIME builder), Web Share, mailto, ECB rates, VIES |
+| `src/integrations/` | Google Identity Services and client choice, Drive (incl. automatic encrypted backup), Google Picker, Gmail (MIME builder), Web Share, mailto, ECB rates, VIES |
 | `src/export/` | Accountant export: CSV and ZIP writer |
 | `src/ui/` | React screens, Estonian/English UI strings |
 | `scripts/registry/` | Builds the open-data search index |
@@ -95,8 +96,15 @@ npm run registry:build
 - **Register live lookup** (on by default, Settings → Register): your search text is sent to the Estonian e-Business Register (`ariregister.rik.ee`). Turn it off to search only the bundled index.
 - **Exchange rates and VAT number checks** are sent only when you press the button: the currency and date go to the ECB (`data-api.ecb.europa.eu`), the buyer's VAT number to the European Commission's VIES service (`ec.europa.eu`).
 - **Encrypted backups** use AES-GCM with a key derived from your passphrase (PBKDF2-SHA-256). The passphrase is kept in memory only; without it an encrypted backup cannot be restored.
-- **Google:** access tokens are kept in memory only. The app requests `drive.file` (it sees only files it created) and `gmail.send` (send only, it cannot read your mail).
-- **Content Security Policy:** the production build only allows scripts from the site itself and Google Identity Services, and only allows connections to RIK, Google APIs, the ECB and VIES.
+- **Without signing in** nothing goes to Google, and the app keeps working: data stays in this browser.
+- **When you sign in with Google** your browser talks to Google directly; nothing passes through a server of ours, and the site owner cannot see your files.
+  - The site's shared client asks only for `openid`, `email` (to show which account is signed in) and `drive.file`: the app sees only files and folders it created or that you picked in the Google folder picker, not the rest of your Drive.
+  - Invoice PDFs (if you keep the option on) and backups are written to the folder you chose, so they now also live in your Google account under Google's terms.
+  - When you choose the folder, the dialog shows "Back up automatically to this folder" ticked by default, plus automatic PDF saving. Backups are **not encrypted** unless you set a passphrase there or later in Settings: without one, anyone with access to your Drive can read them. The app recommends a passphrase at that point.
+  - The folder's ID and name are saved in this browser's settings and in your backups; the e-mail address of the last account is remembered in this browser until you sign out.
+  - Access tokens are kept in memory only, never stored, and there is no refresh token. **Sign out** revokes the access; you can also remove the app at <https://myaccount.google.com/permissions>.
+  - Gmail (`gmail.send`, send only, it cannot read your mail) is requested only with your own OAuth client from Settings → Google → Advanced.
+- **Content Security Policy:** the production build only allows scripts from the site itself, Google Identity Services and the Google Picker loader (`apis.google.com`), frames from Google sign-in and the picker (`docs.google.com`), and connections to RIK, Google APIs, the ECB and VIES.
 - **Backups are untrusted input:** imports are validated field by field. Logos must be embedded PNG/JPEG images and colours plain hex values, and bank details that would change need confirming.
 - **CI:** GitHub Actions are pinned to commit SHAs, with least-privilege permissions and `npm ci --ignore-scripts`. CodeQL and Dependabot are also set up.
 

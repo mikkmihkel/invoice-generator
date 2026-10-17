@@ -37,6 +37,12 @@ jobs:
         continue-on-error: true
         run: npm run registry:build
       - run: npm run build
+        env:
+          # Shared Google client of the public site (see docs/google-setup.md). Public identifiers, not secrets,
+          # so they are repository variables. Unset: the site builds without built-in Google sign-in.
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_API_KEY: ${{ vars.GOOGLE_API_KEY }}
+          VITE_GOOGLE_APP_ID: ${{ vars.GOOGLE_APP_ID }}
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: dist

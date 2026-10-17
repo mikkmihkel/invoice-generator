@@ -69,7 +69,9 @@ describe('invoice list: invoices and quotes', () => {
     const open = quote({ buyer: { kind: 'company', name: 'Avatud OÜ', address: profile.address } })
     const expired = quote({ number: 'HP-2026-002', validUntil: '2026-01-10', buyer: { kind: 'company', name: 'Aegunud OÜ', address: profile.address } })
     const accepted = quote({ number: 'HP-2026-003', quoteAcceptedAt: '2026-01-07T10:00:00Z', buyer: { kind: 'company', name: 'Nõus OÜ', address: profile.address } })
-    renderAt('#/', createMemoryRepo({ profile, invoices: [invoice, open, expired, accepted] }))
+    // Sent, so the "needs attention" strip does not name the client too.
+    const events = [{ id: 's', invoiceId: invoice.id, kind: 'sent' as const, at: new Date().toISOString() }]
+    renderAt('#/', createMemoryRepo({ profile, invoices: [invoice, open, expired, accepted], events }))
     await screen.findAllByText('Arve Klient OÜ')
     const list = () => within(document.querySelector<HTMLElement>('.arved-list')!)
     expect(list().getByText('Arve Klient OÜ')).toBeInTheDocument()
@@ -159,6 +161,7 @@ describe('quote wording', () => {
     const repo = createMemoryRepo({ profile, invoices: [q] })
     const { unmount } = renderAt('#/invoices/new?type=quote', repo)
     expect(await screen.findByRole('heading', { name: 'Uus hinnapakkumine', level: 1 }, { timeout: 5000 })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Muuda kujundust' }))
     expect(screen.getByLabelText('Pakkumise keel')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Lisa tekstirida enne pakkumise ridu' })).toBeInTheDocument()
     expect(screen.queryByText(/arveridu/)).not.toBeInTheDocument()
@@ -209,7 +212,8 @@ describe('recurring invoices', () => {
     await act(async () => {
       fireEvent.change(select, { target: { value: 'none' } })
     })
-    await waitFor(() => expect(repo.saveRecurringRule).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1', active: false })))
+    // "Ei kordu" stops it: the rule is removed (undo is offered in the toast).
+    await waitFor(() => expect(repo.deleteRecurringRule).toHaveBeenCalledWith('r1'))
   })
 
   it('prepares the due drafts once and says how many', async () => {

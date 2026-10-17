@@ -12,6 +12,9 @@ export type GoogleErrorCode =
   | 'rate_limited'
   | 'not_found'
   | 'network'
+  | 'gmail_needs_own_client'
+  | 'folder_not_found'
+  | 'picker_failed'
   | 'unknown'
 
 export type Bilingual = { et: string; en: string }
@@ -81,6 +84,21 @@ export function friendlyGoogleMessage(code: GoogleErrorCode, detail?: string): B
       }
     case 'not_found':
       return { et: 'Faili ei leitud Google Drive’ist.', en: 'File not found in Google Drive.' }
+    case 'gmail_needs_own_client':
+      return {
+        et: 'Gmailiga saatmiseks lisa seadetes (Google → Täpsemad seaded) oma OAuth-kliendi ID. Seni saada arve e-posti rakenduse kaudu.',
+        en: 'To send with Gmail, add your own OAuth client ID in Settings (Google → Advanced). Until then, send the invoice with your email app.',
+      }
+    case 'folder_not_found':
+      return {
+        et: 'Valitud Google Drive’i kausta ei leitud või sellele pole enam ligipääsu. Vali seadetes kaust uuesti.',
+        en: 'The chosen Google Drive folder was not found or is no longer accessible. Choose the folder again in Settings.',
+      }
+    case 'picker_failed':
+      return {
+        et: 'Google Drive’i kausta valikut ei õnnestunud avada.',
+        en: 'Could not open the Google Drive folder picker.',
+      }
     case 'network':
       return {
         et: 'Google’iga ühendumine ebaõnnestus. Kontrolli internetiühendust.',

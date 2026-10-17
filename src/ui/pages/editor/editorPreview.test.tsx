@@ -115,6 +115,17 @@ describe('live preview panel', () => {
     expect(await within(panel).findByRole('img', { name: 'Arve PDF-eelvaade, lehekülg 2/2' })).toHaveAttribute('src', 'data:image/png;base64,page2')
     expect(within(panel).getByRole('img', { name: 'Arve PDF-eelvaade, lehekülg 1/2' })).toBeInTheDocument()
     expect(raster.mock.calls.map((c) => c[2])).toEqual([1, 2])
+    // The scrolling pages are reachable with the keyboard (WCAG 2.1.1).
+    const pagesRegion = within(panel).getByRole('region', { name: 'Eelvaate leheküljed' })
+    expect(pagesRegion).toHaveAttribute('tabindex', '0')
+    // Full size makes the small print readable (phones); pressing again fits the pages to the panel.
+    const full = within(panel).getByRole('button', { name: 'Näita täissuuruses' })
+    expect(full).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(full)
+    expect(full).toHaveAttribute('aria-pressed', 'true')
+    expect(pagesRegion).toHaveClass('is-full')
+    fireEvent.click(full)
+    expect(pagesRegion).not.toHaveClass('is-full')
   })
 
   it('falls back to the PDF itself when pages cannot be drawn, reuses it on reopening and revokes it on unmount', async () => {
@@ -149,6 +160,7 @@ describe('live preview panel', () => {
     renderAt(`#/invoices/${draft.id}`, repo)
     await screen.findByRole('button', { name: 'Eelvaade' })
     expect(screen.queryByRole('complementary', { name: 'Eelvaade' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Muuda kujundust' }))
     const other = screen.getAllByRole('radio').find((r) => !(r as HTMLInputElement).checked && (r as HTMLInputElement).name && /modern|classic/.test((r as HTMLInputElement).value))!
     fireEvent.click(other)
     expect(await screen.findByRole('complementary', { name: 'Eelvaade' })).toBeInTheDocument()

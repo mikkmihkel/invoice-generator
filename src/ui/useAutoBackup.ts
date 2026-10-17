@@ -17,6 +17,7 @@ import {
   type SchedulerOptions,
 } from '../integrations/autoBackup'
 import { googleSignIn, hasAccessToken } from '../integrations/googleAuth'
+import { driveFolderRef, effectiveClientId } from '../integrations/googleClient'
 import { serializeBackup, subscribe, type Repository } from '../storage'
 import { useApp } from './AppContext'
 import { formatDateTime } from './format'
@@ -45,12 +46,13 @@ export type BackupOutcome = AutoBackupResult | { kind: 'error'; error: unknown }
  */
 export async function performAutoBackup(ctx: BackupContext, interactive: boolean): Promise<BackupOutcome> {
   const settings = ctx.getSettings()
-  if (!settings.googleClientId) return { kind: 'needs-signin' }
+  const clientId = effectiveClientId(settings)
+  if (!clientId) return { kind: 'needs-signin' }
   setAutoBackupStatus({ phase: 'running' })
   try {
     const res = await runAutoBackup({
-      clientId: settings.googleClientId,
-      folderName: settings.driveFolderName,
+      clientId,
+      folderName: driveFolderRef(settings, 'backup'),
       settings: normalizeAutoBackup(settings.autoBackup),
       exportBackup: () => ctx.repo.exportBackup(),
       serialize: serializeBackup,
@@ -83,7 +85,7 @@ export function useAutoBackup(timing: SchedulerOptions & { tokenPollMs?: number 
   const { ready, repo, settings, saveSettings, t } = useApp()
   const toast = useToast()
   const cfg = normalizeAutoBackup(settings.autoBackup)
-  const clientId = settings.googleClientId
+  const clientId = effectiveClientId(settings)
   const active = ready && cfg.enabled && !!clientId
   const settingsRef = useRef(settings)
   const latest = useRef<BackupContext>({ repo, getSettings: () => settingsRef.current, saveSettings })
@@ -102,7 +104,7 @@ export function useAutoBackup(timing: SchedulerOptions & { tokenPollMs?: number 
       if (signinReminderShown || window.location.hash.startsWith('#/settings')) return
       signinReminderShown = true
       const backUp = () => {
-        const id = settingsRef.current.googleClientId
+        const id = effectiveClientId(settingsRef.current)
         if (!id) return
         googleSignIn(id, ['drive']).then(
           async () => {

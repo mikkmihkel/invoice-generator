@@ -1,4 +1,4 @@
-import { XIcon } from '@phosphor-icons/react'
+import { MagnifyingGlassMinusIcon, MagnifyingGlassPlusIcon, XIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import type { Invoice } from '../../../domain'
 import { useApp } from '../../AppContext'
@@ -39,6 +39,8 @@ export function PreviewPanel({
   const [doc, setDoc] = useState<Rendered | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [rendering, setRendering] = useState(false)
+  // Pages at their printed size (A4 at 96 dpi) instead of fitted to the panel: readable on phones, scrolls both ways.
+  const [fullSize, setFullSize] = useState(false)
   const urlRef = useRef<string | null>(null)
   const seq = useRef(0)
   const panel = useRef<HTMLElement>(null)
@@ -155,11 +157,17 @@ export function PreviewPanel({
           <p className="pv-sub">{rendering && doc ? t('preview.updating') : t(invoice.type === 'quote' ? 'quote.previewSub' : 'editor.previewSub')}</p>
         </div>
         {actions}
+        {pages && (
+          <button type="button" className="icon-btn" aria-label={t('preview.fullSize')} title={t('preview.fullSize')} aria-pressed={fullSize} onClick={() => setFullSize((v) => !v)}>
+            {fullSize ? <MagnifyingGlassMinusIcon size={18} /> : <MagnifyingGlassPlusIcon size={18} />}
+          </button>
+        )}
         <button type="button" className="icon-btn" aria-label={t('editor.previewClose')} title={t('editor.previewClose')} onClick={close} data-autofocus>
           <XIcon size={18} />
         </button>
       </div>
-      <div className={`pv-body${rendering && doc ? ' is-busy' : ''}`} aria-busy={rendering || undefined}>
+      {/* Focusable so keyboard users can scroll the pages (arrow keys, Page Up/Down). */}
+      <div className={`pv-body${rendering && doc ? ' is-busy' : ''}${fullSize && pages ? ' is-full' : ''}`} aria-busy={rendering || undefined} tabIndex={0} role="region" aria-label={t('preview.pages')}>
         {error && (
           <div className="notice notice-warn" role="status">
             {t('preview.failed')}

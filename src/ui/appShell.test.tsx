@@ -55,7 +55,7 @@ describe('backup import', () => {
     await act(async () => {
       fireEvent.change(input, { target: { files: [backupFile(bad)] } })
     })
-    expect(await screen.findByText(/^Varukoopiat ei saa importida\. Varukoopia .*vigane/)).toBeInTheDocument()
+    expect(await screen.findByText(/^Varukoopiat ei saa importida\. Varukoopias on vigane klientide 1\. kirje: /)).toBeInTheDocument()
   })
 
   it('asks to confirm changed IBANs and keeps the current Google client ID by default', async () => {

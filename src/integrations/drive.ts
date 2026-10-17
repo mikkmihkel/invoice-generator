@@ -1,4 +1,5 @@
 // Google Drive REST v3 with the non-sensitive drive.file scope: the app only sees files/folders it created.
+import { GoogleApiError } from './errors'
 import type { TokenOptions } from './googleAuth'
 import { googleFetch } from './http'
 
@@ -49,6 +50,17 @@ async function findFile(clientId: string, q: string, fields = 'id,name,webViewLi
   return data.files?.[0] ?? null
 }
 
+/**
+ * A Drive folder: a folder name looked up anywhere in the user's Drive (earlier versions; created in My Drive when
+ * missing), or a named subfolder of a folder the user chose, by the chosen folder's ID.
+ */
+export type DriveFolderRef = string | { parentId: string; name: string }
+
+/** Stable text key of a folder reference (for per-destination bookkeeping). */
+export function driveFolderKey(ref: DriveFolderRef): string {
+  return typeof ref === 'string' ? ref.trim() : `${ref.parentId}/${ref.name}`
+}
+
 /** Find (or, unless `create` is false, create) a folder with this name in the user's Drive. */
 export async function findOrCreateFolder(clientId: string, folderName: string, create = true, options?: DriveCallOptions): Promise<string | null> {
   // Not cached on purpose: the user may trash/rename the folder at any time.
@@ -65,6 +77,63 @@ export async function findOrCreateFolder(clientId: string, folderName: string, c
     id = ((await res.json()) as DriveFile).id
   }
   return id
+}
+
+// Concurrent callers (a PDF upload during a backup) share one lookup, so a subfolder is not created twice.
+const subfolderLookups = new Map<string, Promise<string | null>>()
+
+/** Find (or create) the subfolder `name` inside the chosen folder `parentId`. */
+async function findOrCreateSubfolder(clientId: string, parentId: string, name: string, create: boolean, options?: DriveCallOptions): Promise<string | null> {
+  const key = `${clientId}|${parentId}|${name}|${create}`
+  const running = subfolderLookups.get(key)
+  if (running) return running
+  const run = (async () => {
+    const q = `mimeType=${driveQueryString(FOLDER_MIME)} and name=${driveQueryString(name)} and ${driveQueryString(parentId)} in parents and trashed=false`
+    const found = await findFile(clientId, q, 'id', options)
+    if (found || !create) return found?.id ?? null
+    const init = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] }),
+    }
+    try {
+      const res = await drive(clientId, `${API}?fields=id`, init, options)
+      return ((await res.json()) as DriveFile).id
+    } catch (e) {
+      // The chosen folder was deleted, or this account cannot write to it.
+      if (e instanceof GoogleApiError && (e.code === 'not_found' || (e.status === 403 && e.code === 'unknown'))) throw new GoogleApiError('folder_not_found', { status: e.status, detail: e.detail })
+      throw e
+    }
+  })()
+  subfolderLookups.set(key, run)
+  try {
+    return await run
+  } finally {
+    subfolderLookups.delete(key)
+  }
+}
+
+/** The folder ID behind a reference (created unless `create` is false; null when missing and not created). */
+export function resolveDriveFolder(clientId: string, ref: DriveFolderRef, create = true, options?: DriveCallOptions): Promise<string | null> {
+  if (typeof ref === 'string') return findOrCreateFolder(clientId, ref, create, options)
+  return findOrCreateSubfolder(clientId, ref.parentId, ref.name, create, options)
+}
+
+/**
+ * The app's own folder `name` (e.g. "Arveldaja"): an existing one this app created earlier (also on another computer,
+ * and also after the user moved it), otherwise a new one in My Drive.
+ */
+export async function findOrCreateAppFolder(clientId: string, name: string): Promise<{ id: string; name: string; created: boolean }> {
+  const found = await findFile(clientId, `mimeType=${driveQueryString(FOLDER_MIME)} and name=${driveQueryString(name)} and trashed=false`, 'id,name')
+  if (found) return { id: found.id, name: found.name ?? name, created: false }
+  const init = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: JSON.stringify({ name, mimeType: FOLDER_MIME }),
+  }
+  const res = await drive(clientId, `${API}?fields=id,name`, init)
+  const file = (await res.json()) as DriveFile
+  return { id: file.id, name: file.name ?? name, created: true }
 }
 
 function randomBoundary(): string {
@@ -100,41 +169,46 @@ async function createFile(
   return (await res.json()) as DriveFile
 }
 
-async function updateFileContent(clientId: string, fileId: string, content: Blob | string, mime: string, fields: string) {
-  const res = await googleFetch(clientId, ['drive'], `${UPLOAD_API}/${encodeURIComponent(fileId)}?uploadType=media&fields=${fields}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': mime },
-    body: content,
-  })
+async function updateFileContent(clientId: string, fileId: string, content: Blob | string, mime: string, fields: string, options?: DriveCallOptions) {
+  const init = { method: 'PATCH', headers: { 'Content-Type': mime }, body: content }
+  const res = await drive(clientId, `${UPLOAD_API}/${encodeURIComponent(fileId)}?uploadType=media&fields=${fields}`, init, options)
   return (await res.json()) as DriveFile
 }
 
-async function withFolder<T>(clientId: string, folderName: string, fn: (folderId: string) => Promise<T>): Promise<T> {
-  return fn((await findOrCreateFolder(clientId, folderName))!)
+async function withFolder<T>(clientId: string, folder: DriveFolderRef, fn: (folderId: string) => Promise<T>, options?: DriveCallOptions): Promise<T> {
+  return fn((await resolveDriveFolder(clientId, folder, true, options))!)
 }
 
 export interface UploadOptions {
   /** If a file with the same name exists in the folder, replace its content instead of creating a duplicate. Default true. */
   overwrite?: boolean
+  /** False: only with a token already in memory, never a consent popup (background uploads). */
+  interactive?: boolean
 }
 
-/** Upload a file to Drive (scope drive.file) into folder `folderName` (created if missing). Returns webViewLink. */
+/** Upload a file to Drive (scope drive.file) into `folder` (created if missing). Returns webViewLink. */
 export async function uploadToDrive(
   clientId: string,
   file: Blob,
   fileName: string,
-  folderName: string,
+  folder: DriveFolderRef,
   options: UploadOptions = {},
 ): Promise<{ id: string; webViewLink: string }> {
   const mime = file.type || 'application/pdf'
   const fields = 'id,webViewLink'
-  const result = await withFolder(clientId, folderName, async (folderId) => {
-    const existing =
-      options.overwrite === false
-        ? null
-        : await findFile(clientId, `name=${driveQueryString(fileName)} and ${driveQueryString(folderId)} in parents and trashed=false`, 'id')
-    return existing ? updateFileContent(clientId, existing.id, file, mime, fields) : createFile(clientId, folderId, fileName, file, mime, fields)
-  })
+  const call: DriveCallOptions | undefined = options.interactive === false ? { interactive: false } : undefined
+  const result = await withFolder(
+    clientId,
+    folder,
+    async (folderId) => {
+      const existing =
+        options.overwrite === false
+          ? null
+          : await findFile(clientId, `name=${driveQueryString(fileName)} and ${driveQueryString(folderId)} in parents and trashed=false`, 'id', call)
+      return existing ? updateFileContent(clientId, existing.id, file, mime, fields, call) : createFile(clientId, folderId, fileName, file, mime, fields, undefined, call)
+    },
+    call,
+  )
   return { id: result.id, webViewLink: result.webViewLink ?? `https://drive.google.com/file/d/${result.id}/view` }
 }
 
@@ -142,10 +216,10 @@ export async function uploadToDrive(
  * Backup JSON to Drive (drive.file) as "arveldaja-backup.json" in the folder. Overwrites the existing manual backup
  * file, also one saved under the earlier name.
  */
-export async function backupToDrive(clientId: string, json: string, folderName: string): Promise<{ id: string; modifiedTime: string }> {
+export async function backupToDrive(clientId: string, json: string, folder: DriveFolderRef): Promise<{ id: string; modifiedTime: string }> {
   const fields = 'id,modifiedTime'
   const mime = 'application/json'
-  const result = await withFolder(clientId, folderName, async (folderId) => {
+  const result = await withFolder(clientId, folder, async (folderId) => {
     const existing = await findFile(clientId, manualBackupQuery(folderId), 'id')
     return existing
       ? updateFileContent(clientId, existing.id, json, mime, fields)
@@ -155,8 +229,8 @@ export async function backupToDrive(clientId: string, json: string, folderName: 
 }
 
 /** Fetch the latest backup JSON previously written by backupToDrive, or null. */
-export async function restoreFromDrive(clientId: string, folderName: string): Promise<string | null> {
-  const folderId = await findOrCreateFolder(clientId, folderName, false)
+export async function restoreFromDrive(clientId: string, folder: DriveFolderRef): Promise<string | null> {
+  const folderId = await resolveDriveFolder(clientId, folder, false)
   if (!folderId) return null
   const file = await findFile(clientId, manualBackupQuery(folderId), 'id')
   if (!file) return null
@@ -189,6 +263,8 @@ export interface DriveBackupFile {
   issued?: number
   /** Documents deleted on purpose before the backup (its deletion records), when recorded at upload. */
   deleted?: number
+  /** Where the backup is, when a list spans several folders (e.g. "Arveldaja / Varukoopiad" or "Arved"). */
+  location?: string
 }
 
 /** What uploadBackupVersion records about a version besides encryption. */
@@ -225,14 +301,14 @@ const BACKUP_FIELDS = 'id,name,size,createdTime,modifiedTime,appProperties'
 /** Upload a new backup version (never overwrites) into the folder, marked so it can be listed and pruned later. */
 export async function uploadBackupVersion(
   clientId: string,
-  folderName: string,
+  folder: DriveFolderRef,
   fileName: string,
   content: string,
   encrypted: boolean,
   options?: DriveCallOptions,
   tags: BackupVersionTags = {},
 ): Promise<DriveBackupFile> {
-  const folderId = (await findOrCreateFolder(clientId, folderName, true, options))!
+  const folderId = (await resolveDriveFolder(clientId, folder, true, options))!
   const appProperties: Record<string, string> = { [BACKUP_VERSION_PROPERTY]: 'auto', encrypted: encrypted ? '1' : '0' }
   if (tags.device) appProperties[BACKUP_DEVICE_PROPERTY] = tags.device
   if (tags.issued !== undefined) appProperties[BACKUP_ISSUED_PROPERTY] = String(tags.issued)
@@ -247,9 +323,13 @@ const MAX_LIST_PAGES = 10
  * Backups in the folder, newest first: the versioned automatic backups and the manual backup file.
  * Returns [] when the folder does not exist.
  */
-export async function listDriveBackups(clientId: string, folderName: string, options?: DriveCallOptions): Promise<DriveBackupFile[]> {
-  const folderId = await findOrCreateFolder(clientId, folderName, false, options)
-  if (!folderId) return []
+export async function listDriveBackups(clientId: string, folder: DriveFolderRef, options?: DriveCallOptions): Promise<DriveBackupFile[]> {
+  const folderId = await resolveDriveFolder(clientId, folder, false, options)
+  return folderId ? listDriveBackupsIn(clientId, folderId, options) : []
+}
+
+/** Backups directly in the folder with this ID, newest first (see listDriveBackups). */
+export async function listDriveBackupsIn(clientId: string, folderId: string, options?: DriveCallOptions): Promise<DriveBackupFile[]> {
   const q =
     `${driveQueryString(folderId)} in parents and trashed=false and ` +
     `(appProperties has { key=${driveQueryString(BACKUP_VERSION_PROPERTY)} and value='auto' } or ` +
@@ -267,6 +347,19 @@ export async function listDriveBackups(clientId: string, folderName: string, opt
   }
   const time = (f: DriveBackupFile) => f.createdTime ?? f.modifiedTime ?? ''
   return out.sort((a, b) => (time(a) < time(b) ? 1 : time(a) > time(b) ? -1 : 0))
+}
+
+/** Folders with this name that the app can see (it created them, or the user picked them), with their parents. */
+export async function findDriveFolders(clientId: string, name: string, options?: DriveCallOptions): Promise<{ id: string; parents: string[] }[]> {
+  const params = new URLSearchParams({
+    q: `mimeType=${driveQueryString(FOLDER_MIME)} and name=${driveQueryString(name.trim())} and trashed=false`,
+    spaces: 'drive',
+    fields: 'files(id,parents)',
+    pageSize: '20',
+  })
+  const res = await drive(clientId, `${API}?${params}`, undefined, options)
+  const data = (await res.json()) as { files?: { id: string; parents?: string[] }[] }
+  return (data.files ?? []).map((f) => ({ id: f.id, parents: f.parents ?? [] }))
 }
 
 /** Download a file's content as text. */

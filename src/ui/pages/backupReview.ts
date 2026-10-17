@@ -1,5 +1,6 @@
 import { BackupFormatError, parseBackup } from '../../storage'
 import { formatIban, normalizeIban, normalizeVatNumber, type AppSettings, type BackupFile, type CompanyProfile } from '../../domain'
+import { chosenDriveFolder } from '../../integrations/googleClient'
 import { formatDateTime } from '../format'
 import type { Translate } from '../i18n'
 
@@ -41,12 +42,44 @@ export function paymentDetailChanges(current: { profile: CompanyProfile | null; 
   return out
 }
 
+/**
+ * Heading and intro for the changes a backup would make, by what actually changes: the IBAN warning only when bank
+ * accounts differ, so the guard stays credible when only the company name changes.
+ */
+export function changesHeading(changes: PaymentChange[], t: Translate): { title: string; intro: string } {
+  if (changes.some((c) => c.field === 'ibans')) return { title: t('backup.changesTitle'), intro: t('backup.changesIntro') }
+  const company = changes.some((c) => c.field !== 'googleClientId')
+  return { title: t(company ? 'backup.changesTitleCompany' : 'backup.changesTitleSettings'), intro: t('backup.changesIntroOther') }
+}
+
 /** The backup with the current Google client ID instead of the imported one (the default). */
 export function keepClientId(backup: BackupFile, currentClientId: string | undefined): BackupFile {
   if (!backup.settings) return backup
   const settings: AppSettings = { ...backup.settings }
   if (currentClientId) settings.googleClientId = currentClientId
   else delete settings.googleClientId
+  return { ...backup, settings }
+}
+
+/**
+ * The backup's Drive settings adjusted to this browser (apply after keepClientId). A folder chosen here wins, with
+ * this browser's automatic-PDF choice. Otherwise the backup's folder is taken over only when it was chosen with the
+ * client used here (drive.file access is per client), and it does not switch on automatic PDF uploads in a browser
+ * that never opted in: they stay off until the folder is chosen here.
+ */
+export function keepDriveFolder(backup: BackupFile, current: Pick<AppSettings, 'driveFolder' | 'googleClientId' | 'autoSavePdf'>): BackupFile {
+  if (!backup.settings) return backup
+  const settings: AppSettings = { ...backup.settings }
+  const here = chosenDriveFolder(current)
+  if (here) {
+    settings.driveFolder = here
+    if (current.autoSavePdf === undefined) delete settings.autoSavePdf
+    else settings.autoSavePdf = current.autoSavePdf
+  } else if (!chosenDriveFolder(settings)) {
+    delete settings.driveFolder
+  } else {
+    settings.autoSavePdf = current.autoSavePdf ?? false
+  }
   return { ...backup, settings }
 }
 

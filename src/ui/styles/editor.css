@@ -16,6 +16,14 @@
 .ed .num {
   font-variant-numeric: tabular-nums;
 }
+/*
+ * Fields reached with Tab (or scrolled to on focus) stop clear of the sticky top bar and of the bottom bar while it
+ * is pinned (--ed-bar-live is set only then), so the focused field is never hidden behind them (WCAG 2.4.11).
+ */
+:root:has(.ed-draft) {
+  scroll-padding-top: calc(var(--topbar-h) + var(--s-2));
+  scroll-padding-bottom: calc(var(--ed-bar-live, 0px) + var(--tabbar-h) + var(--s-2));
+}
 
 .ed-layout {
   display: flex;
@@ -1102,6 +1110,18 @@ html.ed-sheet-open {
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+.pv-body:focus-visible {
+  outline-offset: -2px;
+}
+/* "Show at full size": the page at its printed width (A4 at 96 dpi); the body scrolls both ways. */
+.pv-body.is-full {
+  align-items: flex-start;
+}
+.pv-body.is-full .pv-page {
+  flex: none;
+  width: 794px;
+  max-width: none;
+}
 .pv-body > .notice {
   align-self: stretch;
 }
@@ -1172,6 +1192,8 @@ html.ed-sheet-open {
     grid-template-areas:
       'check check'
       'total issue';
+    /* A long check list scrolls in its own row, so the amount due and Issue always stay in view. */
+    grid-template-rows: minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--s-3) var(--s-4);
     max-height: 45%;
@@ -1179,6 +1201,14 @@ html.ed-sheet-open {
   }
   .ed-pv .ed-side .check {
     grid-area: check;
+    align-self: stretch;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    /* Room for the toggle's hover background and the focus ring inside the scroll box. */
+    margin: -6px -8px;
+    padding: 6px 8px;
   }
   .ed-pv .ed-total {
     grid-area: total;
@@ -1203,6 +1233,7 @@ html.ed-sheet-open {
   /* Issued: amount and dates side by side, the actions under them. */
   .ed-pv .ed-side-ro {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
     grid-template-areas: none;
     align-items: start;
   }
@@ -1483,12 +1514,24 @@ html.ed-sheet-open {
 }
 
 @media (max-width: 767px) {
+  /*
+   * Phones: the draft editor has its own bottom bar (check, amount, Issue), so the app's tab bar is hidden there
+   * to give the form room; "← Arved" and the company name in the top bar lead back. --tabbar-h is 0 for everything
+   * that sits above the tab bar (toasts, sticky actions, scroll padding).
+   */
+  :root:has(.ed-draft) {
+    --tabbar-h: 0px;
+  }
+  .shell:has(.ed-draft) .main-nav {
+    display: none;
+  }
+  .ed-draft .back-link {
+    min-height: 44px;
+    margin-top: -12px;
+    margin-bottom: 0;
+  }
   .ed {
     --ed-bar-h: 120px;
-  }
-  .ed-draft .ed-side {
-    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
-    padding-bottom: var(--s-3);
   }
   .shell:has(.ed-draft) .footer {
     padding-bottom: calc(var(--ed-bar-live, 120px) + var(--s-4));
@@ -1562,4 +1605,116 @@ html.ed-sheet-open {
 }
 .doc-text-after {
   margin: var(--s-4) 0 0;
+}
+
+/* ---------- Workstream C: editor helpers ---------- */
+
+/* The client card's internal note, shown under the buyer while writing (never printed). */
+.ed-client-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: var(--s-3);
+  padding: 10px 12px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.ed-client-note-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+.ed-client-note-label {
+  color: var(--text-2);
+}
+.ed-client-note-text {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* "Copy lines from invoice …": offered while a regular client's draft has no lines yet. */
+.ed-copy-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-3);
+  margin-bottom: var(--s-4);
+  padding: 4px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--r-sm);
+}
+.ed-copy-offer .ed-text-btn {
+  text-align: left;
+}
+.ed-copy-offer-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+@media (max-width: 640px) {
+  .ed-copy-offer .ed-text-btn {
+    min-height: 44px;
+  }
+}
+
+/* Issue with missing details: looks unavailable but stays pressable, and pressing it opens the checklist. */
+.ed-issue-btn[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ed-issue-btn[aria-disabled='true']:hover,
+.ed-issue-btn[aria-disabled='true']:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: none;
+}
+
+/* "Kopeeri makseandmed" right under the just-issued card. */
+.next-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-3);
+  margin: calc(var(--s-6) * -1) 0 var(--s-8);
+}
+.next-copy-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+@media (max-width: 640px) {
+  .next-copy .ed-text-btn {
+    min-height: 44px;
+  }
+}
+
+/* Appearance that follows the company defaults: one line and "Muuda". */
+.ed-appearance-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s-4);
+}
+.ed-appearance-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  color: var(--text-2);
+}
+.ed-appearance-sep {
+  white-space: pre;
+  color: var(--text-3);
+}
+.ed-appearance-colour {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@media (max-width: 640px) {
+  .ed-appearance-summary .ed-text-btn {
+    min-height: 44px;
+  }
 }

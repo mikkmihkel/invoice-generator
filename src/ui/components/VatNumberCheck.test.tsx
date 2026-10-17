@@ -72,7 +72,10 @@ describe('VatNumberCheck', () => {
     vi.mocked(checkVatNumber).mockResolvedValue({ status: 'blocked', countryCode: 'EL', vatNumber: '094014201', reason: 'Failed to fetch' })
     wrap(<VatNumberCheck vatNumber="GR094014201" />)
     await check()
-    expect(screen.getByRole('status')).toHaveTextContent('VIES ei võimalda seda numbrit siit automaatselt kontrollida. Kontrolli numbrit EL094014201 ametlikul VIES-i lehel.')
+    // Without a response the browser cannot tell a network failure from VIES refusing the request: name both, network first.
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'VIES-iga ei saanud ühendust: võrguühendus katkes või VIES ei luba siit päringuid teha. Proovi uuesti või kontrolli numbrit EL094014201 ametlikul VIES-i lehel.',
+    )
     expect(screen.queryByRole('button', { name: 'Kontrolli VIES-is' })).not.toBeInTheDocument()
     const link = screen.getByRole('link', { name: 'Kopeeri number ja ava VIES' })
     expect(link).toHaveAttribute('href', 'https://ec.europa.eu/taxation_customs/vies/#/vat-validation?memberStateCode=EL&number=094014201&locale=et')
