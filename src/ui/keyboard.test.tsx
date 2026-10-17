@@ -105,6 +105,8 @@ describe('shortcut sheet', () => {
     expect(within(sheet).getByText('Väljasta või näita, mis on puudu')).toBeInTheDocument()
     expect(within(sheet).getAllByText('Enter').length).toBeGreaterThan(1)
     expect(within(sheet).getByText('Ctrl')).toBeInTheDocument()
+    // The list has no controls; on a small screen it scrolls, so it is a focusable region for the keyboard.
+    expect(within(sheet).getByRole('region', { name: 'Kiirklahvid' })).toHaveAttribute('tabindex', '0')
     fireEvent.keyDown(sheet, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Kiirklahvid' })).not.toBeInTheDocument())
   })

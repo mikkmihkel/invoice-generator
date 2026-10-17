@@ -45,6 +45,7 @@ export function ShortcutSheet({ onClose }: { onClose: () => void }) {
       title={t('shortcuts.title')}
       onClose={onClose}
       closeLabel={t('common.close')}
+      focusableBody
       footer={
         <button type="button" className="btn" onClick={onClose} data-autofocus>
           {t('common.close')}

@@ -362,6 +362,9 @@
   overflow: auto;
   color: var(--text-2);
 }
+.dialog-body:focus-visible {
+  outline-offset: -2px;
+}
 .dialog-foot {
   display: flex;
   justify-content: flex-end;
