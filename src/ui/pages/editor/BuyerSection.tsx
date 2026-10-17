@@ -97,7 +97,19 @@ function BuyerPicker({
   const savedCodes = useMemo(() => new Set(clients.map((c) => c.registryCode).filter(Boolean)), [clients])
   const fromRegistry = registry.results.filter((r) => !savedCodes.has(r.registryCode)).slice(0, 8)
   const options: PickerOption[] = [...saved.map((client) => ({ kind: 'client' as const, client })), ...fromRegistry.map((company) => ({ kind: 'registry' as const, company }))]
-  const show = open && (options.length > 0 || q.length >= 2)
+  // The popup holds options only; "nothing found" and "could not search" are shown under the field, where the
+  // retry button stays clickable and the listbox is never left without options.
+  const show = open && options.length > 0
+  const empty = options.length === 0 && q.length >= 2 && !registry.loading && (registry.searched || registry.failed)
+  const hint = empty
+    ? registry.failed
+      ? t('registry.failed')
+      : registryDown
+        ? t('registry.unavailable')
+        : t('buyer.noMatches')
+    : registryDown
+      ? t('registry.unavailablePartial')
+      : t('buyer.pickerHint')
   // The highlighted option stays within the current list as results change.
   const activeIdx = Math.max(0, Math.min(active, options.length - 1))
 
@@ -202,15 +214,10 @@ function BuyerPicker({
               {renderOption(o, i)}
             </Fragment>
           ))}
-          {options.length === 0 && q.length >= 2 && !registry.loading && (
-            <li role="presentation" className="combo-empty">
-              {registry.failed ? t('registry.failed') : registryDown ? t('registry.unavailable') : t('buyer.noMatches')}
-            </li>
-          )}
         </ul>
       </div>
-      <div className="field-hint" id={fieldId('buyer') + '-hint'}>
-        {registryDown && options.length > 0 ? t('registry.unavailablePartial') : t('buyer.pickerHint')}
+      <div className={`field-hint${empty && (registryDown || registry.failed) ? ' tone-warn' : ''}`} id={fieldId('buyer') + '-hint'} aria-live="polite">
+        {hint}
       </div>
       {registryDown && (
         <RegistryRetry

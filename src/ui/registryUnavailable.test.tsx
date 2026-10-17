@@ -96,6 +96,27 @@ describe('register search that cannot reach the register', () => {
     fireEvent.change(input, { target: { value: 'olematu' } })
     expect(await screen.findByText(UNAVAILABLE)).toBeInTheDocument()
     expect(screen.queryByText('Vasteid ei leitud. Lisa uus klient või sisesta andmed käsitsi.')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Proovi uuesti' })).toBeInTheDocument()
+    // The message sits under the field, not in a popup over the retry button, and no empty listbox is left open.
+    expect(screen.getByText(UNAVAILABLE)).toHaveAttribute('id', input.getAttribute('aria-describedby'))
+    expect(input).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    // Retry runs the search again while the field keeps focus.
+    search.mockImplementation(async () => [REGISTRY_FIXTURE[1]])
+    const calls = search.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Proovi uuesti' }))
+    await waitFor(() => expect(search.mock.calls.length).toBeGreaterThan(calls))
+    expect(await screen.findByRole('option', { name: /Päikesekiir AS/ })).toBeInTheDocument()
+    expect(input).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('says "no matches" under the buyer field without opening an empty list', async () => {
+    window.location.hash = '#/invoices/new'
+    render(<App repository={createMemoryRepo({ profile: sampleProfile() })} />)
+    const input = await screen.findByLabelText('Klient')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'olematu' } })
+    expect(await screen.findByText('Vasteid ei leitud. Lisa uus klient või sisesta andmed käsitsi.')).toHaveClass('field-hint')
+    expect(input).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('button', { name: 'Proovi uuesti' })).not.toBeInTheDocument()
   })
 })
