@@ -29,10 +29,13 @@ function renderSettings(googleClientId?: string) {
 describe('settings: Drive backup without a Google client', () => {
   it('leaves out the Drive backup rows instead of showing them greyed out', async () => {
     renderSettings()
-    expect(await screen.findAllByRole('button', { name: 'Tee varukoopia' })).toHaveLength(1)
+    expect(await screen.findByRole('button', { name: 'Tee varukoopia faili' })).toHaveTextContent('Tee varukoopia')
+    expect(screen.getByLabelText('Taasta varukoopiast: fail')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tee varukoopia Google Drive’i' })).not.toBeInTheDocument()
     expect(screen.queryByText('Varukoopia Google Drive’is')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Automaatne varundus Google Drive’i' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Taasta varukoopiast' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Taasta varukoopiast: Google Drive' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Taasta varukoopiast: automaatne varundus' })).not.toBeInTheDocument()
   })
 
   it('shows them once a client ID is set', async () => {
@@ -40,7 +43,12 @@ describe('settings: Drive backup without a Google client', () => {
     expect(await screen.findByText('Varukoopia Google Drive’is')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Automaatne varundus Google Drive’i' })).toBeInTheDocument()
     const driveRow = within(screen.getByText('Varukoopia Google Drive’is').closest<HTMLElement>('.setting-row')!)
-    expect(driveRow.getByRole('button', { name: 'Tee varukoopia' })).toBeEnabled()
-    expect(driveRow.getByRole('button', { name: 'Taasta varukoopiast' })).toBeEnabled()
+    expect(driveRow.getByRole('button', { name: 'Tee varukoopia Google Drive’i' })).toHaveTextContent('Tee varukoopia')
+    expect(driveRow.getByRole('button', { name: 'Tee varukoopia Google Drive’i' })).toBeEnabled()
+    expect(driveRow.getByRole('button', { name: 'Taasta varukoopiast: Google Drive' })).toHaveTextContent('Taasta varukoopiast')
+    expect(driveRow.getByRole('button', { name: 'Taasta varukoopiast: Google Drive' })).toBeEnabled()
+    // Same visible labels in the file row and the automatic backup section, but each button has its own name.
+    expect(screen.getByRole('button', { name: 'Tee varukoopia faili' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Taasta varukoopiast: automaatne varundus' })).toHaveTextContent('Taasta varukoopiast')
   })
 })

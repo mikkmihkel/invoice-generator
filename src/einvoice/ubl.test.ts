@@ -285,6 +285,14 @@ describe('eInvoiceIssues', () => {
     expect(us[0].message.et).toContain('Ostjal puudub e-arve aadress')
   })
 
+  it('asks for the buyer VAT number by VAT treatment, without calling every one of them reverse charge', () => {
+    const noIds = { kind: 'company' as const, name: 'Käufer GmbH', address: { street: 'A 1', city: 'Berlin', postalCode: '10115', country: 'DE' } }
+    for (const vatScheme of ['eu-goods', 'eu-reverse-charge', 'domestic-reverse-charge'] as const) {
+      const issue = eInvoiceIssues(sampleInvoice({ vatScheme, buyer: noIds })).find((i) => i.field === 'buyer.vatNumber')
+      expect(issue?.message, vatScheme).toEqual({ et: 'Selle käibemaksurežiimi puhul on vaja ostja KMKR numbrit.', en: 'This VAT treatment requires the buyer VAT number.' })
+    }
+  })
+
   it('asks for the EUR VAT only when the exchange rate is missing, since the XML adds it otherwise', () => {
     const fields = (inv: Invoice) => eInvoiceIssues(inv).map((i) => i.field)
     const missing = eInvoiceIssues(sampleInvoice({ currency: 'USD' })).find((i) => i.field === 'currency')

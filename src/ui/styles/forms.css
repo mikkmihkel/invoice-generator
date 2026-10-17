@@ -261,12 +261,6 @@ fieldset:disabled .template-option:not(.selected) {
   font-size: var(--fs-xs);
 }
 
-.accent-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
 .swatch {
   width: 24px;
   height: 24px;

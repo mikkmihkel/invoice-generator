@@ -131,7 +131,7 @@ export function BackupImport({ compact }: { compact?: boolean }) {
       <label className={`btn${compact ? ' btn-sm' : ''}`}>
         <UploadSimpleIcon />
         {t('backup.importFile')}
-        <input ref={ref} type="file" accept="application/json,.json" className="visually-hidden" onChange={(e) => void onFile(e.target.files?.[0])} />
+        <input ref={ref} type="file" accept="application/json,.json" className="visually-hidden" aria-label={t('backup.importFileName')} onChange={(e) => void onFile(e.target.files?.[0])} />
       </label>
       {pending && <ImportBackupDialog backup={pending} onClose={() => setPending(null)} />}
     </>
@@ -284,7 +284,7 @@ export default function SettingsPage() {
               <p className={`setting-desc${lastBackup ? '' : ' setting-warn'}`}>{lastBackup ? t('backup.last', { date: formatDateTime(lastBackup) }) : t('backup.never')}</p>
             </div>
             <div className="btn-row">
-              <button type="button" className="btn" onClick={() => void exportBackup()} disabled={busy !== null}>
+              <button type="button" className="btn" onClick={() => void exportBackup()} disabled={busy !== null} aria-label={t('backup.exportName')}>
                 <DownloadSimpleIcon />
                 {t('backup.export')}
               </button>
@@ -298,11 +298,11 @@ export default function SettingsPage() {
                 <p className="setting-desc">{t('backup.driveHint', { folder: driveFolderLabel(settings, 'backup') })}</p>
               </div>
               <div className="btn-row">
-                <button type="button" className="btn" onClick={() => void toDrive()} disabled={busy !== null}>
+                <button type="button" className="btn" onClick={() => void toDrive()} disabled={busy !== null} aria-label={busy === 'drive-backup' ? undefined : t('backup.toDriveName')}>
                   <CloudArrowUpIcon />
                   {busy === 'drive-backup' ? t('common.working') : t('backup.toDrive')}
                 </button>
-                <button type="button" className="btn" onClick={() => void fromDrive()} disabled={busy !== null}>
+                <button type="button" className="btn" onClick={() => void fromDrive()} disabled={busy !== null} aria-label={busy === 'drive-restore' ? undefined : t('backup.fromDriveName')}>
                   <CloudArrowDownIcon />
                   {busy === 'drive-restore' ? t('common.working') : t('backup.fromDrive')}
                 </button>

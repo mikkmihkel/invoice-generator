@@ -144,7 +144,7 @@ describe('automatic backup settings', () => {
     vi.mocked(downloadDriveFile).mockResolvedValueOnce(envelope).mockResolvedValueOnce(envelope)
     setup({ autoBackup: { enabled: true, encrypt: true, keepVersions: 10 } })
     const auto = within(await screen.findByRole('region', { name: 'Automaatne varundus Google Drive’i' }))
-    fireEvent.click(auto.getByRole('button', { name: 'Taasta varukoopiast' }))
+    fireEvent.click(auto.getByRole('button', { name: 'Taasta varukoopiast: automaatne varundus' }))
     const dialog = within(await screen.findByRole('dialog', { name: 'Taasta varukoopia Drive’ist' }))
     expect(dialog.getAllByRole('radio')).toHaveLength(2)
     expect(dialog.getByText(/2,9 kB · krüpteeritud/)).toBeInTheDocument()

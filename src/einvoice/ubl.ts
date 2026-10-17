@@ -282,7 +282,7 @@ export function eInvoiceIssues(invoice: Invoice): UblIssue[] {
     add('seller.vatNumber', 'Käibemaksuga arvel peab olema müüja KMKR number.', 'A VAT invoice must contain the seller VAT number.')
   }
   if (['eu-reverse-charge', 'eu-goods', 'domestic-reverse-charge'].includes(invoice.vatScheme) && !invoice.buyer.vatNumber?.trim() && !invoice.buyer.registryCode?.trim()) {
-    add('buyer.vatNumber', 'Pöördmaksustamisel on vaja ostja KMKR numbrit.', 'Reverse charge requires the buyer VAT number.')
+    add('buyer.vatNumber', 'Selle käibemaksurežiimi puhul on vaja ostja KMKR numbrit.', 'This VAT treatment requires the buyer VAT number.')
   }
   // The XML carries the EUR VAT total (TaxCurrencyCode) whenever a usable exchange rate is set, so only warn without one.
   const rate = invoice.eurExchangeRate

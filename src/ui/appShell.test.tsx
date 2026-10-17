@@ -50,7 +50,7 @@ const backupFile = (data: unknown) => new File([JSON.stringify(data)], 'backup.j
 describe('backup import', () => {
   it('names the broken record and field instead of a generic error', async () => {
     renderAt('#/settings', createMemoryRepo({ profile: sampleProfile() }))
-    const input = (await screen.findByText('Taasta varukoopiast…')).querySelector('input')!
+    const input = await screen.findByLabelText('Taasta varukoopiast: fail')
     const bad = { app: 'invoice-generator', version: 1, exportedAt: '2026-10-01T00:00:00Z', profile: null, settings: null, clients: [{ id: 'c1', name: 'X' }], invoices: [] }
     await act(async () => {
       fireEvent.change(input, { target: { files: [backupFile(bad)] } })
@@ -63,7 +63,7 @@ describe('backup import', () => {
     const settings = { ...createDefaultSettings(), googleClientId: '1-own.apps.googleusercontent.com' }
     const repo = createMemoryRepo({ profile, settings })
     renderAt('#/settings', repo)
-    const input = (await screen.findByText('Taasta varukoopiast…')).querySelector('input')!
+    const input = await screen.findByLabelText('Taasta varukoopiast: fail')
     const backup: BackupFile = {
       app: 'invoice-generator',
       version: 1,

@@ -6,8 +6,6 @@ export const VAT_SCHEMES: VatScheme[] = ['domestic', 'not-registered', 'eu-rever
 
 export const CURRENCIES = ['EUR', 'USD', 'GBP', 'SEK', 'NOK', 'DKK', 'PLN', 'CHF']
 
-export const ACCENT_PRESETS = ['#1f6feb', '#0f766e', '#7c3aed', '#b45309', '#be123c', '#334155', '#111827']
-
 export const UNIT_SUGGESTIONS = ['tk', 'h', 'päev', 'kuu', 'km', 'kg', 'm²', 'komplekt', 'teenus']
 
 export function languageOptions(t: Translate): { value: InvoiceLanguage; label: string }[] {

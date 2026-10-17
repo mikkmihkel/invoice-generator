@@ -420,7 +420,7 @@ export function BackupSection() {
           <CloudArrowUpIcon />
           {busy === 'backup' ? t('common.working') : t('autoBackup.backupNow')}
         </button>
-        <button type="button" className="btn" onClick={() => void restore()} disabled={disabled}>
+        <button type="button" className="btn" onClick={() => void restore()} disabled={disabled} aria-label={busy === 'restore' ? undefined : t('autoBackup.restoreName')}>
           <CloudArrowDownIcon />
           {busy === 'restore' ? t('common.working') : t('autoBackup.restore')}
         </button>
