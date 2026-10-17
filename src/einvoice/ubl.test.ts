@@ -284,6 +284,16 @@ describe('eInvoiceIssues', () => {
     expect(us[0].message.en).toContain('no Peppol electronic address')
     expect(us[0].message.et).toContain('elektrooniline aadress')
   })
+
+  it('asks for the EUR VAT only when the exchange rate is missing, since the XML adds it otherwise', () => {
+    const fields = (inv: Invoice) => eInvoiceIssues(inv).map((i) => i.field)
+    const missing = eInvoiceIssues(sampleInvoice({ currency: 'USD' })).find((i) => i.field === 'currency')
+    expect(missing?.message.et).toContain('E-arvele lisatakse see ainult siis, kui euro vahetuskurss on sisestatud.')
+    expect(fields(sampleInvoice({ currency: 'USD', eurExchangeRate: 1.25 }))).not.toContain('currency')
+    expect(fields(sampleInvoice({ currency: 'USD', eurExchangeRate: 0 }))).toContain('currency')
+    expect(fields(sampleInvoice({ currency: 'USD', vatScheme: 'export' }))).not.toContain('currency')
+    expect(fields(sampleInvoice())).not.toContain('currency')
+  })
 })
 
 describe('buildUblXml — foreign currency', () => {

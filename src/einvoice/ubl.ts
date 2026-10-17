@@ -284,8 +284,15 @@ export function eInvoiceIssues(invoice: Invoice): UblIssue[] {
   if (['eu-reverse-charge', 'eu-goods', 'domestic-reverse-charge'].includes(invoice.vatScheme) && !invoice.buyer.vatNumber?.trim() && !invoice.buyer.registryCode?.trim()) {
     add('buyer.vatNumber', 'Pöördmaksustamisel on vaja ostja KMKR numbrit.', 'Reverse charge requires the buyer VAT number.')
   }
-  if ((invoice.currency || 'EUR').toUpperCase() !== 'EUR' && invoice.vatScheme === 'domestic') {
-    add('currency', 'Välisvaluutas käibemaksuga arvel tuleb käibemaksusumma näidata ka eurodes (TaxCurrencyCode), kuid e-arve eksport seda ei lisa.', 'For VAT invoices in a foreign currency the VAT should also be stated in EUR, which this export does not add.')
+  // The XML carries the EUR VAT total (TaxCurrencyCode) whenever a usable exchange rate is set, so only warn without one.
+  const rate = invoice.eurExchangeRate
+  const hasEurRate = !!rate && Number.isFinite(rate) && rate > 0
+  if ((invoice.currency || 'EUR').toUpperCase() !== 'EUR' && invoice.vatScheme === 'domestic' && !hasEurRate) {
+    add(
+      'currency',
+      'Välisvaluutas käibemaksuga arvel peab käibemaksusumma olema ka eurodes. E-arvele lisatakse see ainult siis, kui euro vahetuskurss on sisestatud.',
+      'On a foreign-currency VAT invoice the VAT must also be stated in EUR. The e-invoice includes it only when the euro exchange rate is entered.',
+    )
   }
   if (!invoice.lines.length) add('lines', 'Arvel pole ridu.', 'The invoice has no lines.')
   return issues
