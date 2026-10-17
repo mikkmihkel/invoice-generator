@@ -161,10 +161,10 @@ const REMINDER_ET: ReminderText = {
   subject: 'Meeldetuletus: arve {number} on tasumata',
   intro:
     'Tere!\n\n' +
-    'Tuletame meelde, et arve nr {number} summas {total} maksetähtaeg oli {dueDate}, kuid makset ei ole meile veel laekunud. ' +
+    'Tuletame meelde, et arve nr {number} maksetähtaeg oli {dueDate}, kuid makset summas {total} ei ole meile veel laekunud. ' +
     'Palume arve tasuda esimesel võimalusel. Arve on uuesti manuses ja makseandmed leiate arvelt.',
-  interest: 'Arvel kokku lepitud viivis on {interestRate}% päevas. Makse on hilinenud {overdueDays} päeva ja tänaseks on viivist kogunenud {interest}.',
-  outro: 'Kui olete arve vahepeal juba tasunud, võite selle kirja tähelepanuta jätta.\n\nLugupidamisega\n{company}',
+  interest: 'Arvel kokku lepitud viivise määr on {interestRate}% päevas. Makse on hilinenud {overdueDays} päeva ja tänaseks on viivist kogunenud {interest}.',
+  outro: 'Kui olete arve vahepeal tasunud, võite selle kirja tähelepanuta jätta.\n\nLugupidamisega\n{company}',
 }
 const REMINDER_EN: ReminderText = {
   subject: 'Reminder: invoice {number} is unpaid',

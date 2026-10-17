@@ -192,7 +192,7 @@ describe('selected invoice', () => {
     expect(within(dialog).getByLabelText('Teema')).toHaveValue('Teine meeldetuletus: arve 2026-0004 on endiselt tasumata')
     // 1481,68 × 0,05% × 16 days = 11,85
     const body = (within(dialog).getByLabelText('Sõnum') as HTMLTextAreaElement).value.replace(/[\u00a0\u202f]/g, ' ')
-    expect(body).toContain('Arvel kokku lepitud viivis on 0,05% päevas. Makse on hilinenud 16 päeva ja tänaseks on viivist kogunenud 11,85 €.')
+    expect(body).toContain('Arvel kokku lepitud viivise määr on 0,05% päevas. Makse on hilinenud 16 päeva ja tänaseks on viivist kogunenud 11,85 €.')
     await act(async () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Ava e-posti rakendus' }))
     })

@@ -1,6 +1,8 @@
 import { parse } from 'csv-parse/sync'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Invoice } from '../domain'
+import { translate } from '../ui/i18n'
+import { VAT_SCHEMES } from '../ui/options'
 import { creditNoteInvoice, line, sampleInvoice } from '../pdf/testFixtures'
 import { accountantCsv, accountantRows, accountantZip, exportTotals, isExportable, periodRange, selectForExport, totalInEur, vatRateColumns } from './accountant'
 
@@ -76,14 +78,14 @@ describe('accountantCsv', () => {
       Number: '2026-0007',
       Viitenumber: '20260007',
       Liik: 'Arve',
-      Kuupäev: '12.10.2026',
-      'Käibe kuupäev': '10.10.2026',
+      'Arve kuupäev': '12.10.2026',
+      'Käibe tekkimise kuupäev': '10.10.2026',
       Maksetähtaeg: '26.10.2026',
       Ostja: 'Klient Žürii OÜ',
       'Ostja registrikood': '87654321',
       'Ostja KMKR nr': 'EE987654321',
       Valuuta: 'EUR',
-      'Käibemaksu käsitlus': 'Eesti käibemaks',
+      Käibemaksurežiim: 'Tavaline käibemaks (Eesti)',
       'Summa km-ta': '2191,97',
       'Käive 24%': '812,50',
       'Käibemaks 24%': '195,00',
@@ -97,9 +99,9 @@ describe('accountantCsv', () => {
       'Käibemaks kokku': '324,95',
       'Summa kokku': '2516,92',
       'Summa kokku EUR': '2516,92',
-      Staatus: 'Väljastatud',
-      'Tasumise kuupäev': '',
-      'Krediteeritud arve nr': '',
+      Olek: 'Väljastatud',
+      'Laekumise kuupäev': '',
+      'Krediteeritava arve nr': '',
     })
   })
 
@@ -123,11 +125,20 @@ describe('accountantCsv', () => {
     ])
   })
 
+  it('names the VAT treatment exactly as the app does', () => {
+    const docs = VAT_SCHEMES.map((vatScheme, i) => sampleInvoice({ id: `s${i}`, number: `S${i}`, vatScheme }))
+    for (const lang of ['et', 'en'] as const) {
+      const header = lang === 'et' ? 'Käibemaksurežiim' : 'VAT treatment'
+      const names = csvRecords(accountantCsv(docs, lang)).map((r) => r[header])
+      expect(names).toEqual(VAT_SCHEMES.map((s) => translate(lang, `vat.scheme.${s}`)))
+    }
+  })
+
   it('shows credit notes as negative amounts with the credited invoice number', () => {
     const cn = creditNoteInvoice({ number: '2026-0009', status: 'issued' })
     const [row] = csvRecords(accountantCsv([cn]))
     expect(row.Liik).toBe('Kreeditarve')
-    expect(row['Krediteeritud arve nr']).toBe(cn.creditedInvoiceNumber)
+    expect(row['Krediteeritava arve nr']).toBe(cn.creditedInvoiceNumber)
     expect(row['Summa kokku'].startsWith('-')).toBe(true)
   })
 
@@ -138,8 +149,8 @@ describe('accountantCsv', () => {
     // The credit note may fall outside the period: every document is passed to find it.
     const all = [voided, credited, cn]
     const [v, c] = csvRecords(accountantCsv([voided, credited], 'et', all))
-    expect(v).toMatchObject({ Staatus: 'Tühistatud', 'Summa km-ta': '0,00', 'Käive 24%': '', 'Käibemaks kokku': '0,00', 'Summa kokku': '0,00', 'Summa kokku EUR': '0,00' })
-    expect(c).toMatchObject({ Staatus: 'Tühistatud', 'Summa kokku': '2516,92' })
+    expect(v).toMatchObject({ Olek: 'Tühistatud', 'Summa km-ta': '0,00', 'Käive 24%': '', 'Käibemaks kokku': '0,00', 'Summa kokku': '0,00', 'Summa kokku EUR': '0,00' })
+    expect(c).toMatchObject({ Olek: 'Tühistatud', 'Summa kokku': '2516,92' })
     expect(exportTotals([voided, credited], all)).toEqual(new Map([['EUR', 2516.92]]))
     expect(exportTotals([voided, credited, cn], all)).toEqual(new Map([['EUR', 0]]))
     expect(exportTotals([voided], all)).toEqual(new Map([['EUR', 0]]))
