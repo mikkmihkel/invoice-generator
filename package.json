@@ -17,7 +17,7 @@
     "@ibm/plex-sans": "^1.1.0",
     "@phosphor-icons/react": "^2.1.10",
     "idb": "^8.0.4",
-    "pdfjs-dist": "^5.4.296",
+    "pdfjs-dist": "^6.4.299",
     "pdfmake": "^0.3.11",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
