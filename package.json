@@ -18,10 +18,10 @@
     "@phosphor-icons/react": "^2.1.10",
     "idb": "^8.0.4",
     "pdfjs-dist": "^5.4.296",
-    "pdfmake": "^0.3.11",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.4"
+    "pdfmake": "^0.3.13",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
@@ -30,13 +30,13 @@
     "@types/pdfmake": "^0.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
-    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-react": "^6.2.1",
     "csv-parse": "^7.0.3",
-    "fake-indexeddb": "^6.2.5",
+    "fake-indexeddb": "^6.2.7",
     "jsdom": "^29.1.1",
-    "oxlint": "^1.81.0",
+    "oxlint": "^1.90.0",
     "typescript": "~6.0.2",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.4"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }
